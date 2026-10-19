@@ -117,7 +117,17 @@ insert into public.service_categories (slug, name, icon, description, sort_order
   ('albanileria', 'Albañilería', 'construction', 'Albañil para muros, pisos y revoques', 5),
   ('carpinteria', 'Carpintería', 'carpenter', 'Muebles, puertas y reparaciones en madera', 6),
   ('jardineria', 'Jardinería', 'yard', 'Poda, césped y mantenimiento de jardines', 7),
-  ('reparaciones-hogar', 'Reparaciones del hogar', 'home_repair_service', 'Arreglos generales en tu casa', 8);
+  ('reparaciones-hogar', 'Reparaciones del hogar', 'home_repair_service', 'Arreglos generales en tu casa', 8),
+  ('mecanica', 'Mecánica', 'directions_car', 'Mecánico a domicilio y auxilio', 9),
+  ('aire-acondicionado', 'Aire acondicionado', 'ac_unit', 'Instalación, limpieza y recarga', 10),
+  ('cerrajeria', 'Cerrajería', 'key', 'Chapas, llaves y aperturas', 11),
+  ('belleza', 'Belleza y peluquería', 'content_cut', 'Cortes, peinados y maquillaje a domicilio', 12),
+  ('manicure', 'Manicure y uñas', 'spa', 'Manicure y pedicure a domicilio', 13),
+  ('ninera', 'Niñera', 'child_care', 'Cuidado de niños por horas', 14),
+  ('mascotas', 'Mascotas', 'pets', 'Paseo, baño y cuidado de mascotas', 15),
+  ('clases', 'Clases particulares', 'school', 'Apoyo escolar, idiomas y música', 16),
+  ('eventos', 'Eventos', 'celebration', 'Meseros, decoración y ayuda para fiestas', 17),
+  ('asesoria-legal', 'Asesoría legal', 'gavel', 'Abogados para consultas y trámites', 18);
 
 -- ---------------------------------------------------------------------------
 -- Perfiles y roles

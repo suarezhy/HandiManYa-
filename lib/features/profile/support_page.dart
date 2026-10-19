@@ -1,0 +1,78 @@
+import 'package:flutter/material.dart';
+
+import '../../core/theme/tokens.dart';
+import '../../core/widgets/common.dart';
+
+const _faq = <(String, String)>[
+  (
+    '¿Cómo funciona ¡Ya!?',
+    'Eliges el servicio y tu zona. Avisamos a los profesionales verificados disponibles cerca de ti y el primero que acepta toma tu pedido. Te mostramos quién es y puedes chatear con él.',
+  ),
+  (
+    '¿Y si prefiero programar?',
+    'Busca un profesional, revisa su perfil y elige "Programar". Indica día y hora; el profesional confirma o te envía una cotización.',
+  ),
+  (
+    '¿Cómo pago?',
+    'Pagas directamente al profesional, en efectivo o por QR, cuando el trabajo termina. HandiMan ¡Ya! no cobra al cliente por usar la app.',
+  ),
+  (
+    '¿Quién ve mi dirección?',
+    'Solo el profesional que acepta tu solicitud, y solo mientras el trabajo está activo. Antes de aceptar, los profesionales solo ven tu zona.',
+  ),
+  (
+    '¿Los profesionales están verificados?',
+    'Sí. Antes de recibir pedidos revisamos su carnet de identidad y sus datos. Verás la insignia "Verificado" en su perfil.',
+  ),
+  (
+    '¿Cómo cancelo?',
+    'Abre la solicitud en "Solicitudes" y toca "Cancelar". Te pediremos el motivo para mejorar el servicio.',
+  ),
+  (
+    'Tuve un problema con un trabajo',
+    'Abre la solicitud y toca "Reportar un problema". Nuestro equipo revisará el caso con ambas partes.',
+  ),
+  (
+    'Soy profesional: ¿cómo funciona la billetera?',
+    'Tu billetera tiene saldo prepagado. Al aceptar un trabajo se reserva la comisión; se cobra cuando el trabajo se completa y se libera si se cancela. Puedes recargar por transferencia o QR.',
+  ),
+];
+
+class SupportPage extends StatelessWidget {
+  const SupportPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Ayuda y soporte')),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+        children: [
+          PageBody(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: HySpacing.sm),
+                const InfoBanner(
+                  icon: Icons.support_agent_outlined,
+                  text: 'Si tu problema es con una solicitud, ábrela y toca "Reportar un problema". Así tenemos todos los datos del trabajo.',
+                ),
+                const SectionHeader(title: 'Preguntas frecuentes'),
+                for (final (q, a) in _faq)
+                  Card(
+                    margin: const EdgeInsets.only(bottom: HySpacing.xs),
+                    child: ExpansionTile(
+                      shape: const Border(),
+                      title: Text(q, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                      childrenPadding: const EdgeInsets.fromLTRB(HySpacing.md, 0, HySpacing.md, HySpacing.md),
+                      children: [Text(a, style: const TextStyle(fontSize: 16, height: 1.4))],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
