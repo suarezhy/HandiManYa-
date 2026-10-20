@@ -125,6 +125,23 @@ jobs:
           E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: node --test --test-reporter=spec supabase/e2e/didit/sandbox.test.mjs
 
+      - name: El aviso firmado de Didit llegó y se guardó (prueba el secreto del webhook)
+        run: |
+          # Didit avisa "Not Started" al crear la sesión. Si la firma con
+          # DIDIT_WEBHOOK_SECRET es válida, la función lo guarda (last_event_id).
+          for i in $(seq 1 24); do
+            got=$(psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -c "select count(*) from public.identity_checks
+                    where professional_id = 'd1d17000-0000-4000-8000-0000000000b1' and last_event_id is not null")
+            if [ "$got" = "1" ]; then
+              psql "${DB_URL}" -X -At -c "select 'Aviso de Didit recibido y verificado: estado=' || status || ', sandbox=' || sandbox
+                     from public.identity_checks where professional_id = 'd1d17000-0000-4000-8000-0000000000b1'"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::En 4 minutos no llegó ningún aviso de Didit con firma válida. Revisa que DIDIT_WEBHOOK_SECRET sea el de este webhook y que la URL sea .../functions/v1/didit-webhook."
+          exit 1
+
       - name: Lo que quedó en la base es de prueba y sin costo
         run: |
           psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'

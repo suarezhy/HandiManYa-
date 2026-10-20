@@ -49,7 +49,12 @@ test('identity-check: sin sesión iniciada, no', async () => {
 
 test('identity-check: crea una sesión del sandbox de Didit (gratis)', async () => {
   const r = await call('identity-check', { auth: token });
-  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const hint = {
+    HMY_IDENTITY_OFF: 'falta DIDIT_API_KEY o DIDIT_WORKFLOW_ID en los secretos de la función',
+    HMY_IDENTITY_SEND_FAILED: 'Didit rechazó crear la sesión: revisa DIDIT_WORKFLOW_ID (de la app sandbox) y el permiso de la clave',
+    HMY_IDENTITY_LIVE_LOCKED: 'DIDIT_SANDBOX=false está puesto; quítalo',
+  }[r.json?.error];
+  assert.equal(r.status, 200, `${JSON.stringify(r.json)} ${hint ?? ''}`);
   assert.equal(r.json.sandbox, true, 'debe ser sandbox');
   const u = new URL(r.json.verification_url);
   assert.equal(u.protocol, 'https:');
@@ -75,6 +80,7 @@ test('didit-webhook: sin firma o con firma falsa, se rechaza', async () => {
     event_id: 'falso', environment: 'sandbox', session_id: 'falsa', status: 'Approved', webhook_type: 'status.updated',
   });
   const none = await call('didit-webhook', { body });
+  assert.notEqual(none.json?.error, 'HMY_IDENTITY_OFF', 'falta DIDIT_WEBHOOK_SECRET en los secretos de la función');
   assert.equal(none.status, 401, JSON.stringify(none.json));
   const fake = await call('didit-webhook', {
     body,
