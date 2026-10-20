@@ -133,36 +133,24 @@ jobs:
           E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: node --test --test-reporter=spec supabase/e2e/didit/sandbox.test.mjs
 
-      - name: El aviso firmado de Didit llegó y se guardó (prueba el secreto del webhook)
-        if: env.ANON_KEY != ''
-        run: |
-          # Didit avisa "Not Started" al crear la sesión. Si la firma con
-          # DIDIT_WEBHOOK_SECRET es válida, la función lo guarda (last_event_id).
-          for i in $(seq 1 24); do
-            got=$(psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -c "select count(*) from public.identity_checks
-                    where professional_id = 'd1d17000-0000-4000-8000-0000000000b1' and last_event_id is not null")
-            if [ "$got" = "1" ]; then
-              psql "${DB_URL}" -X -At -c "select 'Aviso de Didit recibido y verificado: estado=' || status || ', sandbox=' || sandbox
-                     from public.identity_checks where professional_id = 'd1d17000-0000-4000-8000-0000000000b1'"
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "::error::En 4 minutos no llegó ningún aviso de Didit con firma válida. Revisa que DIDIT_WEBHOOK_SECRET sea el de este webhook y que la URL sea .../functions/v1/didit-webhook."
-          exit 1
+      - name: Resultados simulados en el sandbox (aviso firmado, base, borrado en Didit)
+        env:
+          E2E_URL: https://yldqopeldibwgbwmdnzy.supabase.co
+          E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node --test --test-reporter=spec supabase/e2e/didit/sandbox_flow.test.mjs
 
       - name: Lo que quedó en la base es de prueba y sin costo
         if: env.ANON_KEY != ''
         run: |
           psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'
-          select 'Verificación: sandbox=' || sandbox || ' estado=' || status || ' sesión=' || (session_id is not null)
+          select 'Verificación: sandbox=' || sandbox || ' estado=' || status || ' borrada en Didit=' || (vendor_deleted_at is not null)
             from public.identity_checks where professional_id = 'd1d17000-0000-4000-8000-0000000000b1';
           select 'Uso de Didit: ' || count(*) || ' (sandbox ' || count(*) filter (where sandbox) || '), USD ' || coalesce(sum(cost_usd), 0)
             from public.cost_usage where vendor_key like 'didit%' or vendor_key = 'veriff';
           do $$ begin
             if (select count(*) from public.identity_checks
-                 where professional_id = 'd1d17000-0000-4000-8000-0000000000b1') <> 1 then
-              raise exception 'HMY: se esperaba una sola verificación de prueba';
+                 where professional_id = 'd1d17000-0000-4000-8000-0000000000b1') <> 2 then
+              raise exception 'HMY: se esperaban dos verificaciones de prueba (rechazada y aprobada)';
             end if;
             if exists (select 1 from public.identity_checks
                         where professional_id = 'd1d17000-0000-4000-8000-0000000000b1' and not sandbox) then
