@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../../core/utils/app_error.dart';
 import '../models/admin.dart';
 import '../models/ai_control.dart';
@@ -785,6 +787,8 @@ class DemoBackend
   }
 
   void _move(_Booking b, BookingStatus to, {String? note, required String actorId}) {
+    // Al salir de "en camino" (cancelación, disputa), el código deja de servir.
+    if (b.status == BookingStatus.onTheWay) b.pinVerifier = null;
     b.status = to;
     b.events.add(BookingEvent(status: to, note: note, at: DateTime.now()));
     if (to == BookingStatus.confirmed) {
@@ -1177,8 +1181,134 @@ class DemoBackend
       _ => <BookingStatus>{},
     };
     _requireStatus(b, allowed);
+    if (to == BookingStatus.inProgress && b.arrivalVerifiedAt == null) throw AppError.from('HMY_ARRIVAL_NOT_VERIFIED');
     if (to == BookingStatus.workFinished && finalAmount != null) b.finalAmount = finalAmount;
     _move(b, to, actorId: _me.id);
+  }
+
+  static const arrivalPinTtl = Duration(minutes: 10);
+  final _pinRandom = Random.secure();
+  final _pinAttempts = <String, List<DateTime>>{};
+
+  // En el servidor es bcrypt; aquí basta con no guardar el código tal cual.
+  static String _pinVerifier(String bookingId, String pin) => '$bookingId:${pin.hashCode ^ bookingId.hashCode}';
+
+  @override
+  Future<ArrivalPin> markArrived(String bookingId) async {
+    await _latency();
+    final b = _get(bookingId);
+    if (b.professionalId != _me.id) throw AppError.from('HMY_FORBIDDEN');
+    _requireStatus(b, {BookingStatus.onTheWay});
+    if (b.arrivalVerifiedAt != null) throw AppError.from('HMY_ARRIVAL_ALREADY_VERIFIED');
+    if (b.pinsIssued >= 3) throw AppError.from('HMY_ARRIVAL_PIN_LIMIT');
+    final wait = b.lastPinAt == null ? 0 : 30 - DateTime.now().difference(b.lastPinAt!).inSeconds;
+    if (wait > 0) throw AppError.from('HMY_ARRIVAL_PIN_TOO_SOON:$wait');
+    final pin = _pinRandom.nextInt(1000000).toString().padLeft(6, '0');
+    final first = b.arrivedAt == null;
+    b
+      ..pinVerifier = _pinVerifier(b.id, pin)
+      ..pinExpiresAt = DateTime.now().add(arrivalPinTtl)
+      ..wrongAttempts = 0
+      ..pinsIssued += 1
+      ..lastPinAt = DateTime.now()
+      ..arrivedAt ??= DateTime.now();
+    if (first) {
+      _notify(
+        b.customerId,
+        'arrival',
+        'Tu profesional llegó',
+        'Pídele el código de 6 números y escríbelo en "Verificar llegada".',
+        bookingId: b.id,
+      );
+    }
+    _changes.add(null);
+    return ArrivalPin(pin: pin, expiresAt: b.pinExpiresAt!, pinsLeft: 3 - b.pinsIssued);
+  }
+
+  @override
+  Future<ArrivalCheck> verifyArrivalPin(String bookingId, String pin) async {
+    await _latency();
+    final b = _get(bookingId);
+    final me = _me.id;
+    if (b.customerId != me) throw AppError.from('HMY_FORBIDDEN');
+    _requireStatus(b, {BookingStatus.onTheWay});
+    if (!RegExp(r'^[0-9]{6}$').hasMatch(pin)) throw AppError.from('HMY_INVALID_PIN');
+    final hourAgo = DateTime.now().subtract(const Duration(hours: 1));
+    final fails = (_pinAttempts[me] ??= [])..removeWhere((t) => t.isBefore(hourAgo));
+    if (fails.length >= 10) throw AppError.from('HMY_TOO_MANY_ATTEMPTS');
+    if (b.arrivalVerifiedAt != null) throw AppError.from('HMY_ARRIVAL_ALREADY_VERIFIED');
+    if (b.pinVerifier == null) throw AppError.from('HMY_ARRIVAL_NO_PIN');
+    if (!b.pinExpiresAt!.isAfter(DateTime.now())) {
+      b.pinVerifier = null;
+      _changes.add(null);
+      return const ArrivalCheck(ArrivalCheckResult.expired);
+    }
+    if (_pinVerifier(b.id, pin) != b.pinVerifier) {
+      fails.add(DateTime.now());
+      b.wrongAttempts++;
+      final left = 5 - b.wrongAttempts;
+      if (left <= 0) b.pinVerifier = null;
+      _changes.add(null);
+      return ArrivalCheck(left <= 0 ? ArrivalCheckResult.locked : ArrivalCheckResult.wrong, attemptsLeft: max(left, 0));
+    }
+    _verifyArrival(b, method: 'pin');
+    _notify(
+      b.professionalId!,
+      'arrival',
+      'Llegada verificada',
+      'El cliente confirmó tu llegada. Ya puedes empezar el trabajo.',
+      bookingId: b.id,
+    );
+    return const ArrivalCheck(ArrivalCheckResult.verified);
+  }
+
+  /// Solo pruebas: hace como si el último código se hubiera generado hace [ago].
+  @visibleForTesting
+  void debugAgeArrivalPin(String bookingId, Duration ago) {
+    final b = _get(bookingId);
+    b
+      ..lastPinAt = b.lastPinAt?.subtract(ago)
+      ..pinExpiresAt = b.pinExpiresAt?.subtract(ago);
+  }
+
+  void _verifyArrival(_Booking b, {required String method}) {
+    final start = b.draft.scheduledStart;
+    b
+      ..pinVerifier = null
+      ..arrivedAt ??= DateTime.now()
+      ..arrivalVerifiedAt = DateTime.now()
+      ..arrivalMethod = method
+      ..delayMinutes = b.draft.mode == BookingMode.scheduled && start != null
+          ? max(0, DateTime.now().difference(start).inMinutes)
+          : null;
+    _changes.add(null);
+  }
+
+  @override
+  Future<BookingArrival> arrival(String bookingId) async {
+    await _latency();
+    final b = _get(bookingId);
+    final me = _me.id;
+    if (b.customerId != me && b.professionalId != me && !_me.roles.contains(AppRole.admin)) {
+      throw AppError.from('HMY_FORBIDDEN');
+    }
+    final live = b.pinVerifier != null && b.pinExpiresAt!.isAfter(DateTime.now());
+    return BookingArrival(
+      stage: b.arrivalVerifiedAt != null
+          ? ArrivalStage.verified
+          : live
+          ? ArrivalStage.waitingPin
+          : b.arrivedAt != null
+          ? ArrivalStage.arrived
+          : ArrivalStage.none,
+      arrivedAt: b.arrivedAt,
+      pinExpiresAt: b.pinVerifier != null ? b.pinExpiresAt : null,
+      attemptsLeft: b.pinVerifier != null ? 5 - b.wrongAttempts : null,
+      pinsLeft: 3 - b.pinsIssued,
+      verifiedAt: b.arrivalVerifiedAt,
+      byTeam: b.arrivalMethod == 'admin',
+      delayMinutes: b.delayMinutes,
+    );
   }
 
   @override
@@ -2125,6 +2255,23 @@ class DemoBackend
   }
 
   @override
+  Future<void> adminVerifyArrival(String bookingCode, String reason) async {
+    await _latency();
+    _admin();
+    if (reason.trim().length < 5) throw AppError.from('HMY_REASON_REQUIRED');
+    final code = bookingCode.trim().toUpperCase();
+    final b = _bookings.values.where((x) => x.code == code).firstOrNull;
+    if (b == null) throw AppError.from('HMY_NOT_FOUND');
+    _requireStatus(b, {BookingStatus.onTheWay});
+    if (b.arrivalVerifiedAt != null) throw AppError.from('HMY_ARRIVAL_ALREADY_VERIFIED');
+    _verifyArrival(b, method: 'admin');
+    _log('arrival.admin_verified', 'bookings', b.id, {'reason': reason.trim()});
+    for (final u in [b.professionalId!, b.customerId]) {
+      _notify(u, 'arrival', 'Llegada verificada por el equipo', reason.trim(), bookingId: b.id);
+    }
+  }
+
+  @override
   Future<void> adjustWallet(String professionalId, double amount, String reason) async {
     await _latency();
     _admin();
@@ -2644,6 +2791,17 @@ class _Booking {
   String? disputeOpenedBy;
   DateTime? disputeAt;
   String? disputeResolution;
+
+  // Código de llegada: solo el verificador vive "en el servidor".
+  String? pinVerifier;
+  DateTime? pinExpiresAt;
+  int wrongAttempts = 0;
+  int pinsIssued = 0;
+  DateTime? lastPinAt;
+  DateTime? arrivedAt;
+  DateTime? arrivalVerifiedAt;
+  String? arrivalMethod;
+  int? delayMinutes;
 
   Set<String> get offers => _offers;
   set offers(Set<String> v) {

@@ -6,6 +6,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/admin.dart';
 import '../../data/models/booking.dart';
+import '../../data/providers.dart';
 import '../../router.dart';
 import 'admin_common.dart';
 
@@ -50,13 +51,41 @@ class AdminHomePage extends ConsumerWidget {
   }
 }
 
-class _Body extends StatelessWidget {
+class _Body extends ConsumerWidget {
   const _Body({required this.d});
 
   final AdminDashboard d;
 
+  // Excepción: el cliente no puede escribir el código de llegada (sin batería,
+  // sin la app) y llama a soporte. Queda en la auditoría con el motivo.
+  Future<void> _verifyArrival(BuildContext context, WidgetRef ref) async {
+    final code = await promptText(
+      context,
+      title: 'Verificar una llegada',
+      label: 'Código del pedido',
+      confirm: 'Siguiente',
+      hint: 'Por ejemplo A1B2C3D4',
+      minLength: 4,
+    );
+    if (code == null || !context.mounted) return;
+    final reason = await promptText(
+      context,
+      title: 'Verificar una llegada',
+      label: 'Motivo',
+      confirm: 'Verificar llegada',
+      hint: 'Cómo confirmaste que llegó la persona correcta',
+      minLength: 5,
+    );
+    if (reason == null || !context.mounted) return;
+    await runGuarded(
+      context,
+      () => ref.read(backendProvider).adminVerifyArrival(code, reason),
+      success: 'Llegada verificada. Quedó en la auditoría.',
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tiles = [
       _Tile(Icons.hub_outlined, 'Centro de Control IA', 'Agentes, decisiones y reporte diario', null, Routes.adminAi),
       _Tile(
@@ -151,6 +180,28 @@ class _Body extends StatelessWidget {
               ),
             ),
           ),
+        AppCard(
+          key: const Key('admin-verify-arrival'),
+          onTap: () => _verifyArrival(context, ref),
+          child: const Row(
+            children: [
+              Icon(Icons.pin_outlined, color: HyColors.primaryDark, size: 32),
+              SizedBox(width: HySpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Verificar una llegada', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                    Text(
+                      'Solo si el cliente no puede escribir el código',
+                      style: TextStyle(color: HyColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

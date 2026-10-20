@@ -464,3 +464,94 @@ class BookingDraft {
         otherText: otherText,
       );
 }
+
+/// Código de llegada: el profesional marca "He llegado" y el cliente escribe
+/// el código que le dicta. Recién con la llegada verificada empieza el trabajo.
+enum ArrivalStage {
+  /// Todavía no marcó "He llegado".
+  none('none'),
+
+  /// Marcó "He llegado", pero no hay un código vigente (venció o se bloqueó).
+  arrived('arrived'),
+  waitingPin('waiting_pin'),
+  verified('verified');
+
+  const ArrivalStage(this.key);
+  final String key;
+
+  static ArrivalStage fromKey(String? k) => values.firstWhere((s) => s.key == k, orElse: () => ArrivalStage.none);
+}
+
+class BookingArrival {
+  const BookingArrival({
+    this.stage = ArrivalStage.none,
+    this.arrivedAt,
+    this.pinExpiresAt,
+    this.attemptsLeft,
+    this.pinsLeft = 3,
+    this.verifiedAt,
+    this.byTeam = false,
+    this.delayMinutes,
+  });
+
+  final ArrivalStage stage;
+  final DateTime? arrivedAt;
+  final DateTime? pinExpiresAt;
+  final int? attemptsLeft;
+  final int pinsLeft;
+  final DateTime? verifiedAt;
+
+  /// Verificada por el equipo (excepción con motivo), no con el código.
+  final bool byTeam;
+
+  /// Minutos de atraso respecto de la hora acordada (solo programados).
+  final int? delayMinutes;
+
+  bool get verified => stage == ArrivalStage.verified;
+
+  factory BookingArrival.fromMap(Map<String, dynamic> m) => BookingArrival(
+    stage: ArrivalStage.fromKey(m['state'] as String?),
+    arrivedAt: _dt(m['arrived_at']),
+    pinExpiresAt: _dt(m['pin_expires_at']),
+    attemptsLeft: (m['attempts_left'] as num?)?.toInt(),
+    pinsLeft: (m['pins_left'] as num?)?.toInt() ?? 3,
+    verifiedAt: _dt(m['verified_at']),
+    byTeam: m['method'] == 'admin',
+    delayMinutes: (m['delay_minutes'] as num?)?.toInt(),
+  );
+}
+
+/// El código que ve solo el profesional, una vez.
+class ArrivalPin {
+  const ArrivalPin({required this.pin, required this.expiresAt, required this.pinsLeft});
+
+  final String pin;
+  final DateTime expiresAt;
+  final int pinsLeft;
+
+  factory ArrivalPin.fromMap(Map<String, dynamic> m) => ArrivalPin(
+    pin: m['pin'] as String,
+    expiresAt: DateTime.parse(m['expires_at'] as String),
+    pinsLeft: (m['pins_left'] as num?)?.toInt() ?? 0,
+  );
+}
+
+enum ArrivalCheckResult { verified, wrong, locked, expired }
+
+class ArrivalCheck {
+  const ArrivalCheck(this.result, {this.attemptsLeft});
+
+  final ArrivalCheckResult result;
+  final int? attemptsLeft;
+
+  factory ArrivalCheck.fromMap(Map<String, dynamic> m) => ArrivalCheck(
+    m['ok'] == true
+        ? ArrivalCheckResult.verified
+        : switch (m['reason']) {
+            'locked' => ArrivalCheckResult.locked,
+            'expired' => ArrivalCheckResult.expired,
+            _ => ArrivalCheckResult.wrong,
+          },
+    attemptsLeft: (m['attempts_left'] as num?)?.toInt(),
+  );
+}

@@ -51,6 +51,10 @@ void main() {
     expect(reserved.available, lessThan(startBalance));
 
     await backend.updateProgress(id, BookingStatus.onTheWay);
+    final pin = await backend.markArrived(id);
+    await asCustomer();
+    expect((await backend.verifyArrivalPin(id, pin.pin)).result, ArrivalCheckResult.verified);
+    await asPro();
     await backend.updateProgress(id, BookingStatus.inProgress);
     await backend.updateProgress(id, BookingStatus.workFinished, finalAmount: 150);
 

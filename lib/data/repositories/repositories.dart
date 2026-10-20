@@ -96,8 +96,16 @@ abstract interface class BookingRepository {
   Future<void> sendQuote(String bookingId, double amount, String? note);
   Future<void> updateProgress(String bookingId, BookingStatus to, {double? finalAmount});
 
+  /// "He llegado": el servidor genera el código y lo devuelve solo al
+  /// profesional asignado. Pedir otro invalida el anterior (máximo 3).
+  Future<ArrivalPin> markArrived(String bookingId);
+
   // Cliente
   Future<void> respondQuote(String bookingId, {required bool accept});
+
+  /// "Verificar llegada": solo el cliente del pedido. Un código incorrecto o
+  /// vencido no es un error: devuelve el resultado y los intentos que quedan.
+  Future<ArrivalCheck> verifyArrivalPin(String bookingId, String pin);
   Future<void> confirmCompletion(String bookingId);
   Future<void> submitReview(String bookingId, int rating, String? comment);
 
@@ -105,6 +113,9 @@ abstract interface class BookingRepository {
   Future<void> cancel(String bookingId, String reason);
   Future<void> openDispute(String bookingId, String reason);
   Future<void> acknowledgePayment(String bookingId, PaymentMethod method);
+
+  /// Estado de la llegada (nunca el código).
+  Future<BookingArrival> arrival(String bookingId);
 }
 
 abstract interface class MessagingRepository {
@@ -193,6 +204,10 @@ abstract interface class AdminRepository {
 
   Future<List<AdminTopup>> adminTopups({String status = 'pending'});
   Future<void> reviewTopup(int topupId, {required bool approve, String? note});
+
+  /// Excepción: el equipo verifica una llegada (por el código del pedido) con
+  /// un motivo escrito, que queda en la auditoría.
+  Future<void> adminVerifyArrival(String bookingCode, String reason);
   Future<void> adjustWallet(String professionalId, double amount, String reason);
 
   Future<List<AdminReport>> adminReports({String status = 'open'});

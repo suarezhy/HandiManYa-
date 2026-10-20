@@ -152,8 +152,29 @@ void main() {
         await pro.send(conv.id, 'En 20 minutos');
         expect((await pro.conversations()).map((c) => c.id), contains(conv.id));
       });
-      await _step('en camino, en progreso y trabajo terminado', () async {
-        await pro.updateProgress(bookingId, BookingStatus.onTheWay);
+      await _step('en camino', () => pro.updateProgress(bookingId, BookingStatus.onTheWay));
+      // Código de llegada (migración 0014). Mientras no esté aplicada en dev, se avisa y se sigue.
+      ArrivalPin? pin;
+      try {
+        pin = await pro.markArrived(bookingId);
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST202') rethrow;
+        // ignore: avoid_print
+        print('aviso - el código de llegada (0014) todavía no está aplicado en dev');
+      }
+      if (pin != null) {
+        await _step('sin llegada verificada no se empieza el trabajo', () async {
+          await expectLater(pro.updateProgress(bookingId, BookingStatus.inProgress), throwsA(anything));
+        });
+        await _step('el profesional no puede verificarse solo', () async {
+          await expectLater(pro.verifyArrivalPin(bookingId, pin!.pin), throwsA(anything));
+        });
+        await _step('el cliente verifica la llegada con el código', () async {
+          expect((await customer.verifyArrivalPin(bookingId, pin!.pin)).result, ArrivalCheckResult.verified);
+          expect((await pro.arrival(bookingId)).verified, isTrue);
+        });
+      }
+      await _step('en progreso y trabajo terminado', () async {
         await pro.updateProgress(bookingId, BookingStatus.inProgress);
         await pro.updateProgress(bookingId, BookingStatus.workFinished, finalAmount: 150);
       });

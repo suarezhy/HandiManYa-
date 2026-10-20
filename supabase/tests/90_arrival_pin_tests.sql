@@ -159,11 +159,15 @@ select test.login('00000000-0000-0000-0000-0000000009b1');
 select test.expect_error(format('select public.mark_arrived(%L)', (select v from t_ar where k = 'b2')), 'HMY_ARRIVAL_PIN_LIMIT');
 
 -- 7. Excepción del equipo: solo admin, con motivo, y queda en la auditoría.
-select test.expect_error(format('select public.admin_verify_arrival(%L, %L)', (select v from t_ar where k = 'b2'), 'Llamé al cliente'),
+select test.logout();
+insert into t_ar select 'code2', code from public.bookings where id = (select v from t_ar where k = 'b2')::uuid;
+select test.login('00000000-0000-0000-0000-0000000009b1');
+select test.expect_error(format('select public.admin_verify_arrival(%L, %L)', (select v from t_ar where k = 'code2'), 'Llamé al cliente'),
                          'HMY_FORBIDDEN');
 select test.login('00000000-0000-0000-0000-00000000000a');
-select test.expect_error(format('select public.admin_verify_arrival(%L, %L)', (select v from t_ar where k = 'b2'), ''), 'HMY_REASON_REQUIRED');
-select public.admin_verify_arrival((select v from t_ar where k = 'b2')::uuid, 'El cliente confirmó por teléfono');
+select test.expect_error(format('select public.admin_verify_arrival(%L, %L)', (select v from t_ar where k = 'code2'), ''), 'HMY_REASON_REQUIRED');
+select test.expect_error($$select public.admin_verify_arrival('NOEXISTE', 'Llamé al cliente')$$, 'HMY_NOT_FOUND');
+select public.admin_verify_arrival(lower((select v from t_ar where k = 'code2')), 'El cliente confirmó por teléfono');
 select test.logout();
 do $$ begin
   perform test.eq((select method from public.booking_arrivals where booking_id = (select v from t_ar where k = 'b2')::uuid), 'admin',

@@ -13,6 +13,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/photo_picker.dart';
 import '../common/safety_menu.dart';
+import 'arrival_pin.dart';
 
 /// Detalle de una solicitud. Muestra el estado en tiempo real y solo las
 /// acciones que el servidor permite en ese estado para quien la mira.
@@ -68,6 +69,7 @@ class _Content extends StatelessWidget {
         const SizedBox(height: HySpacing.xs),
         _StatusHeader(b: b, hint: hint),
         const SizedBox(height: HySpacing.md),
+        ArrivalCard(b: b),
 
         if (b.viewerIsCustomer && b.professional != null) ...[
           AppCard(
@@ -295,14 +297,16 @@ class _Content extends StatelessWidget {
   }
 }
 
-class _StatusHeader extends StatelessWidget {
+class _StatusHeader extends ConsumerWidget {
   const _StatusHeader({required this.b, required this.hint});
 
   final BookingDetail b;
   final String hint;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final arrived =
+        b.status == BookingStatus.onTheWay && (ref.watch(bookingArrivalProvider(b.id)).value?.verified ?? false);
     final searching = b.status == BookingStatus.awaitingResponse && b.viewerIsCustomer;
     return Container(
       width: double.infinity,
@@ -325,7 +329,7 @@ class _StatusHeader extends StatelessWidget {
                 ],
                 Expanded(
                   child: Text(
-                    b.status.label,
+                    arrived ? 'Llegada verificada' : b.status.label,
                     style: TextStyle(color: b.status.tone.foreground, fontSize: 22, fontWeight: FontWeight.w800),
                   ),
                 ),
@@ -455,6 +459,7 @@ class _ActionsState extends ConsumerState<_Actions> {
     final b = widget.b;
     final api = ref.read(backendProvider);
     final s = b.status;
+    final arrival = s == BookingStatus.onTheWay ? ref.watch(bookingArrivalProvider(b.id)).value : null;
     final primary = <Widget>[];
     final secondary = <Widget>[];
 
@@ -513,6 +518,23 @@ class _ActionsState extends ConsumerState<_Actions> {
         case BookingStatus.confirmed:
           addChat();
           secondary.add(SecondaryButton(label: 'Cancelar', onPressed: cancel));
+        case BookingStatus.onTheWay when arrival?.stage == ArrivalStage.waitingPin:
+          primary.add(
+            PrimaryButton(
+              key: const Key('arrival-verify'),
+              label: 'Verificar llegada',
+              icon: Icons.pin_outlined,
+              onPressed: () async {
+                final ok = await showVerifyArrivalSheet(context, b.id);
+                if (ok && context.mounted) {
+                  ref.invalidate(bookingArrivalProvider(b.id));
+                  showMessage(context, 'Llegada verificada');
+                }
+              },
+            ),
+          );
+          addChat();
+          secondary.add(SecondaryButton(label: 'Reportar problema', onPressed: dispute));
         case BookingStatus.onTheWay || BookingStatus.inProgress:
           addChat();
           secondary.add(SecondaryButton(label: 'Reportar problema', onPressed: dispute));
@@ -603,23 +625,37 @@ class _ActionsState extends ConsumerState<_Actions> {
               onPressed: () => _run(() => api.updateProgress(b.id, BookingStatus.onTheWay)),
             ),
           );
-          secondary.add(
-            SecondaryButton(
-              label: 'Empecé',
-              onPressed: () => _run(() => api.updateProgress(b.id, BookingStatus.inProgress)),
-            ),
-          );
           addChat();
           secondary.add(SecondaryButton(label: 'Cancelar', onPressed: cancel));
-        case BookingStatus.onTheWay:
+        case BookingStatus.onTheWay when arrival?.verified ?? false:
           primary.add(
             PrimaryButton(
+              key: const Key('start-work'),
               label: 'Empecé el trabajo',
               icon: Icons.handyman_outlined,
               onPressed: () => _run(() => api.updateProgress(b.id, BookingStatus.inProgress)),
             ),
           );
           addChat();
+        case BookingStatus.onTheWay:
+          final again = arrival != null && arrival.stage != ArrivalStage.none;
+          primary.add(
+            PrimaryButton(
+              key: const Key('arrival-mark'),
+              label: again ? 'Generar otro código' : 'He llegado',
+              icon: Icons.where_to_vote_outlined,
+              onPressed: () async {
+                ArrivalPin? pin;
+                await _run(() async => pin = await api.markArrived(b.id));
+                if (pin != null && context.mounted) {
+                  ref.invalidate(bookingArrivalProvider(b.id));
+                  await showArrivalPinSheet(context, pin!);
+                }
+              },
+            ),
+          );
+          addChat();
+          secondary.add(SecondaryButton(label: 'Cancelar', onPressed: cancel));
         case BookingStatus.inProgress:
           primary.add(
             PrimaryButton(

@@ -388,6 +388,23 @@ class SupabaseBackend
       _db.rpc('update_job_progress', params: {'p_booking': bookingId, 'p_to': to.key, 'p_final_amount': finalAmount});
 
   @override
+  Future<ArrivalPin> markArrived(String bookingId) async => ArrivalPin.fromMap(
+    Map<String, dynamic>.from(await _db.rpc('mark_arrived', params: {'p_booking': bookingId}) as Map),
+  );
+
+  @override
+  Future<ArrivalCheck> verifyArrivalPin(String bookingId, String pin) async => ArrivalCheck.fromMap(
+    Map<String, dynamic>.from(
+      await _db.rpc('verify_arrival_pin', params: {'p_booking': bookingId, 'p_pin': pin}) as Map,
+    ),
+  );
+
+  @override
+  Future<BookingArrival> arrival(String bookingId) async => BookingArrival.fromMap(
+    Map<String, dynamic>.from(await _db.rpc('booking_arrival', params: {'p_booking': bookingId}) as Map),
+  );
+
+  @override
   Future<void> respondQuote(String bookingId, {required bool accept}) =>
       _db.rpc('respond_quote', params: {'p_booking': bookingId, 'p_accept': accept});
 
@@ -736,6 +753,10 @@ class SupabaseBackend
   @override
   Future<void> reviewTopup(int topupId, {required bool approve, String? note}) =>
       _db.rpc('review_topup', params: {'p_topup': topupId, 'p_approve': approve, 'p_note': note});
+
+  @override
+  Future<void> adminVerifyArrival(String bookingCode, String reason) =>
+      _db.rpc('admin_verify_arrival', params: {'p_code': bookingCode, 'p_reason': reason});
 
   @override
   Future<void> adjustWallet(String professionalId, double amount, String reason) => _db.rpc(

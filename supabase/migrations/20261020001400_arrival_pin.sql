@@ -175,14 +175,15 @@ begin
   return jsonb_build_object('ok', true, 'verified_at', now());
 end $$;
 
--- Excepción del equipo (por ejemplo, el cliente no tiene la app a mano).
-create function public.admin_verify_arrival(p_booking uuid, p_reason text) returns void
+-- Excepción del equipo (por ejemplo, el cliente no tiene la app a mano y llama
+-- a soporte). Se busca el pedido por su código, el que ven cliente y profesional.
+create function public.admin_verify_arrival(p_code text, p_reason text) returns void
 language plpgsql security definer set search_path = public as $$
 declare b public.bookings;
 begin
   if not public.is_admin() then raise exception 'HMY_FORBIDDEN'; end if;
   if char_length(btrim(coalesce(p_reason, ''))) < 5 then raise exception 'HMY_REASON_REQUIRED'; end if;
-  select * into b from public.bookings where id = p_booking for update;
+  select * into b from public.bookings where code = upper(btrim(coalesce(p_code, ''))) for update;
   if not found then raise exception 'HMY_NOT_FOUND'; end if;
   if b.status <> 'on_the_way' then raise exception 'HMY_INVALID_TRANSITION: % -> arrival_verified', b.status; end if;
   if exists (select 1 from public.booking_arrivals where booking_id = b.id and verified_at is not null) then
@@ -257,9 +258,9 @@ revoke execute on function public.hmy_arrival_pin() from public, anon, authentic
 revoke execute on function public.hmy_arrival_gate() from public, anon, authenticated;
 revoke execute on function public.mark_arrived(uuid) from public, anon;
 revoke execute on function public.verify_arrival_pin(uuid, text) from public, anon;
-revoke execute on function public.admin_verify_arrival(uuid, text) from public, anon;
+revoke execute on function public.admin_verify_arrival(text, text) from public, anon;
 revoke execute on function public.booking_arrival(uuid) from public, anon;
 grant execute on function public.mark_arrived(uuid) to authenticated;
 grant execute on function public.verify_arrival_pin(uuid, text) to authenticated;
-grant execute on function public.admin_verify_arrival(uuid, text) to authenticated;
+grant execute on function public.admin_verify_arrival(text, text) to authenticated;
 grant execute on function public.booking_arrival(uuid) to authenticated;

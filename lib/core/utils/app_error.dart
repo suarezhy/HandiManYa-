@@ -58,6 +58,13 @@ class AppError implements Exception {
       return AppError('Espera ${soon.group(1)} segundos para pedir otro código.', code: 'HMY_OTP_TOO_SOON');
     }
     final off = RegExp(r'HMY_OTP_(CHANNEL_OFF|SEND_FAILED):(whatsapp|sms)').firstMatch(raw);
+    final pinSoon = RegExp(r'HMY_ARRIVAL_PIN_TOO_SOON:(\d+)').firstMatch(raw);
+    if (pinSoon != null) {
+      return AppError(
+        'Espera ${pinSoon.group(1)} segundos para generar otro código.',
+        code: 'HMY_ARRIVAL_PIN_TOO_SOON',
+      );
+    }
     if (off != null) {
       final (name, other) = off.group(2) == 'whatsapp' ? ('WhatsApp', 'SMS') : ('SMS', 'WhatsApp');
       return AppError(
@@ -71,6 +78,13 @@ class AppError implements Exception {
   }
 
   static const _codes = {
+    'HMY_ARRIVAL_NOT_VERIFIED': 'Primero el cliente tiene que verificar tu llegada con el código.',
+    'HMY_ARRIVAL_NO_PIN': 'Todavía no hay un código vigente. Pídele al profesional que toque "He llegado".',
+    'HMY_ARRIVAL_PIN_LIMIT':
+        'Ya se generaron 3 códigos para este trabajo. Escríbenos a soporte para verificar la llegada.',
+    'HMY_ARRIVAL_ALREADY_VERIFIED': 'La llegada ya está verificada.',
+    'HMY_INVALID_PIN': 'Escribe los 6 números del código.',
+    'HMY_TOO_MANY_ATTEMPTS': 'Hubo demasiados intentos. Espera un rato o escríbenos a soporte.',
     'HMY_OTP_LIMIT': 'Pediste muchos códigos seguidos. Espera una hora y vuelve a intentar.',
     'HMY_OTP_TOO_MANY_ATTEMPTS': 'Escribiste mal el código varias veces. Pide un código nuevo.',
     'HMY_OTP_NOT_CONFIGURED': 'El envío de códigos no está disponible ahora. Vuelve a intentar en un momento.',
