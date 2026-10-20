@@ -58,6 +58,7 @@ class _Body extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tiles = [
+      _Tile(Icons.hub_outlined, 'Centro de Control IA', 'Agentes, decisiones y reporte diario', null, Routes.adminAi),
       _Tile(
         Icons.badge_outlined,
         'Postulaciones',

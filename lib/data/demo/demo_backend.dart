@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../../core/utils/app_error.dart';
 import '../models/admin.dart';
+import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/geo.dart';
@@ -12,6 +13,7 @@ import '../models/professional.dart';
 import '../models/user.dart';
 import '../models/wallet.dart';
 import '../repositories/repositories.dart';
+import 'demo_agents.dart';
 import 'demo_data.dart';
 
 /// Backend en memoria para probar la app sin Supabase. Imita las reglas del
@@ -31,7 +33,8 @@ class DemoBackend
         NotificationRepository,
         ProRepository,
         SafetyRepository,
-        AdminRepository {
+        AdminRepository,
+        AiControlRepository {
   DemoBackend({this.simulateDelays = true}) {
     _seed();
     _seedAdmin();
@@ -75,6 +78,44 @@ class DemoBackend
   final _promos = <({Promotion promo, bool active})>[];
   final _topupProofs = <int, Uint8List>{};
   final _topupKeys = <String, int>{};
+  late final _aiItems = <AiItem>[
+    AiItem(
+      id: 1,
+      agentKey: 'fraud',
+      kind: 'approval_request',
+      severity: AiSeverity.high,
+      status: AiItemStatus.pendingApproval,
+      fromAi: true,
+      title: 'Revisar una cuenta reportada por varias personas (ejemplo)',
+      body: 'Recomendación de IA: revisar a mano los reportes antes de decidir. No es un hecho comprobado.',
+      evidence: const {'reportes_30_dias': 3},
+      proposedAction: const {'type': 'review_account'},
+      createdAt: DateTime.now().subtract(const Duration(hours: 2)),
+    ),
+    AiItem(
+      id: 2,
+      agentKey: 'wallet',
+      kind: 'alert',
+      severity: AiSeverity.medium,
+      status: AiItemStatus.open,
+      fromAi: false,
+      title: 'Recarga esperando verificación hace más de 24 horas (ejemplo)',
+      body: 'Recarga de 100 Bs pedida ayer.',
+      createdAt: DateTime.now().subtract(const Duration(hours: 5)),
+    ),
+    AiItem(
+      id: 3,
+      agentKey: 'dispatch',
+      kind: 'recommendation',
+      severity: AiSeverity.medium,
+      status: AiItemStatus.open,
+      fromAi: false,
+      title: 'Pedido ¡Ya! sin profesional (ejemplo)',
+      body: 'Sugerencia: ampliar el radio o avisar a más profesionales.',
+      createdAt: DateTime.now().subtract(const Duration(minutes: 20)),
+    ),
+  ];
+  final _dailyReports = <DailyReport>[];
   final _confirmedAt = <String, DateTime>{};
   final _biometric = <String>{};
   final _consents = <String>{};
@@ -1687,6 +1728,148 @@ class DemoBackend
     final me = _me;
     if (!me.roles.contains(AppRole.admin)) throw AppError.from('HMY_FORBIDDEN');
     return me;
+  }
+
+  // ------------------------------------------------- Centro de Control IA (demo)
+  @override
+  Future<AiOverview> aiOverview() async {
+    await _latency(150);
+    _admin();
+    bool open(AiItem i) => i.status.isPending;
+    return AiOverview(
+      pendingApproval: _aiItems.where((i) => i.status == AiItemStatus.pendingApproval).length,
+      open: _aiItems.where((i) => i.status == AiItemStatus.open || i.status == AiItemStatus.moreInfo).length,
+      critical: _aiItems.where((i) => open(i) && i.severity == AiSeverity.critical).length,
+      high: _aiItems.where((i) => open(i) && i.severity == AiSeverity.high).length,
+      completed7d: _aiItems.where((i) => i.status == AiItemStatus.completed).length,
+      failed7d: _aiItems.where((i) => i.status == AiItemStatus.failed).length,
+      aiRecommendationsOpen: _aiItems.where((i) => i.fromAi && open(i)).length,
+      aiCostMonthUsd: 0,
+      aiBudgetMonthUsd: 0,
+      lastReportDate: _dailyReports.isEmpty ? null : _dailyReports.first.date,
+    );
+  }
+
+  @override
+  Future<List<AiAgent>> aiAgents() async {
+    await _latency(100);
+    _admin();
+    return demoAgents;
+  }
+
+  @override
+  Future<List<AiItem>> aiItems({List<String> statuses = const []}) async {
+    await _latency(100);
+    _admin();
+    return [
+      for (final i in _aiItems)
+        if (statuses.isEmpty || statuses.contains(i.status.key)) i,
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  @override
+  Future<void> decideAiItem(int itemId, AiDecision decision, {String? note, String? authMethod}) async {
+    await _latency(150);
+    _admin();
+    final idx = _aiItems.indexWhere((i) => i.id == itemId);
+    if (idx < 0) throw AppError.from('HMY_NOT_FOUND');
+    final i = _aiItems[idx];
+    const closed = {
+      AiItemStatus.approved,
+      AiItemStatus.rejected,
+      AiItemStatus.completed,
+      AiItemStatus.failed,
+      AiItemStatus.dismissed,
+    };
+    final AiItemStatus next;
+    switch (decision) {
+      case AiDecision.approve:
+        if (i.status != AiItemStatus.pendingApproval) throw AppError.from('HMY_INVALID_STATUS');
+        _requireConfirmation(authMethod ?? '');
+        next = AiItemStatus.approved;
+      case AiDecision.reject || AiDecision.moreInfo || AiDecision.dismiss:
+        if (closed.contains(i.status)) throw AppError.from('HMY_ALREADY_REVIEWED');
+        if (decision == AiDecision.dismiss && i.needsApproval) throw AppError.from('HMY_INVALID_STATUS');
+        next = switch (decision) {
+          AiDecision.reject => AiItemStatus.rejected,
+          AiDecision.moreInfo => AiItemStatus.moreInfo,
+          _ => AiItemStatus.dismissed,
+        };
+      case AiDecision.completed || AiDecision.failed:
+        if (i.needsApproval && i.status != AiItemStatus.approved) throw AppError.from('HMY_INVALID_STATUS');
+        if ({
+          AiItemStatus.completed,
+          AiItemStatus.failed,
+          AiItemStatus.rejected,
+          AiItemStatus.dismissed,
+        }.contains(i.status)) {
+          throw AppError.from('HMY_ALREADY_REVIEWED');
+        }
+        next = decision == AiDecision.completed ? AiItemStatus.completed : AiItemStatus.failed;
+    }
+    _aiItems[idx] = AiItem(
+      id: i.id,
+      agentKey: i.agentKey,
+      kind: i.kind,
+      severity: i.severity,
+      status: next,
+      fromAi: i.fromAi,
+      title: i.title,
+      body: i.body,
+      evidence: i.evidence,
+      proposedAction: i.proposedAction,
+      decisionNote: note,
+      createdAt: i.createdAt,
+    );
+    _log('ai_item.${decision.key}', 'ai_items', '$itemId', {'note': note, 'auth_method': authMethod});
+  }
+
+  @override
+  Future<List<DailyReport>> dailyReports() async {
+    await _latency(100);
+    _admin();
+    return List.of(_dailyReports);
+  }
+
+  @override
+  Future<DailyReport> generateDailyReport() async {
+    await _latency(200);
+    final dash = await adminDashboard();
+    final topups = _topups.values.expand((l) => l).where((t) => t.status == TopupStatus.pending);
+    final now = DateTime.now();
+    final report = DailyReport(
+      date: DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1)),
+      timezone: 'America/New_York',
+      generatedAt: now,
+      data: {
+        'today': {'bookings_created': dash.bookingsToday, 'commission_revenue_bs': 0},
+        'previous_day': const <String, dynamic>{},
+        'current': {
+          'bookings_pending': dash.activeBookings,
+          'recharges_pending': topups.length,
+          'recharges_pending_bs': topups.fold<double>(0, (a, t) => a + t.amount),
+          'verifications_pending': dash.pendingApplications,
+          'disputes_open': dash.openDisputes,
+          'decisions_pending': _aiItems.where((i) => i.status == AiItemStatus.pendingApproval).length,
+        },
+        'priorities': [
+          if (dash.pendingApplications > 0) 'Review ${dash.pendingApplications} professional application(s).',
+          if (topups.isNotEmpty) 'Verify ${topups.length} pending recharge(s).',
+          if (_aiItems.any((i) => i.status == AiItemStatus.pendingApproval))
+            'Decide the items waiting for your approval.',
+        ],
+        'unavailable': const ['Demo mode: sample data only'],
+      },
+    );
+    _dailyReports.insert(0, report);
+    return report;
+  }
+
+  @override
+  Future<int> runMonitors() async {
+    await _latency(100);
+    _admin();
+    return 0;
   }
 
   void _log(String action, String table, String id, [Map<String, dynamic> details = const {}]) => _audit.insert(

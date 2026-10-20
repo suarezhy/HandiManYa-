@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 import '../../core/config/env.dart';
 import '../../core/utils/app_error.dart';
 import '../models/admin.dart';
+import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/geo.dart';
@@ -32,7 +33,8 @@ class SupabaseBackend
         NotificationRepository,
         ProRepository,
         SafetyRepository,
-        AdminRepository {
+        AdminRepository,
+        AiControlRepository {
   SupabaseBackend(this._db);
 
   final SupabaseClient _db;
@@ -887,4 +889,41 @@ class SupabaseBackend
   @override
   Future<List<AuditEntry>> auditLog() async =>
       _rows(await _db.rpc('admin_audit_entries', params: {'p_limit': 200})).map(AuditEntry.fromMap).toList();
+
+  // ------------------------------------------------------- Centro de Control IA
+  @override
+  Future<AiOverview> aiOverview() async =>
+      AiOverview.fromMap(Map<String, dynamic>.from(await _db.rpc('admin_ai_overview') as Map));
+
+  @override
+  Future<List<AiAgent>> aiAgents() async =>
+      _rows(await _db.from('ai_agents').select().order('number')).map(AiAgent.fromMap).toList();
+
+  @override
+  Future<List<AiItem>> aiItems({List<String> statuses = const []}) async {
+    var q = _db.from('ai_items').select();
+    if (statuses.isNotEmpty) q = q.inFilter('status', statuses);
+    return _rows(await q.order('created_at', ascending: false).limit(100)).map(AiItem.fromMap).toList();
+  }
+
+  @override
+  Future<void> decideAiItem(int itemId, AiDecision decision, {String? note, String? authMethod}) => _db.rpc(
+    'admin_decide_ai_item',
+    params: {'p_item': itemId, 'p_decision': decision.key, 'p_note': note, 'p_auth_method': authMethod},
+  );
+
+  @override
+  Future<List<DailyReport>> dailyReports() async =>
+      _rows(await _db.from('daily_reports').select().order('report_date', ascending: false).limit(30))
+          .map(DailyReport.fromMap)
+          .toList();
+
+  @override
+  Future<DailyReport> generateDailyReport() async {
+    await _db.rpc('admin_generate_daily_report');
+    return (await dailyReports()).first;
+  }
+
+  @override
+  Future<int> runMonitors() async => ((await _db.rpc('admin_run_monitors')) as num).toInt();
 }

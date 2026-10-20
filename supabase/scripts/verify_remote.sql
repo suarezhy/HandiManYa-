@@ -8,8 +8,8 @@ select set_config('hmy.versions', :'versions', false);
 
 do $$
 declare
-  v_tables text[] := array['admin_audit_log','booking_addresses','booking_events','booking_offers','booking_photos',
-    'booking_transitions','bookings','cities','commission_rules','consent_records','conversation_reads','conversations',
+  v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','booking_addresses','booking_events','booking_offers','booking_photos',
+    'booking_transitions','bookings','cities','commission_rules','daily_reports','consent_records','conversation_reads','conversations',
     'departments','disputes','messages','notifications','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
     'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
@@ -21,7 +21,8 @@ declare
     '_commission_release','commission_rule_for','admin_save_commission_rule','admin_wallet_adjustment','ledger_is_append_only',
     'send_message','submit_review','report_user','block_user','record_consent','admin_dashboard','my_status','run_booking_housekeeping',
     'hmy_problem_labels','hmy_pro_cleared','_create_booking_base','_create_ya_request_base','_booking_detail_base',
-    'hmy_require_confirmation','set_biometric_enabled'];
+    'hmy_require_confirmation','set_biometric_enabled',
+    'run_marketplace_monitors','generate_daily_report','run_daily_report_if_due','admin_ai_overview','admin_decide_ai_item','admin_set_setting'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -106,13 +107,24 @@ begin
     (not has_table_privilege('authenticated', 'public.topup_requests', 'INSERT'), 'recargas: solo se piden con confirmación (por función)'),
     (not has_function_privilege('authenticated', 'public.hmy_require_confirmation(text, text)', 'EXECUTE'), 'confirmación: la regla es interna'),
     (not has_table_privilege('authenticated', 'public.security_settings', 'UPDATE') and not has_table_privilege('authenticated', 'public.security_settings', 'INSERT'), 'seguridad: huella o rostro se activan solo con contraseña (por función)'),
-    (not has_table_privilege('authenticated', 'public.security_confirmations', 'SELECT') and not has_table_privilege('authenticated', 'public.security_confirmations', 'INSERT'), 'confirmación: el registro de usos es interno')
+    (not has_table_privilege('authenticated', 'public.security_confirmations', 'SELECT') and not has_table_privilege('authenticated', 'public.security_confirmations', 'INSERT'), 'confirmación: el registro de usos es interno'),
+    (not has_table_privilege('authenticated', 'public.ai_items', 'INSERT') and not has_table_privilege('authenticated', 'public.ai_items', 'UPDATE'), 'agentes IA: la app no escribe avisos directamente'),
+    (not has_function_privilege('authenticated', 'public.run_marketplace_monitors()', 'EXECUTE') and not has_function_privilege('authenticated', 'public.generate_daily_report(date, text)', 'EXECUTE'), 'agentes IA: monitores y reporte son internos'),
+    ((select count(*) from pg_policies where schemaname = 'public' and tablename in ('ai_agents','ai_agent_runs','ai_items','daily_reports','app_settings') and qual like '%is_admin()%') = 5, 'agentes IA: solo el administrador ve el centro de control'),
+    ((select (value ->> 'monthly_usd')::numeric from public.app_settings where key = 'ai_budget') is not null, 'agentes IA: hay un presupuesto (gasto en IA solo con aprobación)')
   ) as v(ok, what) loop
     raise notice '%  %', case when r.ok then 'ok -' else 'FALLA -' end, r.what;
     if not r.ok then v_failed := v_failed + 1; end if;
   end loop;
   if v_failed > 0 then
     raise exception 'HMY: % protección(es) no están como se esperaba', v_failed;
+  end if;
+end $$;
+do $$ begin
+  if to_regclass('cron.job') is not null then
+    raise notice 'Tareas programadas: %', (select string_agg(jobname || ' (' || schedule || ')', ', ') from cron.job where jobname like 'hmy-%');
+  else
+    raise notice 'Tareas programadas: pg_cron no está instalado';
   end if;
 end $$;
 \echo 'COMPROBACIÓN COMPLETA: todo en orden.'

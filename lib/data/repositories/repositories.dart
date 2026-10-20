@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../models/admin.dart';
+import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/geo.dart';
@@ -218,4 +219,20 @@ abstract interface class AdminRepository {
   Future<void> createPromotion({required String title, String? subtitle, int? cityId});
 
   Future<List<AuditEntry>> auditLog();
+}
+
+/// Centro de Control IA (solo administradores). Los agentes observan y
+/// recomiendan; las decisiones con consecuencias las toma una persona.
+abstract interface class AiControlRepository {
+  Future<AiOverview> aiOverview();
+  Future<List<AiAgent>> aiAgents();
+
+  /// [statuses]: claves de estado (open, pending_approval, completed, ...). Vacío = todos.
+  Future<List<AiItem>> aiItems({List<String> statuses = const []});
+
+  /// Aprobar exige [authMethod] confirmado recién (como las recargas).
+  Future<void> decideAiItem(int itemId, AiDecision decision, {String? note, String? authMethod});
+  Future<List<DailyReport>> dailyReports();
+  Future<DailyReport> generateDailyReport();
+  Future<int> runMonitors();
 }

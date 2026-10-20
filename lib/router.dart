@@ -12,6 +12,7 @@ import 'features/admin/admin_services_pages.dart';
 import 'features/admin/admin_home_page.dart';
 import 'features/admin/admin_money_pages.dart';
 import 'features/admin/admin_users_page.dart';
+import 'features/admin/ai_control_center_page.dart';
 import 'features/auth/access_page.dart';
 import 'features/auth/forgot_password_page.dart';
 import 'features/auth/login_page.dart';
@@ -82,6 +83,7 @@ abstract final class Routes {
   static const adminCommissions = '/admin/comisiones';
   static const adminCatalog = '/admin/catalogo';
   static const adminAudit = '/admin/auditoria';
+  static const adminAi = '/admin/centro-ia';
   static String adminApplication(String id) => '/admin/postulaciones/$id';
   static String adminProblems(int categoryId) => '/admin/catalogo/$categoryId/opciones';
 
@@ -275,6 +277,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.serviceArea, builder: (_, _) => const ServiceAreaPage()),
 
       // Administración
+      GoRoute(path: Routes.adminAi, builder: (_, _) => const AiControlCenterPage()),
       GoRoute(path: Routes.admin, builder: (_, _) => const AdminHomePage()),
       GoRoute(path: Routes.adminApplications, builder: (_, _) => const AdminApplicationsPage()),
       GoRoute(

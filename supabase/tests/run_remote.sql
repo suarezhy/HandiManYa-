@@ -1,4 +1,4 @@
--- Corre las pruebas 10–60 contra el proyecto Supabase real SIN dejar rastro:
+-- Corre las pruebas 10–70 contra el proyecto Supabase real SIN dejar rastro:
 -- todo va dentro de una transacción que siempre termina en ROLLBACK.
 -- Si una prueba falla, psql se detiene (ON_ERROR_STOP) y la transacción
 -- abierta también se descarta. No usa 00_supabase_stub.sql (Supabase ya
@@ -18,5 +18,6 @@ end $$;
 \ir 40_admin_safety_tests.sql
 \ir 50_service_problems_tests.sql
 \ir 60_wallet_confirmation_tests.sql
+\ir 70_ai_control_center_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'
