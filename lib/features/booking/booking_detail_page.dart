@@ -165,12 +165,43 @@ class _Content extends StatelessWidget {
               if (b.finalAmount != null)
                 _Line(icon: Icons.payments_outlined, label: 'Monto final', value: Fmt.bs(b.finalAmount!)),
               const Divider(height: HySpacing.lg),
-              const Text(
-                'Descripción',
-                style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 4),
-              Text(b.description, style: const TextStyle(fontSize: 17)),
+              if (b.problems.isNotEmpty) ...[
+                const Text(
+                  'Qué necesita',
+                  style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                for (final p in b.problems)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 2),
+                          child: Icon(Icons.check_circle_outline, size: 20, color: HyColors.primary),
+                        ),
+                        const SizedBox(width: HySpacing.xs),
+                        Expanded(
+                          child: Text(p, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: HySpacing.sm),
+              ],
+              if (b.problems.isEmpty || b.description != b.problems.join('. ')) ...[
+                const Text(
+                  'Descripción',
+                  style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(b.description, style: const TextStyle(fontSize: 17)),
+              ],
+              if (b.safetyNote != null) ...[
+                const SizedBox(height: HySpacing.md),
+                InfoBanner(icon: Icons.shield_outlined, tone: StatusTone.warning, text: b.safetyNote!),
+              ],
               if (b.photos.isNotEmpty) ...[const SizedBox(height: HySpacing.md), BookingPhotosStrip(photos: b.photos)],
             ],
           ),

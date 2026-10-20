@@ -29,7 +29,15 @@ class BookingCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: HySpacing.xs),
-          Text(b.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
+          if (b.problems.isNotEmpty)
+            Text(
+              b.problems.join(' · '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+          if (b.problems.isEmpty || b.description != b.problems.join('. '))
+            Text(b.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
           const SizedBox(height: HySpacing.xs),
           Wrap(
             spacing: HySpacing.md,

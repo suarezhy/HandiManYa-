@@ -27,7 +27,7 @@ class AllCategoriesPage extends ConsumerWidget {
             final c = list[i];
             final (fg, bg) = categoryColors(c.icon);
             return AppCard(
-              onTap: () => context.go(Routes.category(c.id)),
+              onTap: () => context.push(Routes.service(c.id)),
               child: Row(
                 children: [
                   Container(

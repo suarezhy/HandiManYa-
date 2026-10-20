@@ -116,6 +116,9 @@ final entryIntentProvider = NotifierProvider<EntryIntent, AppRole>(EntryIntent.n
 // ----------------------------------------------------------------- Catálogo
 final citiesProvider = FutureProvider<List<City>>((ref) => ref.watch(backendProvider).cities());
 final categoriesProvider = FutureProvider<List<ServiceCategory>>((ref) => ref.watch(backendProvider).categories());
+final problemsProvider = FutureProvider.family<List<ServiceProblem>, int>(
+  (ref, categoryId) => ref.watch(backendProvider).problems(categoryId),
+);
 final zonesProvider = FutureProvider.family<List<Zone>, int>((ref, cityId) => ref.watch(backendProvider).zones(cityId));
 final promotionsProvider = FutureProvider<List<Promotion>>(
   (ref) => ref.watch(backendProvider).promotions(ref.watch(selectedCityProvider)),

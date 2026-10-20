@@ -161,10 +161,21 @@ class SupabaseBackend
   Future<List<ServiceCategory>> categories() async => _rows(
     await _db
         .from('service_categories')
-        .select('id, slug, name, icon, description')
+        .select('id, slug, name, icon, description, allows_ya, required_doc, safety_note, pro_note, sort_order')
         .eq('is_active', true)
         .order('sort_order'),
   ).map(ServiceCategory.fromMap).toList();
+
+  @override
+  Future<List<ServiceProblem>> problems(int categoryId) async => _rows(
+    await _db
+        .from('service_problems')
+        .select('id, category_id, name, icon, is_other, sort_order')
+        .eq('category_id', categoryId)
+        .eq('is_active', true)
+        .order('sort_order')
+        .order('id'),
+  ).map(ServiceProblem.fromMap).toList();
 
   @override
   Future<List<Promotion>> promotions(int? cityId) async {
@@ -253,6 +264,8 @@ class SupabaseBackend
           'p_payment_method': d.paymentMethod?.key,
           'p_latitude': d.latitude,
           'p_longitude': d.longitude,
+          'p_problem_ids': d.problemIds.isEmpty ? null : d.problemIds,
+          'p_other_text': d.otherText,
         },
       ) as String;
     }
@@ -271,6 +284,8 @@ class SupabaseBackend
         'p_payment_method': d.paymentMethod?.key,
         'p_latitude': d.latitude,
         'p_longitude': d.longitude,
+        'p_problem_ids': d.problemIds.isEmpty ? null : d.problemIds,
+        'p_other_text': d.otherText,
       },
     ) as String;
   }
@@ -775,6 +790,50 @@ class SupabaseBackend
   @override
   Future<void> setCategoryActive(int id, bool active) =>
       _db.from('service_categories').update({'is_active': active}).eq('id', id);
+
+  @override
+  Future<List<ServiceCategory>> adminServiceCategories() async =>
+      _rows(await _db.from('service_categories').select().order('sort_order').order('id'))
+          .map(ServiceCategory.fromMap)
+          .toList();
+
+  @override
+  Future<void> saveCategory(ServiceCategory c) async {
+    if (c.id == 0) {
+      await _db.from('service_categories').insert(c.toMap());
+    } else {
+      await _db.from('service_categories').update(c.toMap()..remove('slug')).eq('id', c.id);
+    }
+  }
+
+  @override
+  Future<void> reorderCategories(List<int> orderedIds) async {
+    for (var i = 0; i < orderedIds.length; i++) {
+      await _db.from('service_categories').update({'sort_order': (i + 1) * 10}).eq('id', orderedIds[i]);
+    }
+  }
+
+  @override
+  Future<List<ServiceProblem>> adminProblems(int categoryId) async =>
+      _rows(await _db.from('service_problems').select().eq('category_id', categoryId).order('sort_order').order('id'))
+          .map(ServiceProblem.fromMap)
+          .toList();
+
+  @override
+  Future<void> saveProblem(ServiceProblem p) async {
+    if (p.id == 0) {
+      await _db.from('service_problems').insert(p.toMap());
+    } else {
+      await _db.from('service_problems').update(p.toMap()).eq('id', p.id);
+    }
+  }
+
+  @override
+  Future<void> reorderProblems(List<int> orderedIds) async {
+    for (var i = 0; i < orderedIds.length; i++) {
+      await _db.from('service_problems').update({'sort_order': (i + 1) * 10}).eq('id', orderedIds[i]);
+    }
+  }
 
   @override
   Future<List<CatalogItem>> adminCities() async =>

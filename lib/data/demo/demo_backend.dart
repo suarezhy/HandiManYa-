@@ -67,7 +67,10 @@ class DemoBackend
   final _tickets = <AdminTicket>[];
   final _audit = <AuditEntry>[];
   final _rules = <CommissionRule>[];
-  final _inactiveCategories = <int>{};
+  // Catálogo editable desde el panel. Los profesionales de ejemplo de
+  // categorías sensibles se consideran con su documento ya aceptado.
+  final _cats = [...DemoData.categories];
+  final _problems = [...DemoData.problems];
   final _inactiveCities = <int>{};
   final _promos = <({Promotion promo, bool active})>[];
   final _topupProofs = <int, Uint8List>{};
@@ -445,7 +448,36 @@ class DemoBackend
 
   @override
   Future<List<ServiceCategory>> categories() async =>
-      DemoData.categories.where((c) => !_inactiveCategories.contains(c.id)).toList();
+      (_cats.where((c) => c.isActive).toList()..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)));
+
+  @override
+  Future<List<ServiceProblem>> problems(int categoryId) async {
+    await _latency(100);
+    return _problems.where((p) => p.categoryId == categoryId && p.isActive).toList()..sort(_byOrder);
+  }
+
+  static int _byOrder(ServiceProblem a, ServiceProblem b) =>
+      a.sortOrder != b.sortOrder ? a.sortOrder.compareTo(b.sortOrder) : a.id.compareTo(b.id);
+
+  /// Igual que `hmy_problem_labels` en la base: valida y arma las etiquetas.
+  List<String> _problemLabels(int categoryId, List<int> ids, String? otherText) {
+    final unique = ids.toSet().toList();
+    final other = (otherText ?? '').trim();
+    if (unique.isEmpty) {
+      if (other.isNotEmpty) throw AppError.from('HMY_INVALID_PROBLEM');
+      return const [];
+    }
+    if (unique.length > 8) throw AppError.from('HMY_TOO_MANY_PROBLEMS');
+    final chosen = _problems.where((p) => unique.contains(p.id) && p.categoryId == categoryId && p.isActive).toList();
+    if (chosen.length != unique.length) throw AppError.from('HMY_INVALID_PROBLEM');
+    final hasOther = chosen.any((p) => p.isOther);
+    if (hasOther && other.length < 3) throw AppError.from('HMY_OTHER_REQUIRED');
+    if (!hasOther && other.isNotEmpty) throw AppError.from('HMY_INVALID_PROBLEM');
+    chosen.sort((a, b) => a.isOther != b.isOther ? (a.isOther ? 1 : -1) : _byOrder(a, b));
+    return [
+      for (final p in chosen) p.isOther ? '${p.name}: ${other.length > 200 ? other.substring(0, 200) : other}' : p.name,
+    ];
+  }
 
   @override
   Future<List<Promotion>> promotions(int? cityId) async => [
@@ -454,7 +486,8 @@ class DemoBackend
   ];
 
   // ================================================================= Profesionales
-  String _catName(int id) => DemoData.categories.firstWhere((c) => c.id == id).name;
+  ServiceCategory _cat(int id) => _cats.firstWhere((c) => c.id == id);
+  String _catName(int id) => _cat(id).name;
   String _cityName(int id) => DemoData.cities.firstWhere((c) => c.id == id).name;
   String _zoneName(int id) => DemoData.zones.firstWhere((z) => z.id == id).name;
 
@@ -717,9 +750,32 @@ class DemoBackend
   }
 
   @override
-  Future<String> create(BookingDraft d) async {
+  Future<String> create(BookingDraft input) async {
     await _latency(500);
     final me = _me;
+    final labels = _problemLabels(input.categoryId, input.problemIds, input.otherText);
+    if (input.isYa && !(_cats.where((c) => c.id == input.categoryId).firstOrNull?.allowsYa ?? true)) {
+      throw AppError.from('HMY_YA_NOT_ALLOWED');
+    }
+    final d = input.description.trim().isNotEmpty || labels.isEmpty
+        ? input
+        : BookingDraft(
+            categoryId: input.categoryId,
+            cityId: input.cityId,
+            mode: input.mode,
+            description: labels.join('. '),
+            address: input.address,
+            addressReference: input.addressReference,
+            zoneId: input.zoneId,
+            professionalId: input.professionalId,
+            scheduledStart: input.scheduledStart,
+            durationMinutes: input.durationMinutes,
+            paymentMethod: input.paymentMethod,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            problemIds: input.problemIds,
+            otherText: input.otherText,
+          );
     if (me.suspendedAt != null) throw AppError.from('HMY_ACCOUNT_SUSPENDED');
     if (d.professionalId == me.id) throw AppError.from('HMY_CANNOT_BOOK_SELF');
     if (d.professionalId != null && _blockedBetween(me.id, d.professionalId!)) throw AppError.from('HMY_BLOCKED');
@@ -730,7 +786,7 @@ class DemoBackend
       professionalId: d.professionalId,
       draft: d,
       createdAt: DateTime.now(),
-    );
+    )..problems = labels;
 
     if (d.isYa) {
       final eligible = _eligible(
@@ -839,6 +895,7 @@ class DemoBackend
       hasReview: b.hasReview,
       isOffer: b.professionalId == null,
       distanceKm: asProfessional ? _distanceFor(_me.id, b.draft) : null,
+      problems: b.problems,
     );
   }
 
@@ -924,6 +981,8 @@ class DemoBackend
       events: List.of(b.events),
       distanceKm: isCustomer ? null : _distanceFor(me, b.draft),
       photos: List.of(b.photos),
+      problems: b.problems,
+      safetyNote: _cat(b.draft.categoryId).safetyNote,
     );
   }
 
@@ -1977,18 +2036,124 @@ class DemoBackend
   Future<List<CatalogItem>> adminCategories() async {
     await _latency(150);
     _admin();
-    return [
-      for (final c in DemoData.categories)
-        CatalogItem(id: c.id, name: c.name, subtitle: c.description, isActive: !_inactiveCategories.contains(c.id)),
-    ];
+    return [for (final c in _cats) CatalogItem(id: c.id, name: c.name, subtitle: c.description, isActive: c.isActive)];
   }
 
   @override
   Future<void> setCategoryActive(int id, bool active) async {
     await _latency();
     _admin();
-    active ? _inactiveCategories.remove(id) : _inactiveCategories.add(id);
+    final i = _cats.indexWhere((c) => c.id == id);
+    _cats[i] = _cats[i].copyWith(isActive: active);
     _log('service_categories.update', 'service_categories', '$id', {'is_active': active});
+  }
+
+  @override
+  Future<List<ServiceCategory>> adminServiceCategories() async {
+    await _latency(150);
+    _admin();
+    return List.of(_cats)..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  }
+
+  @override
+  Future<void> saveCategory(ServiceCategory c) async {
+    await _latency();
+    _admin();
+    if (c.name.trim().length < 2) throw AppError.from('HMY_NAME_REQUIRED');
+    if (c.id == 0) {
+      final id = _cats.fold(0, (m, e) => max(m, e.id)) + 1;
+      _cats.add(
+        ServiceCategory(
+          id: id,
+          slug: c.slug,
+          name: c.name.trim(),
+          icon: c.icon,
+          description: c.description,
+          allowsYa: c.allowsYa,
+          requiredDoc: c.requiredDoc,
+          safetyNote: c.safetyNote,
+          proNote: c.proNote,
+          isActive: c.isActive,
+          sortOrder: c.sortOrder,
+        ),
+      );
+      // Igual que en la base: toda categoría nueva nace con "Otro servicio".
+      _problems.add(
+        ServiceProblem(
+          id: _nextProblemId(),
+          categoryId: id,
+          name: 'Otro servicio',
+          icon: 'other',
+          isOther: true,
+          sortOrder: 1000,
+        ),
+      );
+      _log('service_categories.insert', 'service_categories', '$id', {'name': c.name});
+    } else {
+      final i = _cats.indexWhere((e) => e.id == c.id);
+      _cats[i] = c;
+      _log('service_categories.update', 'service_categories', '${c.id}', {'name': c.name});
+    }
+  }
+
+  @override
+  Future<void> reorderCategories(List<int> orderedIds) async {
+    await _latency();
+    _admin();
+    for (var i = 0; i < orderedIds.length; i++) {
+      final j = _cats.indexWhere((c) => c.id == orderedIds[i]);
+      _cats[j] = _cats[j].copyWith(sortOrder: (i + 1) * 10);
+    }
+    _log('service_categories.update', 'service_categories', 'orden');
+  }
+
+  int _nextProblemId() => _problems.fold(0, (m, e) => max(m, e.id)) + 1;
+
+  @override
+  Future<List<ServiceProblem>> adminProblems(int categoryId) async {
+    await _latency(150);
+    _admin();
+    return _problems.where((p) => p.categoryId == categoryId).toList()..sort(_byOrder);
+  }
+
+  @override
+  Future<void> saveProblem(ServiceProblem p) async {
+    await _latency();
+    _admin();
+    if (p.name.trim().length < 2) throw AppError.from('HMY_NAME_REQUIRED');
+    if (_problems.any((e) => e.id != p.id && e.categoryId == p.categoryId && e.name == p.name.trim())) {
+      throw const AppError('Ya existe una opción con ese nombre en esta categoría.');
+    }
+    if (p.id == 0) {
+      final id = _nextProblemId();
+      _problems.add(
+        ServiceProblem(
+          id: id,
+          categoryId: p.categoryId,
+          name: p.name.trim(),
+          icon: p.icon,
+          isOther: p.isOther,
+          isActive: p.isActive,
+          sortOrder: p.sortOrder,
+        ),
+      );
+      _log('service_problems.insert', 'service_problems', '$id', {'name': p.name});
+    } else {
+      final i = _problems.indexWhere((e) => e.id == p.id);
+      _problems[i] = p.copyWith(name: p.name.trim());
+      _log('service_problems.update', 'service_problems', '${p.id}', {'name': p.name, 'is_active': p.isActive});
+    }
+  }
+
+  @override
+  Future<void> reorderProblems(List<int> orderedIds) async {
+    await _latency();
+    _admin();
+    for (var i = 0; i < orderedIds.length; i++) {
+      final j = _problems.indexWhere((p) => p.id == orderedIds[i]);
+      _problems[j] = _problems[j].copyWith(sortOrder: (i + 1) * 10);
+    }
+    _log('service_problems.update', 'service_problems', 'orden');
   }
 
   @override
@@ -2138,6 +2303,7 @@ class _Booking {
   final BookingDraft draft;
   final DateTime createdAt;
   BookingStatus status = BookingStatus.draft;
+  List<String> problems = const [];
   final List<BookingEvent> events = [];
   Set<String> _offers = {};
   int offersCount = 0;

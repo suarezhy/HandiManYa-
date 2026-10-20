@@ -47,6 +47,9 @@ abstract interface class CatalogRepository {
   Future<List<City>> cities();
   Future<List<Zone>> zones(int cityId);
   Future<List<ServiceCategory>> categories();
+
+  /// Opciones activas de "¿Qué necesitas solucionar?" de una categoría, en orden.
+  Future<List<ServiceProblem>> problems(int categoryId);
   Future<List<Promotion>> promotions(int? cityId);
 }
 
@@ -178,6 +181,14 @@ abstract interface class AdminRepository {
 
   Future<List<CatalogItem>> adminCategories();
   Future<void> setCategoryActive(int id, bool active);
+
+  /// Categorías y sus problemas, incluidas las apagadas. `id == 0` crea una nueva.
+  Future<List<ServiceCategory>> adminServiceCategories();
+  Future<void> saveCategory(ServiceCategory category);
+  Future<void> reorderCategories(List<int> orderedIds);
+  Future<List<ServiceProblem>> adminProblems(int categoryId);
+  Future<void> saveProblem(ServiceProblem problem);
+  Future<void> reorderProblems(List<int> orderedIds);
   Future<List<CatalogItem>> adminCities();
   Future<void> setCityActive(int id, bool active);
   Future<List<CatalogItem>> adminPromotions();

@@ -293,7 +293,7 @@ class _CategoryGrid extends StatelessWidget {
           childAspectRatio: scale > 1.2 ? 0.68 : 0.82,
           children: [
             for (final c in shown)
-              CategoryTile(label: c.name, icon: c.icon, onTap: () => context.go(Routes.category(c.id))),
+              CategoryTile(label: c.name, icon: c.icon, onTap: () => context.push(Routes.service(c.id))),
             if (showMore) CategoryTile(label: 'Ver más', icon: 'more', onTap: () => context.push(Routes.categories)),
           ],
         );

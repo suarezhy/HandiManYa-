@@ -103,13 +103,18 @@ class PhotoPickerRow extends StatelessWidget {
                       borderRadius: BorderRadius.circular(HyRadii.md),
                       border: Border.all(color: HyColors.border, width: 1.5),
                     ),
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.add_a_photo_outlined, color: HyColors.primaryDark),
-                        SizedBox(height: 4),
-                        Text('Agregar', style: TextStyle(fontWeight: FontWeight.w700)),
-                      ],
+                    padding: const EdgeInsets.all(4),
+                    // Con letra grande se achica en vez de desbordarse.
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.add_a_photo_outlined, color: HyColors.primaryDark),
+                          SizedBox(height: 4),
+                          Text('Agregar', style: TextStyle(fontWeight: FontWeight.w700)),
+                        ],
+                      ),
                     ),
                   ),
                 ),

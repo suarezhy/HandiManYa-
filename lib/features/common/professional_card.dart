@@ -8,15 +8,18 @@ import '../../data/models/professional.dart';
 import '../../router.dart';
 
 class ProfessionalCard extends StatelessWidget {
-  const ProfessionalCard({super.key, required this.pro});
+  const ProfessionalCard({super.key, required this.pro, this.onTap});
 
   final ProfessionalSummary pro;
+
+  /// Por defecto abre el perfil.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return AppCard(
-      onTap: () => context.push(Routes.professional(pro.id)),
+      onTap: onTap ?? () => context.push(Routes.professional(pro.id)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

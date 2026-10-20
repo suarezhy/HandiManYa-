@@ -8,6 +8,7 @@ import 'data/providers.dart';
 import 'features/admin/admin_applications_page.dart';
 import 'features/admin/admin_cases_pages.dart';
 import 'features/admin/admin_catalog_audit_pages.dart';
+import 'features/admin/admin_services_pages.dart';
 import 'features/admin/admin_home_page.dart';
 import 'features/admin/admin_money_pages.dart';
 import 'features/admin/admin_users_page.dart';
@@ -18,6 +19,7 @@ import 'features/auth/register_page.dart';
 import 'features/auth/verify_email_page.dart';
 import 'features/booking/booking_detail_page.dart';
 import 'features/booking/my_requests_page.dart';
+import 'features/booking/choose_professional_page.dart';
 import 'features/booking/request_flow_page.dart';
 import 'features/home/all_categories_page.dart';
 import 'features/home/customer_home_page.dart';
@@ -79,10 +81,16 @@ abstract final class Routes {
   static const adminCatalog = '/admin/catalogo';
   static const adminAudit = '/admin/auditoria';
   static String adminApplication(String id) => '/admin/postulaciones/$id';
+  static String adminProblems(int categoryId) => '/admin/catalogo/$categoryId/opciones';
 
   static String professional(String id) => '/profesional/$id';
   static String requestPro(String id, BookingMode mode) => '/profesional/$id/solicitar?modo=${mode.key}';
   static String category(int id) => '/buscar?categoria=$id';
+
+  /// "¿Qué necesitas solucionar?" de una categoría. Al tocar una categoría
+  /// siempre se llega aquí, nunca directo a la lista de profesionales.
+  static String service(int id) => '/servicio/$id';
+  static const chooseProfessional = '/elegir-profesional';
   static String booking(String id) => '/solicitud/$id';
   static String chat(String id) => '/chat/$id';
 
@@ -239,6 +247,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
+      GoRoute(
+        path: '/servicio/:id',
+        builder: (_, s) => RequestFlowPage(initialCategoryId: int.tryParse(s.pathParameters['id'] ?? '')),
+      ),
+      GoRoute(
+        path: Routes.chooseProfessional,
+        builder: (_, s) => ChooseProfessionalPage(args: s.extra as ChooseProfessionalArgs?),
+      ),
       GoRoute(path: Routes.categories, builder: (_, _) => const AllCategoriesPage()),
       GoRoute(
         path: '/solicitud/:id',
@@ -269,6 +285,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.adminUsers, builder: (_, _) => const AdminUsersPage()),
       GoRoute(path: Routes.adminCommissions, builder: (_, _) => const AdminCommissionsPage()),
       GoRoute(path: Routes.adminCatalog, builder: (_, _) => const AdminCatalogPage()),
+      GoRoute(
+        path: '/admin/catalogo/:id/opciones',
+        builder: (_, s) => AdminProblemsPage(categoryId: int.parse(s.pathParameters['id']!)),
+      ),
       GoRoute(path: Routes.adminAudit, builder: (_, _) => const AdminAuditPage()),
     ],
   );

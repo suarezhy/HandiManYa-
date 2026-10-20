@@ -3,24 +3,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/services/location_service.dart';
-import '../../data/models/geo.dart';
-import '../common/photo_picker.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/category_icon.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/problem_icon.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/catalog.dart';
+import '../../data/models/geo.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/city_picker.dart';
+import '../common/photo_picker.dart';
+import 'choose_professional_page.dart';
 
-/// Pedido de servicio en 3 pasos: qué necesitas → cuéntanos → dónde.
+enum _Step { category, problems, details, place }
+
+/// Pedido de servicio: (categoría) → ¿qué necesitas solucionar? → cuéntanos →
+/// ¿dónde es?
 ///
-/// Sin `professionalId` es un pedido ¡Ya!: llega a todos los profesionales
-/// disponibles de la zona y el primero que acepta lo toma. Con
-/// `professionalId` va directo a esa persona (ahora o programado).
+/// Sin `professionalId` termina con dos caminos: "Lo necesito ¡Ya!" (llega a
+/// todos los profesionales disponibles de la zona y el primero que acepta lo
+/// toma) o "Programar para después" (el cliente elige a la persona y el
+/// horario). Con `professionalId` va directo a esa persona.
 class RequestFlowPage extends ConsumerStatefulWidget {
   const RequestFlowPage({super.key, this.professionalId, this.initialMode = BookingMode.now, this.initialCategoryId});
 
@@ -33,14 +39,23 @@ class RequestFlowPage extends ConsumerStatefulWidget {
 }
 
 class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
+  final _problemsForm = GlobalKey<FormState>();
   final _describeForm = GlobalKey<FormState>();
   final _addressForm = GlobalKey<FormState>();
+  final _otherText = TextEditingController();
   final _description = TextEditingController();
   final _address = TextEditingController();
   final _reference = TextEditingController();
 
-  late int _step = widget.initialCategoryId == null ? 0 : 1;
+  late final _steps = [
+    if (widget.initialCategoryId == null) _Step.category,
+    _Step.problems,
+    _Step.details,
+    _Step.place,
+  ];
+  int _index = 0;
   late int? _categoryId = widget.initialCategoryId;
+  final _selected = <int>{};
   late BookingMode _mode = widget.initialMode;
   int? _zoneId;
   DateTime? _date;
@@ -54,64 +69,100 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
   List<PhotoUpload> _photos = const [];
 
   bool get _isYa => widget.professionalId == null;
+  _Step get _step => _steps[_index];
 
   @override
   void dispose() {
-    for (final c in [_description, _address, _reference]) {
+    for (final c in [_otherText, _description, _address, _reference]) {
       c.dispose();
     }
     super.dispose();
   }
 
+  ServiceCategory? get _category =>
+      (ref.read(categoriesProvider).value ?? const <ServiceCategory>[]).where((c) => c.id == _categoryId).firstOrNull;
+
+  List<ServiceProblem> get _problems =>
+      _categoryId == null ? const [] : (ref.read(problemsProvider(_categoryId!)).value ?? const []);
+
+  bool get _otherSelected => _problems.any((p) => p.isOther && _selected.contains(p.id));
+
   DateTime? get _scheduledStart => (_date == null || _time == null)
       ? null
       : DateTime(_date!.year, _date!.month, _date!.day, _time!.hour, _time!.minute);
 
-  void _next() {
-    if (_step == 0 && _categoryId == null) return;
-    if (_step == 1) {
-      if (!_describeForm.currentState!.validate()) return;
-      if (_mode == BookingMode.scheduled) {
-        final start = _scheduledStart;
-        if (start == null) {
-          setState(() => _scheduleError = 'Elige el día y la hora');
-          return;
-        }
-        if (start.isBefore(DateTime.now().add(const Duration(minutes: 30)))) {
-          setState(() => _scheduleError = 'Elige una hora con al menos 30 minutos de anticipación');
-          return;
-        }
-      }
-      setState(() => _scheduleError = null);
+  void _chooseCategory(int id) => setState(() {
+    if (_categoryId != id) {
+      _selected.clear();
+      _otherText.clear();
     }
-    setState(() => _step++);
+    _categoryId = id;
+    _index++;
+  });
+
+  void _next() {
+    switch (_step) {
+      case _Step.category:
+        if (_categoryId == null) return;
+      case _Step.problems:
+        if (_selected.isEmpty || !_problemsForm.currentState!.validate()) return;
+      case _Step.details:
+        if (!_describeForm.currentState!.validate()) return;
+        if (!_isYa && _mode == BookingMode.scheduled) {
+          final start = _scheduledStart;
+          if (start == null) {
+            setState(() => _scheduleError = 'Elige el día y la hora');
+            return;
+          }
+          if (start.isBefore(DateTime.now().add(const Duration(minutes: 30)))) {
+            setState(() => _scheduleError = 'Elige una hora con al menos 30 minutos de anticipación');
+            return;
+          }
+        }
+        setState(() => _scheduleError = null);
+      case _Step.place:
+        return;
+    }
+    setState(() => _index++);
   }
+
+  BookingDraft? _draft({required BookingMode mode}) {
+    final city = ref.read(currentCityProvider);
+    if (city == null || _categoryId == null) return null;
+    return BookingDraft(
+      categoryId: _categoryId!,
+      cityId: city.id,
+      mode: mode,
+      description: _description.text.trim(),
+      address: _address.text.trim(),
+      addressReference: _reference.text.trim().isEmpty ? null : _reference.text.trim(),
+      zoneId: _zoneId,
+      professionalId: widget.professionalId,
+      scheduledStart: mode == BookingMode.scheduled ? _scheduledStart : null,
+      durationMinutes: _duration,
+      paymentMethod: _payment,
+      latitude: _point?.latitude,
+      longitude: _point?.longitude,
+      problemIds: [
+        for (final p in _problems)
+          if (_selected.contains(p.id)) p.id,
+      ],
+      otherText: _otherSelected ? _otherText.text.trim() : null,
+    );
+  }
+
+  List<String> get _selectedLabels => [
+    for (final p in _problems)
+      if (_selected.contains(p.id)) p.isOther ? '${p.name}: ${_otherText.text.trim()}' : p.name,
+  ];
 
   Future<void> _submit() async {
     if (!_addressForm.currentState!.validate()) return;
-    final city = ref.read(currentCityProvider);
-    if (city == null || _categoryId == null) return;
+    final draft = _draft(mode: _isYa ? BookingMode.now : _mode);
+    if (draft == null) return;
     setState(() => _sending = true);
     try {
-      final id = await ref
-          .read(backendProvider)
-          .create(
-            BookingDraft(
-              categoryId: _categoryId!,
-              cityId: city.id,
-              mode: _mode,
-              description: _description.text.trim(),
-              address: _address.text.trim(),
-              addressReference: _reference.text.trim().isEmpty ? null : _reference.text.trim(),
-              zoneId: _zoneId,
-              professionalId: widget.professionalId,
-              scheduledStart: _mode == BookingMode.scheduled ? _scheduledStart : null,
-              durationMinutes: _duration,
-              paymentMethod: _payment,
-              latitude: _point?.latitude,
-              longitude: _point?.longitude,
-            ),
-          );
+      final id = await ref.read(backendProvider).create(draft);
       if (_photos.isNotEmpty) {
         try {
           await ref.read(backendProvider).addPhotos(id, _photos);
@@ -130,6 +181,17 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
     }
   }
 
+  void _scheduleLater() {
+    if (!_addressForm.currentState!.validate()) return;
+    final draft = _draft(mode: BookingMode.scheduled);
+    final category = _category;
+    if (draft == null || category == null) return;
+    context.push(
+      Routes.chooseProfessional,
+      extra: ChooseProfessionalArgs(draft: draft, category: category, problems: _selectedLabels, photos: _photos),
+    );
+  }
+
   Future<void> _useMyLocation() async {
     if (!await explainLocationUse(context, professional: false) || !mounted) return;
     setState(() => _locating = true);
@@ -143,17 +205,31 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
     }
   }
 
+  String get _title => switch (_step) {
+    _Step.category => '¿Qué servicio necesitas?',
+    _Step.problems => '¿Qué necesitas solucionar?',
+    _Step.details => 'Cuéntanos más',
+    _Step.place => '¿Dónde es?',
+  };
+
   @override
   Widget build(BuildContext context) {
-    final titles = ['¿Qué necesitas?', 'Cuéntanos qué pasa', '¿Dónde es?'];
+    final category = (ref.watch(categoriesProvider).value ?? const <ServiceCategory>[])
+        .where((c) => c.id == _categoryId)
+        .firstOrNull;
+    final total = _steps.length;
     return PopScope(
-      canPop: _step == 0 || (_step == 1 && widget.initialCategoryId != null),
+      canPop: _index == 0,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) setState(() => _step--);
+        if (!didPop) setState(() => _index--);
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_isYa ? 'Pedir ¡Ya!' : (_mode == BookingMode.now ? 'Solicitar ahora' : 'Programar servicio')),
+          title: Text(
+            widget.professionalId != null
+                ? (_mode == BookingMode.now ? 'Solicitar ahora' : 'Programar servicio')
+                : (category?.name ?? 'Pedir ¡Ya!'),
+          ),
         ),
         body: Column(
           children: [
@@ -162,17 +238,17 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Semantics(
-                    label: 'Paso ${_step + 1} de 3',
+                    label: 'Paso ${_index + 1} de $total',
                     excludeSemantics: true,
                     child: Row(
                       children: [
-                        for (var i = 0; i < 3; i++)
+                        for (var i = 0; i < total; i++)
                           Expanded(
                             child: Container(
                               height: 6,
                               margin: const EdgeInsets.symmetric(horizontal: 2),
                               decoration: BoxDecoration(
-                                color: i <= _step ? HyColors.primary : HyColors.border,
+                                color: i <= _index ? HyColors.primary : HyColors.border,
                                 borderRadius: BorderRadius.circular(HyRadii.pill),
                               ),
                             ),
@@ -181,8 +257,8 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
                     ),
                   ),
                   const SizedBox(height: HySpacing.sm),
-                  Text('Paso ${_step + 1} de 3', style: const TextStyle(color: HyColors.textMuted)),
-                  Semantics(header: true, child: Text(titles[_step], style: Theme.of(context).textTheme.headlineSmall)),
+                  Text('Paso ${_index + 1} de $total', style: const TextStyle(color: HyColors.textMuted)),
+                  Semantics(header: true, child: Text(_title, style: Theme.of(context).textTheme.headlineSmall)),
                 ],
               ),
             ),
@@ -192,9 +268,10 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
                 padding: const EdgeInsets.only(bottom: HySpacing.xl),
                 child: PageBody(
                   child: switch (_step) {
-                    0 => _categoryStep(),
-                    1 => _describeStep(),
-                    _ => _addressStep(),
+                    _Step.category => _categoryStep(),
+                    _Step.problems => _problemStep(category),
+                    _Step.details => _describeStep(category),
+                    _Step.place => _addressStep(category),
                   },
                 ),
               ),
@@ -203,19 +280,43 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
               top: false,
               child: PageBody(
                 padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.xs, HySpacing.page, HySpacing.md),
-                child: _step < 2
-                    ? PrimaryButton(label: 'Continuar', onPressed: (_step == 0 && _categoryId == null) ? null : _next)
-                    : PrimaryButton(
-                        label: _isYa ? 'Pedir ¡Ya!' : 'Enviar solicitud',
-                        icon: _isYa ? Icons.bolt_rounded : Icons.send_rounded,
-                        loading: _sending,
-                        onPressed: _submit,
-                      ),
+                child: _actions(category),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _actions(ServiceCategory? category) {
+    if (_step != _Step.place) {
+      final enabled = switch (_step) {
+        _Step.category => _categoryId != null,
+        _Step.problems => _selected.isNotEmpty,
+        _ => true,
+      };
+      return PrimaryButton(label: 'Continuar', onPressed: enabled ? _next : null);
+    }
+    if (!_isYa) {
+      return PrimaryButton(label: 'Enviar solicitud', icon: Icons.send_rounded, loading: _sending, onPressed: _submit);
+    }
+    final allowsYa = category?.allowsYa ?? true;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (allowsYa) ...[
+          PrimaryButton(label: 'Lo necesito ¡Ya!', icon: Icons.bolt_rounded, loading: _sending, onPressed: _submit),
+          const SizedBox(height: HySpacing.xs),
+          SecondaryButton(
+            label: 'Programar para después',
+            icon: Icons.event_outlined,
+            onPressed: _sending ? null : _scheduleLater,
+          ),
+        ] else
+          PrimaryButton(label: 'Elegir profesional y horario', icon: Icons.event_outlined, onPressed: _scheduleLater),
+      ],
     );
   }
 
@@ -229,31 +330,84 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
           for (final c in list)
             Padding(
               padding: const EdgeInsets.only(bottom: HySpacing.xs),
-              child: _CategoryOption(
-                category: c,
-                selected: c.id == _categoryId,
-                onTap: () => setState(() {
-                  _categoryId = c.id;
-                  _step = 1;
-                }),
-              ),
+              child: _CategoryOption(category: c, selected: c.id == _categoryId, onTap: () => _chooseCategory(c.id)),
             ),
         ],
       ),
     );
   }
 
-  Widget _describeStep() {
-    final category = (ref.watch(categoriesProvider).value ?? const <ServiceCategory>[])
-        .where((c) => c.id == _categoryId)
-        .firstOrNull;
+  Widget _problemStep(ServiceCategory? category) {
+    if (_categoryId == null) return const SizedBox.shrink();
+    final problems = ref.watch(problemsProvider(_categoryId!));
+    return problems.when(
+      loading: () => const LoadingView(),
+      error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(problemsProvider(_categoryId!))),
+      data: (list) => Form(
+        key: _problemsForm,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (category != null) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _CategoryChip(category: category),
+              ),
+              const SizedBox(height: HySpacing.xs),
+            ],
+            const Text(
+              'Toca todo lo que necesites. Puedes elegir más de una opción.',
+              style: TextStyle(color: HyColors.textSecondary, fontSize: 16),
+            ),
+            if (category?.safetyNote != null) ...[
+              const SizedBox(height: HySpacing.sm),
+              InfoBanner(icon: Icons.shield_outlined, tone: StatusTone.warning, text: category!.safetyNote!),
+            ],
+            const SizedBox(height: HySpacing.md),
+            ProblemGrid(
+              problems: list,
+              selected: _selected,
+              icon: category?.icon ?? 'build',
+              onToggle: (p) => setState(() => _selected.contains(p.id) ? _selected.remove(p.id) : _selected.add(p.id)),
+            ),
+            if (_otherSelected) ...[
+              const SizedBox(height: HySpacing.md),
+              TextFormField(
+                key: const ValueKey('other-text'),
+                controller: _otherText,
+                autofocus: true,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 200,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: '¿Qué necesitas?',
+                  hintText: 'Escríbelo con tus palabras',
+                  alignLabelWithHint: true,
+                ),
+                validator: (v) => (v ?? '').trim().length < 3 ? 'Cuéntanos qué necesitas' : null,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _describeStep(ServiceCategory? category) {
     return Form(
       key: _describeForm,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (category != null) Chip(avatar: Icon(categoryIcon(category.icon), size: 20), label: Text(category.name)),
-          const SizedBox(height: HySpacing.sm),
+          if (_selectedLabels.isNotEmpty) ...[
+            Wrap(
+              spacing: HySpacing.xs,
+              runSpacing: HySpacing.xs,
+              children: [for (final l in _selectedLabels) Chip(label: Text(l))],
+            ),
+            const SizedBox(height: HySpacing.sm),
+          ],
           if (!_isYa) ...[
             SegmentedButton<BookingMode>(
               segments: const [
@@ -268,76 +422,33 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
           ],
           TextFormField(
             controller: _description,
-            minLines: 4,
+            minLines: 3,
             maxLines: 8,
             maxLength: 1500,
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
-              labelText: 'Describe el problema',
-              hintText: 'Ej.: Se rompió la cañería debajo del lavaplatos y está saliendo agua.',
+              labelText: 'Describe el problema (opcional)',
+              hintText: 'Ej.: Gotea debajo del lavaplatos desde ayer.',
               alignLabelWithHint: true,
             ),
-            validator: (v) => (v ?? '').trim().length < 10 ? 'Cuéntanos un poco más (al menos 10 letras)' : null,
+            validator: (v) {
+              final t = (v ?? '').trim();
+              return t.isNotEmpty && t.length < 5 ? 'Escribe un poco más, o déjalo vacío' : null;
+            },
           ),
-          if (_mode == BookingMode.scheduled) ...[
+          if (!_isYa && _mode == BookingMode.scheduled) ...[
             const SizedBox(height: HySpacing.md),
             Text('¿Cuándo?', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: HySpacing.xs),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.calendar_today_outlined),
-                    label: Text(_date == null ? 'Elegir día' : Fmt.shortDate(_date!)),
-                    onPressed: () async {
-                      final now = DateTime.now();
-                      final d = await showDatePicker(
-                        context: context,
-                        initialDate: _date ?? now,
-                        firstDate: now,
-                        lastDate: now.add(const Duration(days: 60)),
-                        helpText: 'Elige el día',
-                      );
-                      if (d != null) setState(() => _date = d);
-                    },
-                  ),
-                ),
-                const SizedBox(width: HySpacing.sm),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    icon: const Icon(Icons.schedule),
-                    label: Text(_time == null ? 'Elegir hora' : _time!.format(context)),
-                    onPressed: () async {
-                      final t = await showTimePicker(
-                        context: context,
-                        initialTime: _time ?? const TimeOfDay(hour: 9, minute: 0),
-                        helpText: 'Elige la hora',
-                      );
-                      if (t != null) setState(() => _time = t);
-                    },
-                  ),
-                ),
-              ],
+            ScheduleFields(
+              date: _date,
+              time: _time,
+              duration: _duration,
+              error: _scheduleError,
+              onDate: (d) => setState(() => _date = d),
+              onTime: (t) => setState(() => _time = t),
+              onDuration: (d) => setState(() => _duration = d),
             ),
-            const SizedBox(height: HySpacing.sm),
-            DropdownButtonFormField<int>(
-              initialValue: _duration,
-              decoration: const InputDecoration(labelText: 'Duración aproximada'),
-              items: const [
-                DropdownMenuItem(value: 60, child: Text('1 hora')),
-                DropdownMenuItem(value: 120, child: Text('2 horas')),
-                DropdownMenuItem(value: 240, child: Text('Medio día')),
-                DropdownMenuItem(value: 480, child: Text('Día completo')),
-              ],
-              onChanged: (v) => setState(() => _duration = v ?? 120),
-            ),
-            if (_scheduleError != null)
-              Padding(
-                padding: const EdgeInsets.only(top: HySpacing.xs),
-                child: Text(_scheduleError!, style: const TextStyle(color: HyColors.danger)),
-              ),
-            const SizedBox(height: HySpacing.xs),
-            const Text('Hora de Bolivia.', style: TextStyle(color: HyColors.textMuted, fontSize: 14)),
           ],
           const SizedBox(height: HySpacing.lg),
           PhotoPickerRow(photos: _photos, onChanged: (p) => setState(() => _photos = p)),
@@ -346,9 +457,10 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
     );
   }
 
-  Widget _addressStep() {
+  Widget _addressStep(ServiceCategory? category) {
     final city = ref.watch(currentCityProvider);
     final zones = city == null ? const <Zone>[] : (ref.watch(zonesProvider(city.id)).value ?? const <Zone>[]);
+    final allowsYa = category?.allowsYa ?? true;
     return Form(
       key: _addressForm,
       child: Column(
@@ -436,7 +548,15 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             'Pagas directo al profesional cuando termina el trabajo.',
             style: TextStyle(color: HyColors.textMuted, fontSize: 14),
           ),
-          if (_isYa && city != null && _categoryId != null) ...[
+          if (_isYa && !allowsYa) ...[
+            const SizedBox(height: HySpacing.lg),
+            const InfoBanner(
+              icon: Icons.verified_user_outlined,
+              tone: StatusTone.warning,
+              text: 'Para este servicio eliges tú a la persona: verás su perfil y calificaciones antes de pedir.',
+            ),
+          ],
+          if (_isYa && allowsYa && city != null && _categoryId != null) ...[
             const SizedBox(height: HySpacing.lg),
             _AvailableCount(categoryId: _categoryId!, cityId: city.id, zoneId: _zoneId, point: _point),
           ],
@@ -444,6 +564,209 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
       ),
     );
   }
+}
+
+class _CategoryChip extends StatelessWidget {
+  const _CategoryChip({required this.category});
+
+  final ServiceCategory category;
+
+  @override
+  Widget build(BuildContext context) =>
+      Chip(avatar: Icon(categoryIcon(category.icon), size: 20), label: Text(category.name));
+}
+
+/// Tarjetas grandes de "¿Qué necesitas solucionar?". Se pueden elegir varias.
+class ProblemGrid extends StatelessWidget {
+  const ProblemGrid({
+    super.key,
+    required this.problems,
+    required this.selected,
+    required this.onToggle,
+    this.icon = 'build',
+  });
+
+  final List<ServiceProblem> problems;
+  final Set<int> selected;
+  final ValueChanged<ServiceProblem> onToggle;
+
+  /// Ícono de la categoría (define los colores).
+  final String icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    return LayoutBuilder(
+      builder: (context, box) {
+        final columns = (box.maxWidth / (165 * scale)).floor().clamp(1, 3);
+        const gap = HySpacing.sm;
+        final width = (box.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final p in problems)
+              SizedBox(
+                width: width,
+                child: _ProblemCard(
+                  problem: p,
+                  selected: selected.contains(p.id),
+                  icon: icon,
+                  onTap: () => onToggle(p),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ProblemCard extends StatelessWidget {
+  const _ProblemCard({required this.problem, required this.selected, required this.icon, required this.onTap});
+
+  final ServiceProblem problem;
+  final bool selected;
+  final String icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final (fg, bg) = categoryColors(icon);
+    return Semantics(
+      key: ValueKey('problem-${problem.id}'),
+      button: true,
+      selected: selected,
+      label: problem.name,
+      excludeSemantics: true,
+      child: Material(
+        color: selected ? HyColors.primarySoft : HyColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(HyRadii.lg),
+          side: BorderSide(color: selected ? HyColors.primary : HyColors.border, width: selected ? 2.5 : 1),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(HyRadii.lg),
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 116),
+            child: Padding(
+              padding: const EdgeInsets.all(HySpacing.sm),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(HyRadii.md)),
+                        child: Icon(problemIcon(problem.icon), color: fg, size: 28),
+                      ),
+                      const Spacer(),
+                      Icon(
+                        selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                        color: selected ? HyColors.primary : HyColors.border,
+                        size: 28,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: HySpacing.xs),
+                  Text(problem.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, height: 1.2)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Día, hora y duración de un servicio programado.
+class ScheduleFields extends StatelessWidget {
+  const ScheduleFields({
+    super.key,
+    required this.date,
+    required this.time,
+    required this.duration,
+    required this.onDate,
+    required this.onTime,
+    required this.onDuration,
+    this.error,
+  });
+
+  final DateTime? date;
+  final TimeOfDay? time;
+  final int duration;
+  final ValueChanged<DateTime> onDate;
+  final ValueChanged<TimeOfDay> onTime;
+  final ValueChanged<int> onDuration;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.calendar_today_outlined),
+              label: Text(date == null ? 'Elegir día' : Fmt.shortDate(date!)),
+              onPressed: () async {
+                final now = DateTime.now();
+                final d = await showDatePicker(
+                  context: context,
+                  initialDate: date ?? now,
+                  firstDate: now,
+                  lastDate: now.add(const Duration(days: 60)),
+                  helpText: 'Elige el día',
+                );
+                if (d != null) onDate(d);
+              },
+            ),
+          ),
+          const SizedBox(width: HySpacing.sm),
+          Expanded(
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.schedule),
+              label: Text(time == null ? 'Elegir hora' : time!.format(context)),
+              onPressed: () async {
+                final t = await showTimePicker(
+                  context: context,
+                  initialTime: time ?? const TimeOfDay(hour: 9, minute: 0),
+                  helpText: 'Elige la hora',
+                );
+                if (t != null) onTime(t);
+              },
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: HySpacing.sm),
+      DropdownButtonFormField<int>(
+        initialValue: duration,
+        decoration: const InputDecoration(labelText: 'Duración aproximada'),
+        items: const [
+          DropdownMenuItem(value: 60, child: Text('1 hora')),
+          DropdownMenuItem(value: 120, child: Text('2 horas')),
+          DropdownMenuItem(value: 240, child: Text('Medio día')),
+          DropdownMenuItem(value: 480, child: Text('Día completo')),
+        ],
+        onChanged: (v) => onDuration(v ?? 120),
+      ),
+      if (error != null)
+        Padding(
+          padding: const EdgeInsets.only(top: HySpacing.xs),
+          child: Text(error!, style: const TextStyle(color: HyColors.danger)),
+        ),
+      const SizedBox(height: HySpacing.xs),
+      const Text('Hora de Bolivia.', style: TextStyle(color: HyColors.textMuted, fontSize: 14)),
+    ],
+  );
 }
 
 class _CategoryOption extends StatelessWidget {

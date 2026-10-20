@@ -10,6 +10,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/admin.dart';
 import '../../data/providers.dart';
 import 'admin_common.dart';
+import 'admin_services_pages.dart';
 
 // ======================================================================= Catálogo
 class AdminCatalogPage extends ConsumerWidget {
@@ -32,12 +33,7 @@ class AdminCatalogPage extends ConsumerWidget {
         ),
         body: TabBarView(
           children: [
-            _ToggleList(
-              provider: adminCategoriesProvider,
-              onToggle: (id, v) => ref.read(backendProvider).setCategoryActive(id, v),
-              afterChange: () => ref.invalidate(categoriesProvider),
-              help: 'Las categorías apagadas no aparecen en la app ni reciben pedidos nuevos.',
-            ),
+            const AdminServiceCategoriesTab(),
             _ToggleList(
               provider: adminCitiesProvider,
               onToggle: (id, v) => ref.read(backendProvider).setCityActive(id, v),

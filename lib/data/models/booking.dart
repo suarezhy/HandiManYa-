@@ -134,6 +134,7 @@ class BookingSummary {
     this.hasReview = false,
     this.isOffer = false,
     this.distanceKm,
+    this.problems = const [],
   });
 
   final String id;
@@ -147,6 +148,9 @@ class BookingSummary {
   final String description;
   final DateTime? scheduledStart;
   final DateTime createdAt;
+
+  /// Lo que eligió el cliente en "¿Qué necesitas solucionar?".
+  final List<String> problems;
 
   /// Distancia aproximada (km) del pedido a la base del profesional.
   final double? distanceKm;
@@ -178,6 +182,7 @@ class BookingSummary {
     hasReview: m['has_review'] as bool? ?? false,
     isOffer: m['is_offer'] as bool? ?? false,
     distanceKm: _dn(m['distance_km']),
+    problems: [for (final p in (m['problems'] as List? ?? const [])) p as String],
   );
 }
 
@@ -284,6 +289,8 @@ class BookingDetail {
     this.distanceKm,
     this.photoPaths = const [],
     this.photos = const [],
+    this.problems = const [],
+    this.safetyNote,
   });
 
   final String id;
@@ -320,6 +327,12 @@ class BookingDetail {
   /// Rutas en el almacenamiento; [photos] trae las fotos listas para mostrar.
   final List<String> photoPaths;
   final List<BookingPhoto> photos;
+
+  /// Lo que eligió el cliente en "¿Qué necesitas solucionar?".
+  final List<String> problems;
+
+  /// Regla de seguridad de la categoría (servicios sensibles).
+  final String? safetyNote;
 
   String get areaLabel => zone == null ? city : '$zone, ${city.replaceAll(' de la Sierra', '')}';
 
@@ -381,6 +394,8 @@ class BookingDetail {
       distanceKm: _dn(m['distance_km']),
       photoPaths: [for (final p in (m['photos'] as List? ?? const [])) (p as Map)['path'] as String],
       photos: photos,
+      problems: [for (final p in (m['problems'] as List? ?? const [])) p as String],
+      safetyNote: m['safety_note'] as String?,
     );
   }
 }
@@ -401,6 +416,8 @@ class BookingDraft {
     this.paymentMethod,
     this.latitude,
     this.longitude,
+    this.problemIds = const [],
+    this.otherText,
   });
 
   final int categoryId;
@@ -421,5 +438,29 @@ class BookingDraft {
   final double? latitude;
   final double? longitude;
 
+  /// Opciones elegidas en "¿Qué necesitas solucionar?" y el texto de "Otro".
+  final List<int> problemIds;
+  final String? otherText;
+
   bool get isYa => mode == BookingMode.now && professionalId == null;
+
+  /// La misma solicitud dirigida a un profesional elegido, para otro momento.
+  BookingDraft scheduledWith({required String professionalId, required DateTime start, required int durationMinutes}) =>
+      BookingDraft(
+        categoryId: categoryId,
+        cityId: cityId,
+        mode: BookingMode.scheduled,
+        description: description,
+        address: address,
+        addressReference: addressReference,
+        zoneId: zoneId,
+        professionalId: professionalId,
+        scheduledStart: start,
+        durationMinutes: durationMinutes,
+        paymentMethod: paymentMethod,
+        latitude: latitude,
+        longitude: longitude,
+        problemIds: problemIds,
+        otherText: otherText,
+      );
 }

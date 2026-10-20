@@ -35,6 +35,12 @@ class ServiceCategory {
     required this.name,
     required this.icon,
     this.description,
+    this.allowsYa = true,
+    this.requiredDoc,
+    this.safetyNote,
+    this.proNote,
+    this.isActive = true,
+    this.sortOrder = 100,
   });
 
   final int id;
@@ -43,13 +49,126 @@ class ServiceCategory {
   final String icon;
   final String? description;
 
+  /// Falso en servicios donde el cliente debe elegir a la persona (niñera, asesoría legal).
+  final bool allowsYa;
+
+  /// Documento que el profesional debe tener aceptado para atender esta
+  /// categoría: `antecedentes` o `certificado`.
+  final String? requiredDoc;
+
+  /// Regla de seguridad que ve el cliente al pedir.
+  final String? safetyNote;
+
+  /// Requisito que ve el profesional al postularse.
+  final String? proNote;
+  final bool isActive;
+  final int sortOrder;
+
+  bool get isSensitive => requiredDoc != null;
+
   factory ServiceCategory.fromMap(Map<String, dynamic> m) => ServiceCategory(
     id: (m['id'] as num).toInt(),
     slug: m['slug'] as String,
     name: m['name'] as String,
     icon: (m['icon'] as String?) ?? 'build',
     description: m['description'] as String?,
+    allowsYa: m['allows_ya'] as bool? ?? true,
+    requiredDoc: m['required_doc'] as String?,
+    safetyNote: m['safety_note'] as String?,
+    proNote: m['pro_note'] as String?,
+    isActive: m['is_active'] as bool? ?? true,
+    sortOrder: (m['sort_order'] as num?)?.toInt() ?? 100,
   );
+
+  Map<String, dynamic> toMap() => {
+    'slug': slug,
+    'name': name.trim(),
+    'icon': icon,
+    'description': (description ?? '').trim().isEmpty ? null : description!.trim(),
+    'allows_ya': allowsYa,
+    'required_doc': requiredDoc,
+    'safety_note': (safetyNote ?? '').trim().isEmpty ? null : safetyNote!.trim(),
+    'pro_note': (proNote ?? '').trim().isEmpty ? null : proNote!.trim(),
+    'is_active': isActive,
+    'sort_order': sortOrder,
+  };
+
+  ServiceCategory copyWith({
+    String? name,
+    String? icon,
+    String? Function()? description,
+    bool? allowsYa,
+    String? Function()? requiredDoc,
+    String? Function()? safetyNote,
+    String? Function()? proNote,
+    bool? isActive,
+    int? sortOrder,
+  }) => ServiceCategory(
+    id: id,
+    slug: slug,
+    name: name ?? this.name,
+    icon: icon ?? this.icon,
+    description: description == null ? this.description : description(),
+    allowsYa: allowsYa ?? this.allowsYa,
+    requiredDoc: requiredDoc == null ? this.requiredDoc : requiredDoc(),
+    safetyNote: safetyNote == null ? this.safetyNote : safetyNote(),
+    proNote: proNote == null ? this.proNote : proNote(),
+    isActive: isActive ?? this.isActive,
+    sortOrder: sortOrder ?? this.sortOrder,
+  );
+}
+
+/// Una opción de "¿Qué necesitas solucionar?" dentro de una categoría.
+class ServiceProblem {
+  const ServiceProblem({
+    required this.id,
+    required this.categoryId,
+    required this.name,
+    this.icon = 'build',
+    this.isOther = false,
+    this.isActive = true,
+    this.sortOrder = 100,
+  });
+
+  final int id;
+  final int categoryId;
+  final String name;
+  final String icon;
+
+  /// "Otro problema" / "Otro servicio": pide que el cliente lo describa.
+  final bool isOther;
+  final bool isActive;
+  final int sortOrder;
+
+  factory ServiceProblem.fromMap(Map<String, dynamic> m) => ServiceProblem(
+    id: (m['id'] as num).toInt(),
+    categoryId: (m['category_id'] as num).toInt(),
+    name: m['name'] as String,
+    icon: (m['icon'] as String?) ?? 'build',
+    isOther: m['is_other'] as bool? ?? false,
+    isActive: m['is_active'] as bool? ?? true,
+    sortOrder: (m['sort_order'] as num?)?.toInt() ?? 100,
+  );
+
+  Map<String, dynamic> toMap() => {
+    'category_id': categoryId,
+    'name': name.trim(),
+    'icon': icon,
+    'is_other': isOther,
+    'is_active': isActive,
+    'sort_order': sortOrder,
+  };
+
+  ServiceProblem copyWith({String? name, String? icon, bool? isOther, bool? isActive, int? sortOrder}) =>
+      ServiceProblem(
+        id: id,
+        categoryId: categoryId,
+        name: name ?? this.name,
+        icon: icon ?? this.icon,
+        isOther: isOther ?? this.isOther,
+        isActive: isActive ?? this.isActive,
+        sortOrder: sortOrder ?? this.sortOrder,
+      );
 }
 
 class Promotion {

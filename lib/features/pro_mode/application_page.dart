@@ -309,7 +309,7 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                       child: SecondaryButton(
                         label: 'Carnet (anverso)',
                         icon: Icons.upload_file,
-                        onPressed: _uploading ? null : () => _pickDocument('id_front'),
+                        onPressed: _uploading ? null : () => _pickDocument('ci_anverso'),
                       ),
                     ),
                     const SizedBox(width: HySpacing.sm),
@@ -317,11 +317,30 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                       child: SecondaryButton(
                         label: 'Carnet (reverso)',
                         icon: Icons.upload_file,
-                        onPressed: _uploading ? null : () => _pickDocument('id_back'),
+                        onPressed: _uploading ? null : () => _pickDocument('ci_reverso'),
                       ),
                     ),
                   ],
                 ),
+                for (final c in categories.where(
+                  (c) => c.isSensitive && (_categories.contains(c.id) || _primary == c.id),
+                )) ...[
+                  const SizedBox(height: HySpacing.sm),
+                  InfoBanner(
+                    icon: Icons.verified_user_outlined,
+                    tone: StatusTone.warning,
+                    text:
+                        c.proNote ?? 'Para ofrecer ${c.name} necesitas un documento adicional aceptado por el equipo.',
+                  ),
+                  const SizedBox(height: HySpacing.xs),
+                  SecondaryButton(
+                    label: c.requiredDoc == 'certificado'
+                        ? 'Subir título o matrícula'
+                        : 'Subir certificado de antecedentes',
+                    icon: Icons.upload_file,
+                    onPressed: _uploading ? null : () => _pickDocument(c.requiredDoc!),
+                  ),
+                ],
                 const SizedBox(height: HySpacing.xs),
                 if (_uploading)
                   const LinearProgressIndicator(color: HyColors.primary)

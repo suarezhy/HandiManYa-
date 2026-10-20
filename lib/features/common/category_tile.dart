@@ -29,26 +29,33 @@ class CategoryTile extends StatelessWidget {
               border: Border.all(color: HyColors.border),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: HySpacing.sm),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: HySizes.iconTile,
-                  height: HySizes.iconTile,
-                  decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(HyRadii.md)),
-                  child: Icon(categoryIcon(icon), color: fg, size: 30),
-                ),
-                const SizedBox(height: HySpacing.xs),
-                Flexible(
-                  child: Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, height: 1.15),
+            // Con letra grande el contenido se achica en vez de desbordarse.
+            child: LayoutBuilder(
+              builder: (context, box) => FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SizedBox(
+                  width: box.maxWidth,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: HySizes.iconTile,
+                        height: HySizes.iconTile,
+                        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(HyRadii.md)),
+                        child: Icon(categoryIcon(icon), color: fg, size: 30),
+                      ),
+                      const SizedBox(height: HySpacing.xs),
+                      Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, height: 1.15),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
