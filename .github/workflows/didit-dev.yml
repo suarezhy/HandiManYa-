@@ -1,0 +1,148 @@
+name: Didit sandbox (handimanya-flutter-dev)
+
+# Despliega identity-check y didit-webhook SOLO en el proyecto de DESARROLLO y
+# prueba el sandbox de Didit contra ellas. Antes de desplegar comprueba:
+#   - que es el proyecto nuevo (nunca los de FlutterFlow);
+#   - que el modo real de Didit está cerrado en el código (LIVE_ENABLED = false);
+#   - que las funciones solo llaman a verification.didit.me y a la propia base;
+#   - que en la base Didit sigue en "sandbox" y SEGIP y Veriff apagados;
+#   - que existen los secretos de Didit (solo los nombres; nunca los valores).
+# Después crea una cuenta temporal, pide una sesión del sandbox (gratis, sin
+# carnet real), revisa que nada se cobró y borra la cuenta, aunque falle.
+#
+# Solo se activa al subir la rama supabase/didit-dev.
+# Secretos de GitHub: SUPABASE_DB_URL, SUPABASE_ANON_KEY y SUPABASE_ACCESS_TOKEN
+# (token personal de Supabase para desplegar funciones).
+
+on:
+  push:
+    branches: [supabase/didit-dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev-db
+  cancel-in-progress: false
+
+jobs:
+  didit:
+    name: Desplegar y probar el sandbox de Didit
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      EXPECTED_REF: yldqopeldibwgbwmdnzy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar que es el proyecto nuevo
+        run: supabase/scripts/check_target.sh
+
+      - name: Revisar los secretos de GitHub
+        run: |
+          missing=0
+          [ -n "${ANON_KEY}" ] || { echo "::error::Falta el secreto SUPABASE_ANON_KEY (clave anon o publishable de handimanya-flutter-dev)."; missing=1; }
+          [ -n "${SUPABASE_ACCESS_TOKEN}" ] || { echo "::error::Falta el secreto SUPABASE_ACCESS_TOKEN (Supabase > Account > Access Tokens)."; missing=1; }
+          exit $missing
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Pruebas de las funciones (sin llamar a Didit)
+        run: node --experimental-strip-types --no-warnings --test supabase/functions/_shared/didit.test.ts
+
+      - name: El modo real está cerrado y solo se llama a Didit y a la base
+        run: |
+          f=supabase/functions/_shared/didit.ts
+          grep -qx 'export const LIVE_ENABLED = false;' "$f" || { echo "::error::El modo real de Didit no está cerrado."; exit 1; }
+          hosts=$(grep -ohE 'https://[a-zA-Z0-9.-]+' "$f" supabase/functions/identity-check/index.ts supabase/functions/didit-webhook/index.ts | sort -u)
+          echo "Direcciones en el código: ${hosts}"
+          for h in $hosts; do
+            [ "$h" = "https://verification.didit.me" ] || { echo "::error::Dirección no permitida: $h"; exit 1; }
+          done
+
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
+
+      - name: En la base, Didit en sandbox y nada pagado
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          select key || ': ' || status from public.cost_vendors where key in ('didit_kyc', 'didit_segip', 'veriff') order by key;
+          do $$ begin
+            if (select status from public.cost_vendors where key = 'didit_kyc') <> 'sandbox' then
+              raise exception 'HMY: Didit no está en sandbox';
+            end if;
+            if exists (select 1 from public.cost_vendors where key in ('didit_segip', 'veriff') and status <> 'off') then
+              raise exception 'HMY: SEGIP o Veriff no están apagados';
+            end if;
+            if exists (select 1 from public.cost_vendors where status = 'paid') then
+              raise exception 'HMY: hay un proveedor pagado activo';
+            end if;
+          end $$;
+          SQL
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Secretos de Didit en Supabase (solo nombres)
+        run: |
+          names=$(supabase secrets list --project-ref "${EXPECTED_REF}" | awk -F'|' 'NR>2 {gsub(/ /, "", $1); print $1}')
+          missing=0
+          for s in DIDIT_API_KEY DIDIT_WORKFLOW_ID DIDIT_WEBHOOK_SECRET; do
+            if echo "$names" | grep -qx "$s"; then echo "$s: está"; else echo "::error::Falta el secreto $s en Supabase > Edge Functions > Secrets."; missing=1; fi
+          done
+          exit $missing
+
+      - name: Desplegar en desarrollo
+        run: |
+          supabase functions deploy identity-check --project-ref "${EXPECTED_REF}" --use-api
+          supabase functions deploy didit-webhook --no-verify-jwt --project-ref "${EXPECTED_REF}" --use-api
+
+      - name: Contraseña temporal de la cuenta de prueba
+        run: |
+          pw="$(openssl rand -hex 24)"
+          echo "::add-mask::${pw}"
+          echo "E2E_PASSWORD=${pw}" >> "$GITHUB_ENV"
+
+      - name: Borrar restos de una corrida anterior
+        run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -f supabase/e2e/didit/cleanup.sql
+
+      - name: Crear la cuenta temporal
+        run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -v pw="${E2E_PASSWORD}" -f supabase/e2e/didit/setup.sql
+
+      - name: Prueba del sandbox contra las funciones desplegadas
+        env:
+          E2E_URL: https://yldqopeldibwgbwmdnzy.supabase.co
+          E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node --test --test-reporter=spec supabase/e2e/didit/sandbox.test.mjs
+
+      - name: Lo que quedó en la base es de prueba y sin costo
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          select 'Verificación: sandbox=' || sandbox || ' estado=' || status || ' sesión=' || (session_id is not null)
+            from public.identity_checks where professional_id = 'd1d17000-0000-4000-8000-0000000000b1';
+          select 'Uso de Didit: ' || count(*) || ' (sandbox ' || count(*) filter (where sandbox) || '), USD ' || coalesce(sum(cost_usd), 0)
+            from public.cost_usage where vendor_key like 'didit%' or vendor_key = 'veriff';
+          do $$ begin
+            if (select count(*) from public.identity_checks
+                 where professional_id = 'd1d17000-0000-4000-8000-0000000000b1') <> 1 then
+              raise exception 'HMY: se esperaba una sola verificación de prueba';
+            end if;
+            if exists (select 1 from public.identity_checks
+                        where professional_id = 'd1d17000-0000-4000-8000-0000000000b1' and not sandbox) then
+              raise exception 'HMY: una verificación no quedó como sandbox';
+            end if;
+            if exists (select 1 from public.cost_usage where (vendor_key like 'didit%' or vendor_key = 'veriff')
+                        and (not sandbox or cost_usd > 0)) then
+              raise exception 'HMY: hubo uso real o con costo de verificación de identidad';
+            end if;
+          end $$;
+          SQL
+
+      - name: Borrar la cuenta temporal
+        if: always()
+        run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -f supabase/e2e/didit/cleanup.sql

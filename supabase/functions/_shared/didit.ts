@@ -2,8 +2,9 @@
 // sesión) y didit-webhook (Didit avisa el resultado). Ver supabase/functions/README.md.
 //
 // Reglas:
-// - Por defecto, sandbox (DIDIT_SANDBOX distinto de "false"): resultados simulados,
-//   sin costo. El uso real lo frena la base (hmy_cost_gate) hasta que el dueño lo autorice.
+// - Solo sandbox: resultados simulados, sin costo. El modo real está cerrado en el
+//   código (LIVE_ENABLED); abrirlo pide un cambio revisado y la autorización del
+//   dueño. Además, la base (hmy_cost_gate) frena todo uso real que no autorizó.
 // - El resultado de Didit es una señal para el equipo: no aprueba a nadie.
 // - A la base llegan solo estado, puntajes y códigos de aviso; nunca nombres,
 //   fechas de nacimiento, números de documento ni imágenes.
@@ -153,7 +154,13 @@ async function currentUser(env: Env, fetchFn: Fetch, authHeader: string | null):
   }
 }
 
-const isSandbox = (env: Env) => env.DIDIT_SANDBOX !== 'false';
+// El modo real está cerrado: ningún secreto lo abre. Para usar Didit en real hay
+// que cambiar esta línea en un PR aprobado por el dueño.
+export const LIVE_ENABLED = false;
+
+const isSandbox = (env: Env) => !LIVE_ENABLED || env.DIDIT_SANDBOX !== 'false';
+/** Pedir modo real (DIDIT_SANDBOX=false) con el modo real cerrado: no se llama a Didit. */
+const liveRequestedButLocked = (env: Env) => !LIVE_ENABLED && env.DIDIT_SANDBOX === 'false';
 
 async function deleteSession(env: Env, fetchFn: Fetch, sessionId: string): Promise<boolean> {
   try {
@@ -198,6 +205,7 @@ async function applyDecision(
 export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promise<Result> {
   const user = await currentUser(env, fetchFn, req.headers.get('authorization'));
   if (!user) return error(401, 'HMY_AUTH_REQUIRED');
+  if (liveRequestedButLocked(env)) return error(503, 'HMY_IDENTITY_LIVE_LOCKED');
   const sandbox = isSandbox(env);
   const gate = await rpc(env, fetchFn, 'hmy_identity_begin', { p_user: user, p_sandbox: sandbox });
   if (!gate.ok) return error(500, 'HMY_IDENTITY_UNAVAILABLE');
@@ -253,6 +261,7 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
 export async function handleWebhook(req: Request, env: Env, fetchFn: Fetch): Promise<Result> {
   const secret = env.DIDIT_WEBHOOK_SECRET;
   if (!secret) return error(503, 'HMY_IDENTITY_OFF');
+  if (liveRequestedButLocked(env)) return error(503, 'HMY_IDENTITY_LIVE_LOCKED');
   const raw = await req.text();
   if (!(await verifyDiditSignature(secret, req.headers, raw))) return error(401, 'HMY_BAD_SIGNATURE');
   const p = JSON.parse(raw) as {
@@ -280,6 +289,7 @@ export async function handleSync(req: Request, env: Env, fetchFn: Fetch): Promis
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!key || !timingSafeEqual(req.headers.get('authorization') ?? '', `Bearer ${key}`)) return error(401, 'HMY_FORBIDDEN');
   if (!env.DIDIT_API_KEY) return error(503, 'HMY_IDENTITY_OFF');
+  if (liveRequestedButLocked(env)) return error(503, 'HMY_IDENTITY_LIVE_LOCKED');
   const pending = await rpc(env, fetchFn, 'hmy_identity_pending', { p_limit: 20 });
   if (!pending.ok) return error(500, 'HMY_IDENTITY_UNAVAILABLE');
   let checked = 0;

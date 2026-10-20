@@ -56,16 +56,23 @@ cosa. Ningún carnet real, nada pagado. La lógica está en `_shared/didit.ts`.
 - Un aviso del sandbox nunca puede marcar una verificación real (la base lo
   rechaza), y una verificación del sandbox nunca cuenta para aprobar.
 - El resultado de Didit no aprueba a nadie: aprueba una persona del equipo.
+- **El modo real está cerrado en el código** (`LIVE_ENABLED = false` en
+  `_shared/didit.ts`). Ningún secreto lo abre: con `DIDIT_SANDBOX=false` las
+  funciones responden `HMY_IDENTITY_LIVE_LOCKED` sin llamar a Didit. Abrirlo pide
+  un PR aprobado por el dueño. Además, la base frena todo uso real no autorizado.
 
 ### Activar el sandbox (cuando el dueño lo apruebe)
 
 1. El dueño crea una cuenta en Didit y una aplicación en modo **sandbox**, con un
    flujo (workflow) de carnet + prueba de vida + comparación facial. No hace
    falta tarjeta.
-2. Desplegar: `supabase functions deploy identity-check --project-ref yldqopeldibwgbwmdnzy`
-   y `supabase functions deploy didit-webhook --no-verify-jwt --project-ref yldqopeldibwgbwmdnzy`.
+2. Desplegar y probar: subir la rama `supabase/didit-dev` (workflow
+   `didit-dev.yml`). Revisa el proyecto, el cierre del modo real y los secretos,
+   despliega las dos funciones solo en desarrollo y prueba el sandbox con una
+   cuenta temporal. Necesita los secretos de GitHub `SUPABASE_DB_URL`,
+   `SUPABASE_ANON_KEY` y `SUPABASE_ACCESS_TOKEN`.
 3. Secretos (Dashboard → Edge Functions → Secrets), nunca en el repositorio:
-   `DIDIT_API_KEY`, `DIDIT_WORKFLOW_ID`, `DIDIT_WEBHOOK_SECRET`, `DIDIT_SANDBOX=true`
+   `DIDIT_API_KEY`, `DIDIT_WORKFLOW_ID`, `DIDIT_WEBHOOK_SECRET`
    (opcional `DIDIT_CALLBACK_URL`).
 4. En la consola de Didit, webhook → URL de `didit-webhook`.
 5. Probar con los escenarios del sandbox (`sandbox_scenario`, `/simulate/`): aprobado,

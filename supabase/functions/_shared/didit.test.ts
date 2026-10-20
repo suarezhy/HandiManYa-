@@ -7,6 +7,7 @@ import {
   handleSync,
   handleWebhook,
   hmacHex,
+  LIVE_ENABLED,
   reduceDecision,
   verifyDiditSignature,
   type Env,
@@ -135,12 +136,31 @@ test('pedir la verificación: sandbox por defecto, solo el id interno va a Didit
 });
 
 test('pedir la verificación: si la base frena el gasto, no se llama a Didit', async () => {
-  const { fn, calls } = fakeFetch({ hmy_identity_begin: { allowed: false, reason: 'free_tier_exhausted' } });
-  const r = await handleStart(start(), { ...base, DIDIT_SANDBOX: 'false' }, fn);
+  const { fn, calls } = fakeFetch({ hmy_identity_begin: { allowed: false, reason: 'sandbox_limit' } });
+  const r = await handleStart(start(), base, fn);
   assert.equal(r.status, 503);
   assert.deepEqual(r.body, { error: 'HMY_IDENTITY_PAUSED' });
   assert.equal(calls.some((c) => c.url.includes('didit.me')), false);
-  assert.equal(JSON.parse(calls.find((c) => c.url.endsWith('/rpc/hmy_identity_begin'))!.body).p_sandbox, false);
+});
+
+test('modo real cerrado: DIDIT_SANDBOX=false no llama a Didit ni a la base', async () => {
+  assert.equal(LIVE_ENABLED, false, 'el modo real solo se abre con un PR aprobado por el dueño');
+  const live = { ...base, DIDIT_SANDBOX: 'false' };
+  const { fn, calls } = fakeFetch({ hmy_identity_begin: { allowed: true, resume: false, id: 9 }, hmy_identity_pending: [] });
+  assert.deepEqual((await handleStart(start(), live, fn)).body, { error: 'HMY_IDENTITY_LIVE_LOCKED' });
+  assert.deepEqual((await handleWebhook(await webhook(event()), live, fn)).body, { error: 'HMY_IDENTITY_LIVE_LOCKED' });
+  const sync = new Request('https://x/sync', { method: 'POST', headers: { Authorization: 'Bearer srv' } });
+  assert.deepEqual((await handleSync(sync, live, fn)).body, { error: 'HMY_IDENTITY_LIVE_LOCKED' });
+  assert.equal(calls.some((c) => c.url.includes('didit.me') || c.url.includes('/rpc/')), false);
+});
+
+test('solo se habla con Didit (verification.didit.me) y con la propia base', async () => {
+  const { fn, calls } = fakeFetch({ hmy_identity_begin: { allowed: true, resume: false, id: 9 }, hmy_identity_decision: { updated: true } });
+  await handleStart(start(), base, fn);
+  await handleWebhook(await webhook(event()), base, fn);
+  for (const c of calls) {
+    assert.match(c.url, /^https:\/\/(verification\.didit\.me|x\.supabase\.co)\//, c.url);
+  }
 });
 
 test('pedir la verificación: una sesión abierta se retoma sin crear otra', async () => {
