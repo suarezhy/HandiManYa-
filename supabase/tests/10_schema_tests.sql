@@ -48,6 +48,20 @@ begin
   raise notice 'ok - %', p_msg;
 end $$;
 
+-- Llegada verificada (0014): el profesional marca "He llegado" y el cliente
+-- escribe el código. Deja la sesión como el profesional.
+create function test.arrive(p_booking uuid, p_pro uuid, p_customer uuid) returns void language plpgsql as $$
+declare v_pin text;
+begin
+  perform test.login(p_pro);
+  v_pin := public.mark_arrived(p_booking) ->> 'pin';
+  perform test.login(p_customer);
+  if not (public.verify_arrival_pin(p_booking, v_pin) ->> 'ok')::boolean then
+    raise exception 'FALLÓ: no se verificó la llegada de %', p_booking;
+  end if;
+  perform test.login(p_pro);
+end $$;
+
 grant usage on schema test to anon, authenticated;
 grant execute on all functions in schema test to anon, authenticated;
 
@@ -212,6 +226,7 @@ select test.logout();
 
 select test.login('00000000-0000-0000-0000-0000000000b1');
 select public.update_job_progress((select v from t_ids where k = 'b1'), 'on_the_way');
+select test.arrive((select v from t_ids where k = 'b1')::uuid, '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1');
 select public.update_job_progress((select v from t_ids where k = 'b1'), 'in_progress');
 select public.update_job_progress((select v from t_ids where k = 'b1'), 'work_finished', 250);
 select test.logout();
@@ -264,6 +279,8 @@ select test.login('00000000-0000-0000-0000-0000000000c1');
 select test.eq(public.respond_quote((select v from t_ids where k = 'b3'), true)::text, 'confirmed', 'el cliente acepta la cotización');
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000b1');
+select public.update_job_progress((select v from t_ids where k = 'b3'), 'on_the_way');
+select test.arrive((select v from t_ids where k = 'b3')::uuid, '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1');
 select public.update_job_progress((select v from t_ids where k = 'b3'), 'in_progress');
 select public.update_job_progress((select v from t_ids where k = 'b3'), 'work_finished');
 select test.logout();

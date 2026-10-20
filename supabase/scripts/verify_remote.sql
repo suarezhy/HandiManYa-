@@ -8,7 +8,7 @@ select set_config('hmy.versions', :'versions', false);
 
 do $$
 declare
-  v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','booking_addresses','booking_events','booking_offers','booking_photos',
+  v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','arrival_pin_attempts','booking_addresses','booking_arrivals','booking_events','booking_offers','booking_photos',
     'booking_transitions','bookings','cities','commission_rules','daily_reports','consent_records','conversation_reads','conversations',
     'departments','disputes','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
@@ -23,7 +23,8 @@ declare
     'hmy_problem_labels','hmy_pro_cleared','_create_booking_base','_create_ya_request_base','_booking_detail_base',
     'hmy_require_confirmation','set_biometric_enabled',
     'run_marketplace_monitors','generate_daily_report','run_daily_report_if_due','admin_ai_overview','admin_decide_ai_item','admin_set_setting',
-    'complete_signup','hmy_sync_auth_phone','hmy_otp_gate','hmy_otp_result'];
+    'complete_signup','hmy_sync_auth_phone','hmy_otp_gate','hmy_otp_result',
+    'mark_arrived','verify_arrival_pin','admin_verify_arrival','booking_arrival','hmy_arrival_gate','hmy_arrival_pin'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -116,7 +117,9 @@ begin
     (not has_column_privilege('authenticated', 'public.profiles', 'phone', 'UPDATE'), 'celular: solo Supabase Auth cambia el número (después del código)'),
     (exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'profiles_phone_unique'), 'celular: un número, una cuenta'),
     (exists (select 1 from pg_trigger where tgname = 'on_auth_user_phone' and tgrelid = 'auth.users'::regclass), 'celular: el número verificado pasa al perfil'),
-    (not has_function_privilege('authenticated', 'public.hmy_otp_gate(text, text, uuid)', 'EXECUTE') and not has_function_privilege('anon', 'public.hmy_otp_gate(text, text, uuid)', 'EXECUTE'), 'códigos: los límites de envío solo los usa el servicio de envío')
+    (not has_function_privilege('authenticated', 'public.hmy_otp_gate(text, text, uuid)', 'EXECUTE') and not has_function_privilege('anon', 'public.hmy_otp_gate(text, text, uuid)', 'EXECUTE'), 'códigos: los límites de envío solo los usa el servicio de envío'),
+    (exists (select 1 from pg_trigger where tgname = 'bookings_arrival_gate' and tgrelid = 'public.bookings'::regclass), 'llegada: sin llegada verificada no se empieza el trabajo'),
+    (not has_table_privilege('authenticated', 'public.booking_arrivals', 'SELECT') and not has_table_privilege('anon', 'public.booking_arrivals', 'SELECT'), 'llegada: nadie lee los códigos guardados')
   ) as v(ok, what) loop
     raise notice '%  %', case when r.ok then 'ok -' else 'FALLA -' end, r.what;
     if not r.ok then v_failed := v_failed + 1; end if;
