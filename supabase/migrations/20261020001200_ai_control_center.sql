@@ -131,7 +131,7 @@ insert into public.ai_agents (key, number, name, purpose, phase, status, needs, 
   ('moderation', 21, 'Moderación de contenido', 'Revisa fotos, reseñas y mensajes reportados (Apple lo exige a apps con contenido de usuarios).', 'A', 'rules', null, true),
   ('privacy', 22, 'Privacidad y datos', 'Pedidos de eliminación de cuenta, retención de documentos y que la IA no reciba datos sensibles de más.', 'A', 'rules', null, true),
   ('invoicing', 23, 'Facturación e impuestos', 'Prepara la facturación de comisiones según Impuestos Nacionales. No emite nada sin aprobación.', 'B', 'planned', 'Revisión con un contador y acceso al sistema de facturación.', true),
-  ('sos', 24, 'Seguridad en el servicio (SOS)', 'Botón de emergencia durante un trabajo y alertas inmediatas al equipo.', 'A', 'planned', 'Notificaciones push.', true),
+  ('service_safety', 24, 'Seguridad en el servicio', 'Revisa quejas y reportes de seguridad durante un trabajo, el viaje compartido con un contacto de confianza y la llegada verificada; pasa los casos graves al equipo de inmediato.', 'A', 'planned', 'Notificaciones push.', true),
   ('notifications', 25, 'Mensajería y avisos', 'Un solo canal para todos los avisos, con horarios, límites y sin spam.', 'A', 'needs_setup', 'iPhone: Apple (APNs). Android: WhatsApp o SMS enviados desde Supabase (servicio pagado; se activa con aprobación del dueño).', true),
   ('ai_auditor', 26, 'Auditor de IA', 'Vigila a los demás agentes: costos, fallas, intentos de manipulación y que lo "completado" sea real.', 'A', 'rules', null, true);
 

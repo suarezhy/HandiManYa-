@@ -235,10 +235,12 @@ const demoAgents = <AiAgent>[
     addedByClaude: true,
   ),
   AiAgent(
-    key: 'sos',
+    key: 'service_safety',
     number: 24,
-    name: 'Seguridad en el servicio (SOS)',
-    purpose: 'Botón de emergencia durante un trabajo y alertas inmediatas al equipo.',
+    name: 'Seguridad en el servicio',
+    purpose:
+        'Revisa quejas y reportes de seguridad durante un trabajo, el viaje compartido con un contacto de confianza '
+        'y la llegada verificada; pasa los casos graves al equipo de inmediato.',
     phase: 'A',
     status: AgentStatus.planned,
     needs: 'Notificaciones push.',
