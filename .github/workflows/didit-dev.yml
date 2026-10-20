@@ -11,8 +11,10 @@ name: Didit sandbox (handimanya-flutter-dev)
 # carnet real), revisa que nada se cobró y borra la cuenta, aunque falle.
 #
 # Solo se activa al subir la rama supabase/didit-dev.
-# Secretos de GitHub: SUPABASE_DB_URL, SUPABASE_ANON_KEY y SUPABASE_ACCESS_TOKEN
-# (token personal de Supabase para desplegar funciones).
+# Secretos de GitHub: SUPABASE_DB_URL y SUPABASE_ANON_KEY. Sin
+# SUPABASE_ACCESS_TOKEN (recomendado: ese token alcanza todos los proyectos de la
+# cuenta), no despliega: prueba las funciones que el dueño desplegó desde el
+# panel de Supabase con supabase/scripts/bundle_didit.sh.
 
 on:
   push:
@@ -44,7 +46,7 @@ jobs:
         run: |
           missing=0
           [ -n "${ANON_KEY}" ] || { echo "::error::Falta el secreto SUPABASE_ANON_KEY (clave anon o publishable de handimanya-flutter-dev)."; missing=1; }
-          [ -n "${SUPABASE_ACCESS_TOKEN}" ] || { echo "::error::Falta el secreto SUPABASE_ACCESS_TOKEN (Supabase > Account > Access Tokens)."; missing=1; }
+          [ -n "${SUPABASE_ACCESS_TOKEN}" ] || echo "Sin SUPABASE_ACCESS_TOKEN: no se despliega; se prueban las funciones ya desplegadas."
           exit $missing
 
       - uses: actions/setup-node@v4
@@ -85,10 +87,12 @@ jobs:
           SQL
 
       - uses: supabase/setup-cli@v1
+        if: env.SUPABASE_ACCESS_TOKEN != ''
         with:
           version: latest
 
       - name: Secretos de Didit en Supabase (solo nombres)
+        if: env.SUPABASE_ACCESS_TOKEN != ''
         run: |
           names=$(supabase secrets list --project-ref "${EXPECTED_REF}" | awk -F'|' 'NR>2 {gsub(/ /, "", $1); print $1}')
           missing=0
@@ -98,6 +102,7 @@ jobs:
           exit $missing
 
       - name: Desplegar en desarrollo
+        if: env.SUPABASE_ACCESS_TOKEN != ''
         run: |
           supabase functions deploy identity-check --project-ref "${EXPECTED_REF}" --use-api
           supabase functions deploy didit-webhook --no-verify-jwt --project-ref "${EXPECTED_REF}" --use-api

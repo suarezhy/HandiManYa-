@@ -69,8 +69,12 @@ cosa. Ningún carnet real, nada pagado. La lógica está en `_shared/didit.ts`.
 2. Desplegar y probar: subir la rama `supabase/didit-dev` (workflow
    `didit-dev.yml`). Revisa el proyecto, el cierre del modo real y los secretos,
    despliega las dos funciones solo en desarrollo y prueba el sandbox con una
-   cuenta temporal. Necesita los secretos de GitHub `SUPABASE_DB_URL`,
-   `SUPABASE_ANON_KEY` y `SUPABASE_ACCESS_TOKEN`.
+   cuenta temporal. Necesita los secretos de GitHub `SUPABASE_DB_URL` y
+   `SUPABASE_ANON_KEY`. Recomendado: **no** dar `SUPABASE_ACCESS_TOKEN` (alcanza
+   todos los proyectos de la cuenta, también los de FlutterFlow). Sin él, el
+   dueño despliega desde el panel (Edge Functions > Deploy a new function > Via
+   Editor) los archivos que arma `supabase/scripts/bundle_didit.sh`, con
+   "Verify JWT" apagado solo en `didit-webhook`, y el workflow prueba lo desplegado.
 3. Secretos (Dashboard → Edge Functions → Secrets), nunca en el repositorio:
    `DIDIT_API_KEY`, `DIDIT_WORKFLOW_ID`, `DIDIT_WEBHOOK_SECRET`
    (opcional `DIDIT_CALLBACK_URL`).
