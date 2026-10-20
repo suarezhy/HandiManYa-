@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-      ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       EXPECTED_REF: yldqopeldibwgbwmdnzy
     steps:
@@ -130,13 +130,13 @@ jobs:
       - name: Prueba del sandbox contra las funciones desplegadas
         env:
           E2E_URL: https://yldqopeldibwgbwmdnzy.supabase.co
-          E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
         run: node --test --test-reporter=spec supabase/e2e/didit/sandbox.test.mjs
 
       - name: Resultados simulados en el sandbox (aviso firmado, base, borrado en Didit)
         env:
           E2E_URL: https://yldqopeldibwgbwmdnzy.supabase.co
-          E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || vars.SUPABASE_ANON_KEY }}
         run: node --test --test-reporter=spec supabase/e2e/didit/sandbox_flow.test.mjs
 
       - name: Lo que quedó en la base es de prueba y sin costo
