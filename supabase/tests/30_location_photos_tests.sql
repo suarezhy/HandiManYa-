@@ -76,8 +76,8 @@ select public.claim_ya_request((select v from t_loc));
 select test.eq((public.booking_detail((select v from t_loc)) -> 'address' ->> 'latitude')::numeric, -17.776123::numeric, 'privacidad: quien aceptó recibe el punto exacto');
 
 -- Comprobante de recarga en la carpeta propia
-select test.expect_error(format('select public.request_topup(50, %s, %L, %L)', (select min(id) from public.topup_methods), 'ABC', '00000000-0000-0000-0000-0000000000e2/r.jpg'), 'HMY_INVALID_PATH');
-select test.eq((select public.request_topup(50, (select min(id) from public.topup_methods), 'ABC', '00000000-0000-0000-0000-0000000000e1/r.jpg')) > 0, true, 'recarga: acepta comprobante en su propia carpeta');
+select test.expect_error(format('select public.request_topup(50, %s, %L, %L, ''password'', gen_random_uuid())', (select min(id) from public.topup_methods), 'ABC', '00000000-0000-0000-0000-0000000000e2/r.jpg'), 'HMY_INVALID_PATH');
+select test.eq((select public.request_topup(50, (select min(id) from public.topup_methods), 'ABC', '00000000-0000-0000-0000-0000000000e1/r.jpg', 'password', gen_random_uuid())) > 0, true, 'recarga: acepta comprobante en su propia carpeta');
 select test.logout();
 
 \o

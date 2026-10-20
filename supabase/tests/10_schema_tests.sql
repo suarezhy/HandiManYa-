@@ -10,7 +10,10 @@ create schema if not exists test;
 create function test.login(p_user uuid) returns void language plpgsql as $$
 begin
   perform set_config('request.jwt.claims',
-    json_build_object('sub', p_user, 'role', case when p_user is null then 'anon' else 'authenticated' end)::text, false);
+    json_build_object('sub', p_user, 'role', case when p_user is null then 'anon' else 'authenticated' end,
+                      -- Como Supabase: método y hora del inicio de sesión.
+                      'amr', json_build_array(json_build_object('method', 'password',
+                                                                'timestamp', extract(epoch from now())::bigint)))::text, false);
   if p_user is null then
     execute 'set role anon';
   else
@@ -159,8 +162,8 @@ do $$ begin
   perform test.eq((select count(*)::int from public.notifications where kind = 'booking_new'), 1, 'el profesional recibe notificación');
 end $$;
 select test.expect_error(format('select public.accept_booking(%L)', (select v from t_ids where k = 'b1')), 'HMY_INSUFFICIENT_BALANCE');
-select test.expect_error($$select public.request_topup(100, 999)$$, 'HMY_INVALID_METHOD');
-create temp table t_topup as select public.request_topup(100, (select id from public.topup_methods limit 1), 'REF-1') as id;
+select test.expect_error($$select public.request_topup(100, 999, null, null, 'password', gen_random_uuid())$$, 'HMY_INVALID_METHOD');
+create temp table t_topup as select public.request_topup(100, (select id from public.topup_methods limit 1), 'REF-1', null, 'password', gen_random_uuid()) as id;
 select test.eq((select available from public.wallets), 0.00::numeric, 'pedir recarga no acredita saldo');
 select test.logout();
 

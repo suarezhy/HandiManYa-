@@ -84,6 +84,12 @@ class AppError implements Exception {
     'HMY_OTHER_REQUIRED': 'Cuéntanos qué necesitas en "Otro".',
     'HMY_TOO_MANY_PROBLEMS': 'Elige hasta 8 opciones.',
     'HMY_YA_NOT_ALLOWED': 'Este servicio no se pide con ¡Ya!. Elige a la persona y programa el día.',
+    'HMY_NOT_AUTHENTICATED': 'Ingresa a tu cuenta para continuar.',
+    'HMY_CONFIRMATION_REQUIRED': 'Confirma que eres tú para continuar.',
+    'HMY_CONFIRMATION_EXPIRED': 'La confirmación venció. Vuelve a confirmar que eres tú.',
+    'HMY_CONFIRMATION_USED': 'Cada operación necesita una confirmación nueva. Vuelve a confirmar que eres tú.',
+    'HMY_BIOMETRIC_DISABLED':
+        'La huella o el rostro no están activados. Confirma con tu contraseña o actívalos en Perfil → Seguridad.',
     'HMY_PRO_NOT_CLEARED': 'Este profesional todavía no está habilitado para este servicio. Elige a otra persona.',
   };
 }

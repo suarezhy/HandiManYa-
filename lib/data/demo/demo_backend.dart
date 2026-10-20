@@ -74,6 +74,9 @@ class DemoBackend
   final _inactiveCities = <int>{};
   final _promos = <({Promotion promo, bool active})>[];
   final _topupProofs = <int, Uint8List>{};
+  final _topupKeys = <String, int>{};
+  final _confirmedAt = <String, DateTime>{};
+  final _biometric = <String>{};
   final _consents = <String>{};
 
   static const _reserveAmount = 5.0;
@@ -1474,16 +1477,23 @@ class DemoBackend
   Future<List<TopupRequest>> topups() async => List.of(_topups[_me.id] ?? const []);
 
   @override
-  Future<void> requestTopup({
+  Future<int> requestTopup({
     required double amount,
     required int methodId,
     String? reference,
     PhotoUpload? proof,
+    required String authMethod,
+    required String clientKey,
   }) async {
     await _latency();
+    final me = _me;
+    // Mismas reglas que request_topup en la base.
+    final previous = _topupKeys['${me.id}:$clientKey'];
+    if (previous != null) return previous;
     if (amount <= 0 || amount > 10000) throw AppError.from('HMY_INVALID_AMOUNT');
-    final list = _topups.putIfAbsent(_me.id, () => []);
+    final list = _topups.putIfAbsent(me.id, () => []);
     if (list.where((t) => t.status == TopupStatus.pending).length >= 3) throw AppError.from('HMY_TOO_MANY_PENDING');
+    _requireConfirmation(authMethod);
     list.insert(
       0,
       TopupRequest(
@@ -1494,9 +1504,15 @@ class DemoBackend
         createdAt: DateTime.now(),
       ),
     );
-    final proId = _me.id;
+    final proId = me.id;
     final id = list.first.id;
+    _topupKeys['${me.id}:$clientKey'] = id;
     if (proof != null) _topupProofs[id] = proof.bytes;
+    _log('topup.request', 'topup_requests', '$id', {
+      'amount': amount,
+      'method_id': methodId,
+      'auth_method': authMethod,
+    });
     // Demostración: la recarga se acredita sola a los pocos segundos.
     _later(const Duration(seconds: 6), () {
       final i = list.indexWhere((t) => t.id == id);
@@ -1512,6 +1528,50 @@ class DemoBackend
       _post(proId, LedgerType.topup, amount, 0, 'Recarga acreditada');
       _notify(proId, 'topup', 'Recarga acreditada', 'Sumamos ${amount.toStringAsFixed(2)} Bs a tu billetera.');
     });
+    return id;
+  }
+
+  @override
+  Future<void> confirmPassword(String password) async {
+    await _latency();
+    final me = _me;
+    if (me.password != password) {
+      throw const AppError('Correo o contraseña incorrectos.', code: 'invalid_credentials');
+    }
+    _confirmedAt[me.id] = DateTime.now();
+  }
+
+  @override
+  Future<bool> biometricEnabled() async => _biometric.contains(_me.id);
+
+  @override
+  Future<void> setBiometricEnabled(bool enabled) async {
+    await _latency(100);
+    final me = _me;
+    if (enabled) {
+      _requireConfirmation('password');
+      _biometric.add(me.id);
+    } else {
+      _biometric.remove(me.id);
+    }
+    _log(enabled ? 'security.biometric_on' : 'security.biometric_off', 'security_settings', me.id);
+  }
+
+  /// Como hmy_require_confirmation: contraseña de hace menos de 5 minutos y
+  /// de un solo uso, o huella/rostro activados en la cuenta.
+  void _requireConfirmation(String method) {
+    final me = _me;
+    switch (method) {
+      case 'password':
+        final at = _confirmedAt.remove(me.id);
+        if (at == null || DateTime.now().difference(at) > const Duration(minutes: 5)) {
+          throw AppError.from('HMY_CONFIRMATION_EXPIRED');
+        }
+      case 'biometric':
+        if (!_biometric.contains(me.id)) throw AppError.from('HMY_BIOMETRIC_DISABLED');
+      default:
+        throw AppError.from('HMY_CONFIRMATION_REQUIRED');
+    }
   }
 
   @override

@@ -451,7 +451,10 @@ class AuditEntry {
   /// Descripción en español de la acción.
   String get label {
     const known = {
+      'topup.request': 'Pidió una recarga (con confirmación)',
       'topup.approve': 'Aprobó una recarga',
+      'security.biometric_on': 'Activó la confirmación con huella o rostro',
+      'security.biometric_off': 'Desactivó la confirmación con huella o rostro',
       'topup.reject': 'Rechazó una recarga',
       'wallet.adjust': 'Ajustó un saldo',
       'dispute.resolve': 'Resolvió una disputa',

@@ -107,6 +107,12 @@ class ProfilePage extends ConsumerWidget {
                   title: 'Notificaciones',
                   onTap: () => context.push(Routes.notifications),
                 ),
+                _Tile(
+                  icon: Icons.shield_outlined,
+                  title: 'Seguridad',
+                  subtitle: 'Huella, rostro y confirmación de recargas',
+                  onTap: () => context.push(Routes.security),
+                ),
                 const SectionHeader(title: 'Ayuda y legal'),
                 _Tile(
                   icon: Icons.support_agent_outlined,

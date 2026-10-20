@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/services/device_auth.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
@@ -10,6 +11,7 @@ import '../../data/models/booking.dart';
 import '../../data/models/wallet.dart';
 import '../../data/providers.dart';
 import '../common/photo_picker.dart';
+import '../security/confirm_identity.dart';
 
 /// Billetera prepagada del profesional: saldo, recargas y movimientos.
 class WalletPage extends ConsumerWidget {
@@ -121,9 +123,11 @@ class _BalanceCard extends StatelessWidget {
           children: [
             const Icon(Icons.lock_clock_outlined, color: HyColors.primary, size: 20),
             const SizedBox(width: 6),
-            Text(
-              'Reservado en trabajos: ${Fmt.bs(wallet.reserved)}',
-              style: const TextStyle(color: Colors.white, fontSize: 15),
+            Flexible(
+              child: Text(
+                'Reservado en trabajos: ${Fmt.bs(wallet.reserved)}',
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+              ),
             ),
           ],
         ),
@@ -227,13 +231,35 @@ class _TopupTile extends StatelessWidget {
   }
 }
 
-Future<void> _showTopupSheet(BuildContext context, WidgetRef ref) {
-  return showModalBottomSheet<void>(
+Future<void> _showTopupSheet(BuildContext context, WidgetRef ref) async {
+  final receipt = await showModalBottomSheet<TopupReceipt>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (_) => const _TopupSheet(),
   );
+  if (receipt == null || !context.mounted) return;
+  await Navigator.of(context)
+      .push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => TopupReceiptPage(receipt: receipt)));
+}
+
+/// Lo que se muestra después de enviar una recarga.
+class TopupReceipt {
+  const TopupReceipt({
+    required this.id,
+    required this.amount,
+    required this.methodName,
+    this.reference,
+    required this.confirmedWith,
+    required this.createdAt,
+  });
+
+  final int id;
+  final double amount;
+  final String methodName;
+  final String? reference;
+  final String confirmedWith;
+  final DateTime createdAt;
 }
 
 class _TopupSheet extends ConsumerStatefulWidget {
@@ -250,6 +276,12 @@ class _TopupSheetState extends ConsumerState<_TopupSheet> {
   int? _methodId;
   PhotoUpload? _proof;
   bool _sending = false;
+  bool _confirming = false;
+
+  // Mismo intento = misma clave: si la respuesta se pierde y se reintenta, el
+  // servidor devuelve la misma solicitud en vez de crear otra.
+  String? _clientKey;
+  String? _clientKeyFor;
 
   @override
   void dispose() {
@@ -259,28 +291,65 @@ class _TopupSheetState extends ConsumerState<_TopupSheet> {
   }
 
   Future<void> _send() async {
+    if (_sending || _confirming) return; // un toque a la vez
     if (!_formKey.currentState!.validate()) return;
+    final methods = ref.read(topupMethodsProvider).value ?? const <TopupMethod>[];
+    final method = methods.where((m) => m.id == _methodId).firstOrNull;
+    if (method == null) return;
+    final amount = double.parse(_amount.text.replaceAll(',', '.'));
+    final reference = _reference.text.trim().isEmpty ? null : _reference.text.trim();
+    _confirming = true;
+    final IdentityConfirmation? confirmation;
+    try {
+      confirmation = await confirmIdentity(
+        context,
+        operation: 'Recarga de saldo',
+        amount: amount,
+        details: [('Método de pago', method.name), if (reference != null) ('Comprobante', reference)],
+      );
+    } finally {
+      _confirming = false;
+    }
+    if (confirmation == null || !mounted) return; // cancelada o fallida: no se envía nada
     setState(() => _sending = true);
-    final ok = await runGuarded(
-      context,
-      () => ref
+    try {
+      final attempt = '$amount|${method.id}|$reference|${identityHashCode(_proof)}';
+      if (_clientKeyFor != attempt) {
+        _clientKey = newOperationKey();
+        _clientKeyFor = attempt;
+      }
+      final id = await ref
           .read(backendProvider)
           .requestTopup(
-            amount: double.parse(_amount.text.replaceAll(',', '.')),
-            methodId: _methodId!,
-            reference: _reference.text.trim().isEmpty ? null : _reference.text.trim(),
+            amount: amount,
+            methodId: method.id,
+            reference: reference,
             proof: _proof,
-          ),
-      success: 'Recibimos tu recarga. La acreditaremos apenas la verifiquemos.',
-    );
-    if (!mounted) return;
-    setState(() => _sending = false);
-    if (ok) {
+            authMethod: confirmation.serverMethod,
+            clientKey: _clientKey!,
+          );
+      _clientKey = null;
+      _clientKeyFor = null;
       ref
         ..invalidate(topupsProvider)
         ..invalidate(walletProvider)
         ..invalidate(ledgerProvider);
-      Navigator.pop(context);
+      if (!mounted) return;
+      Navigator.pop(
+        context,
+        TopupReceipt(
+          id: id,
+          amount: amount,
+          methodName: method.name,
+          reference: reference,
+          confirmedWith: confirmation.label,
+          createdAt: DateTime.now(),
+        ),
+      );
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
@@ -353,7 +422,19 @@ class _TopupSheetState extends ConsumerState<_TopupSheet> {
               const SizedBox(height: HySpacing.md),
               _ProofPicker(proof: _proof, onChanged: (p) => setState(() => _proof = p)),
               const SizedBox(height: HySpacing.lg),
-              PrimaryButton(label: 'Registrar recarga', loading: _sending, onPressed: _methodId == null ? null : _send),
+              PrimaryButton(
+                key: const Key('topup-continue'),
+                label: 'Continuar',
+                icon: Icons.lock_outline,
+                loading: _sending,
+                onPressed: _methodId == null ? null : _send,
+              ),
+              const SizedBox(height: HySpacing.xs),
+              const Text(
+                'Antes de enviar te pediremos confirmar que eres tú.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: HyColors.textSecondary),
+              ),
             ],
           ),
         ),
@@ -394,6 +475,86 @@ class _ProofPicker extends StatelessWidget {
         ),
         TextButton(onPressed: () => onChanged(null), child: const Text('Quitar')),
       ],
+    );
+  }
+}
+
+/// Comprobante de la solicitud de recarga enviada.
+class TopupReceiptPage extends StatelessWidget {
+  const TopupReceiptPage({super.key, required this.receipt});
+
+  final TopupReceipt receipt;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = receipt;
+    final rows = [
+      ('Monto', Fmt.bs(r.amount)),
+      ('Método de pago', r.methodName),
+      if (r.reference != null) ('Comprobante', r.reference!),
+      ('Solicitud', 'N.º ${r.id}'),
+      ('Fecha', Fmt.dateTime(r.createdAt)),
+      ('Confirmado con', r.confirmedWith),
+      ('Estado', 'Pendiente de verificación'),
+    ];
+    return Scaffold(
+      key: const Key('topup-receipt'),
+      appBar: AppBar(title: const Text('Solicitud enviada'), automaticallyImplyLeading: false),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+        children: [
+          PageBody(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: HySpacing.md),
+                const Icon(Icons.check_circle_rounded, color: HyColors.green, size: 72),
+                const SizedBox(height: HySpacing.sm),
+                Text(
+                  'Recibimos tu solicitud de recarga',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: HySpacing.md),
+                AppCard(
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < rows.length; i++) ...[
+                        if (i > 0) const Divider(height: HySpacing.md),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                rows[i].$1,
+                                style: const TextStyle(color: HyColors.textSecondary, fontSize: 16),
+                              ),
+                            ),
+                            Flexible(
+                              child: Text(
+                                rows[i].$2,
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: HySpacing.md),
+                const InfoBanner(
+                  icon: Icons.hourglass_top_rounded,
+                  text: 'Tu saldo sube cuando el equipo verifique el pago. Te avisaremos con una notificación.',
+                ),
+                const SizedBox(height: HySpacing.lg),
+                PrimaryButton(label: 'Listo', onPressed: () => Navigator.pop(context)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

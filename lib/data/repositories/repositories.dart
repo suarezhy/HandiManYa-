@@ -130,7 +130,29 @@ abstract interface class ProRepository {
   Future<List<LedgerEntry>> ledger();
   Future<List<TopupMethod>> topupMethods();
   Future<List<TopupRequest>> topups();
-  Future<void> requestTopup({required double amount, required int methodId, String? reference, PhotoUpload? proof});
+
+  /// Pide una recarga (queda pendiente hasta que el equipo verifica el pago) y
+  /// devuelve su número. [authMethod] es `password` o `biometric`, confirmado
+  /// recién en este intento. [clientKey] identifica el intento: repetirlo
+  /// (doble toque, reintento) devuelve la misma solicitud.
+  Future<int> requestTopup({
+    required double amount,
+    required int methodId,
+    String? reference,
+    PhotoUpload? proof,
+    required String authMethod,
+    required String clientKey,
+  });
+
+  /// Confirmación de identidad: vuelve a verificar la contraseña de la cuenta
+  /// en el servidor. La contraseña no se guarda.
+  Future<void> confirmPassword(String password);
+
+  /// Si la cuenta permite confirmar operaciones con huella o rostro.
+  Future<bool> biometricEnabled();
+
+  /// Activar exige [confirmPassword] justo antes; desactivar, no.
+  Future<void> setBiometricEnabled(bool enabled);
 
   /// Base y radio de trabajo del profesional (privados).
   Future<ServiceLocation?> serviceLocation();

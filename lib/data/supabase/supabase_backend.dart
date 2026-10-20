@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
 import '../../core/config/env.dart';
+import '../../core/utils/app_error.dart';
 import '../models/admin.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
@@ -567,11 +568,13 @@ class SupabaseBackend
   ).map(TopupRequest.fromMap).toList();
 
   @override
-  Future<void> requestTopup({
+  Future<int> requestTopup({
     required double amount,
     required int methodId,
     String? reference,
     PhotoUpload? proof,
+    required String authMethod,
+    required String clientKey,
   }) async {
     String? proofPath;
     if (proof != null) {
@@ -581,11 +584,36 @@ class SupabaseBackend
           .from('topup-proofs')
           .uploadBinary(proofPath, proof.bytes, fileOptions: FileOptions(contentType: proof.contentType));
     }
-    await _db.rpc(
+    final id = await _db.rpc(
       'request_topup',
-      params: {'p_amount': amount, 'p_method': methodId, 'p_reference': reference, 'p_proof_path': proofPath},
+      params: {
+        'p_amount': amount,
+        'p_method': methodId,
+        'p_reference': reference,
+        'p_proof_path': proofPath,
+        'p_auth_method': authMethod,
+        'p_client_key': clientKey,
+      },
     );
+    return (id as num).toInt();
   }
+
+  @override
+  Future<void> confirmPassword(String password) async {
+    final email = _db.auth.currentUser?.email;
+    if (email == null) throw AppError.from('HMY_AUTH_REQUIRED');
+    // Un inicio de sesión nuevo: el servidor exige que sea reciente (claim amr).
+    await _db.auth.signInWithPassword(email: email, password: password);
+  }
+
+  @override
+  Future<bool> biometricEnabled() async {
+    final m = await _db.from('security_settings').select('biometric_enabled').eq('user_id', _uid).maybeSingle();
+    return m?['biometric_enabled'] as bool? ?? false;
+  }
+
+  @override
+  Future<void> setBiometricEnabled(bool enabled) => _db.rpc('set_biometric_enabled', params: {'p_enabled': enabled});
 
   @override
   Future<ServiceLocation?> serviceLocation() async {

@@ -70,3 +70,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Temas AppCompat del arranque: local_auth los necesita en Android 8 y anteriores.
+    implementation("androidx.appcompat:appcompat:1.7.1")
+}

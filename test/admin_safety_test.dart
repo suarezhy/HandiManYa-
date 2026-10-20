@@ -59,11 +59,14 @@ void main() {
 
   test('comprobante de recarga llega al panel', () async {
     await as(DemoBackend.professionalEmail);
+    await backend.confirmPassword(DemoBackend.demoPassword);
     await backend.requestTopup(
       amount: 40,
       methodId: 1,
       reference: 'ABC',
       proof: PhotoUpload(bytes: Uint8List.fromList([1, 2, 3]), fileName: 'r.jpg'),
+      authMethod: 'password',
+      clientKey: 'k-proof',
     );
     await as(DemoBackend.adminEmail);
     final mine = (await backend.adminTopups()).where((t) => t.professionalId == 'demo-pro');

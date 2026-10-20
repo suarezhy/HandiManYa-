@@ -12,7 +12,7 @@ declare
     'booking_transitions','bookings','cities','commission_rules','consent_records','conversation_reads','conversations',
     'departments','disputes','messages','notifications','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
-    'professional_zones','profiles','promotions','reviews','service_categories','service_problems','service_zones','support_tickets',
+    'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
     'topup_methods','topup_requests','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets'];
   v_buckets jsonb := '{"avatars":true,"portfolio":true,"booking-photos":false,"chat-images":false,"payment-qr":false,"professional-documents":false,"topup-proofs":false}';
   v_functions text[] := array['handle_new_user','create_booking','create_ya_request','claim_ya_request','ya_eligible_professionals',
@@ -20,7 +20,8 @@ declare
     'booking_distance_for_me','wallet_post','request_topup','review_topup','_commission_reserve','_commission_capture',
     '_commission_release','commission_rule_for','admin_save_commission_rule','admin_wallet_adjustment','ledger_is_append_only',
     'send_message','submit_review','report_user','block_user','record_consent','admin_dashboard','my_status','run_booking_housekeeping',
-    'hmy_problem_labels','hmy_pro_cleared','_create_booking_base','_create_ya_request_base','_booking_detail_base'];
+    'hmy_problem_labels','hmy_pro_cleared','_create_booking_base','_create_ya_request_base','_booking_detail_base',
+    'hmy_require_confirmation','set_biometric_enabled'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -33,7 +34,7 @@ begin
   raise notice 'Migraciones registradas: % de %', v_count, cardinality(string_to_array(current_setting('hmy.versions'), ','));
   if v_missing is not null then raise exception 'HMY: faltan migraciones: %', v_missing; end if;
 
-  -- 2. Las 37 tablas.
+  -- 2. Todas las tablas esperadas.
   select string_agg(t, ', ') into v_missing from unnest(v_tables) t
     where not exists (select 1 from pg_tables where schemaname = 'public' and tablename = t);
   select count(*) into v_count from pg_tables where schemaname = 'public';
@@ -100,7 +101,12 @@ begin
     (not exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace and proname in ('_create_booking_base', '_create_ya_request_base', '_booking_detail_base') and has_function_privilege('authenticated', oid, 'EXECUTE')), 'pedidos: las funciones internas no se llaman desde la app'),
     (exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'service_problems' and cmd = 'ALL' and qual like '%is_admin()%'), 'problemas: solo el admin los cambia'),
     (not exists (select 1 from public.service_categories where slug in ('ninera', 'asesoria-legal') and allows_ya), 'sensibles: niñera y asesoría legal no van por ¡Ya!'),
-    ((select count(*) from public.service_categories where slug in ('ninera', 'cerrajeria', 'mecanica', 'asesoria-legal') and required_doc is not null) = 4, 'sensibles: piden documento aceptado')
+    ((select count(*) from public.service_categories where slug in ('ninera', 'cerrajeria', 'mecanica', 'asesoria-legal') and required_doc is not null) = 4, 'sensibles: piden documento aceptado'),
+    (not exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace and proname = 'request_topup' and pronargs < 6), 'recargas: no queda la versión sin confirmación'),
+    (not has_table_privilege('authenticated', 'public.topup_requests', 'INSERT'), 'recargas: solo se piden con confirmación (por función)'),
+    (not has_function_privilege('authenticated', 'public.hmy_require_confirmation(text, text)', 'EXECUTE'), 'confirmación: la regla es interna'),
+    (not has_table_privilege('authenticated', 'public.security_settings', 'UPDATE') and not has_table_privilege('authenticated', 'public.security_settings', 'INSERT'), 'seguridad: huella o rostro se activan solo con contraseña (por función)'),
+    (not has_table_privilege('authenticated', 'public.security_confirmations', 'SELECT') and not has_table_privilege('authenticated', 'public.security_confirmations', 'INSERT'), 'confirmación: el registro de usos es interno')
   ) as v(ok, what) loop
     raise notice '%  %', case when r.ok then 'ok -' else 'FALLA -' end, r.what;
     if not r.ok then v_failed := v_failed + 1; end if;
