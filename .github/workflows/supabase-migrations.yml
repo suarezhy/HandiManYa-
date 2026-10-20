@@ -77,8 +77,13 @@ jobs:
             echo "::error::Para aplicar, escribe APLICAR en el campo de confirmación."
             exit 1
           fi
-          # Al final, en la misma transacción, se anota cada migración en la tabla
-          # que usa la CLI de Supabase (supabase_migrations.schema_migrations).
+          # Solo se aplican las migraciones que todavía no están anotadas en
+          # supabase_migrations.schema_migrations (la tabla que usa la CLI de Supabase).
+          # Todas las pendientes van en UNA transacción y se anotan en ella misma.
+          applied=""
+          if [ "$(psql "${DB_URL}" -X -At -c "select to_regclass('supabase_migrations.schema_migrations') is not null")" = "t" ]; then
+            applied="$(psql "${DB_URL}" -X -At -c "select version from supabase_migrations.schema_migrations")"
+          fi
           record="$(mktemp --suffix .sql)"
           {
             echo "create schema if not exists supabase_migrations;"
@@ -86,11 +91,13 @@ jobs:
           } > "$record"
           args=()
           for f in supabase/migrations/*.sql; do
-            echo "Incluye: $f"
-            args+=(-f "$f")
             base="$(basename "$f" .sql)"
+            if grep -qx "${base%%_*}" <<< "$applied"; then echo "Ya aplicada: $f"; continue; fi
+            echo "Pendiente: $f"
+            args+=(-f "$f")
             echo "insert into supabase_migrations.schema_migrations (version, name) values ('${base%%_*}', '${base#*_}');" >> "$record"
           done
+          if [ ${#args[@]} -eq 0 ]; then echo "No hay migraciones pendientes."; exit 0; fi
           args+=(-f "$record")
           # -1: todo o nada. ON_ERROR_STOP: se detiene en el primer error.
           psql "${DB_URL}" -X -1 -v ON_ERROR_STOP=1 -q "${args[@]}"
@@ -98,7 +105,9 @@ jobs:
 
       - name: Comprobar resultado
         if: env.CHECK == 'true'
-        run: psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -f supabase/scripts/verify_remote.sql
+        run: |
+          versions="$(for f in supabase/migrations/*.sql; do b="$(basename "$f")"; printf '%s,' "${b%%_*}"; done)"
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -v versions="${versions%,}" -f supabase/scripts/verify_remote.sql
 
       - name: Correr las pruebas de la base (se deshacen al terminar)
         if: env.CHECK == 'true'

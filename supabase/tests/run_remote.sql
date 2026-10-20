@@ -16,5 +16,6 @@ end $$;
 \ir 20_ya_dispatch_tests.sql
 \ir 30_location_photos_tests.sql
 \ir 40_admin_safety_tests.sql
+\ir 50_service_problems_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'
