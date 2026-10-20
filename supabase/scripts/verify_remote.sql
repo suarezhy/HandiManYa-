@@ -10,7 +10,7 @@ do $$
 declare
   v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','booking_addresses','booking_events','booking_offers','booking_photos',
     'booking_transitions','bookings','cities','commission_rules','daily_reports','consent_records','conversation_reads','conversations',
-    'departments','disputes','messages','notifications','professional_availability','professional_documents',
+    'departments','disputes','messages','notifications','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
     'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
     'topup_methods','topup_requests','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets'];
@@ -22,7 +22,8 @@ declare
     'send_message','submit_review','report_user','block_user','record_consent','admin_dashboard','my_status','run_booking_housekeeping',
     'hmy_problem_labels','hmy_pro_cleared','_create_booking_base','_create_ya_request_base','_booking_detail_base',
     'hmy_require_confirmation','set_biometric_enabled',
-    'run_marketplace_monitors','generate_daily_report','run_daily_report_if_due','admin_ai_overview','admin_decide_ai_item','admin_set_setting'];
+    'run_marketplace_monitors','generate_daily_report','run_daily_report_if_due','admin_ai_overview','admin_decide_ai_item','admin_set_setting',
+    'complete_signup','hmy_sync_auth_phone','hmy_otp_gate','hmy_otp_result'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -111,7 +112,11 @@ begin
     (not has_table_privilege('authenticated', 'public.ai_items', 'INSERT') and not has_table_privilege('authenticated', 'public.ai_items', 'UPDATE'), 'agentes IA: la app no escribe avisos directamente'),
     (not has_function_privilege('authenticated', 'public.run_marketplace_monitors()', 'EXECUTE') and not has_function_privilege('authenticated', 'public.generate_daily_report(date, text)', 'EXECUTE'), 'agentes IA: monitores y reporte son internos'),
     ((select count(*) from pg_policies where schemaname = 'public' and tablename in ('ai_agents','ai_agent_runs','ai_items','daily_reports','app_settings') and qual like '%is_admin()%') = 5, 'agentes IA: solo el administrador ve el centro de control'),
-    ((select (value ->> 'monthly_usd')::numeric from public.app_settings where key = 'ai_budget') is not null, 'agentes IA: hay un presupuesto (gasto en IA solo con aprobación)')
+    ((select (value ->> 'monthly_usd')::numeric from public.app_settings where key = 'ai_budget') is not null, 'agentes IA: hay un presupuesto (gasto en IA solo con aprobación)'),
+    (not has_column_privilege('authenticated', 'public.profiles', 'phone', 'UPDATE'), 'celular: solo Supabase Auth cambia el número (después del código)'),
+    (exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'profiles_phone_unique'), 'celular: un número, una cuenta'),
+    (exists (select 1 from pg_trigger where tgname = 'on_auth_user_phone' and tgrelid = 'auth.users'::regclass), 'celular: el número verificado pasa al perfil'),
+    (not has_function_privilege('authenticated', 'public.hmy_otp_gate(text, text, uuid)', 'EXECUTE') and not has_function_privilege('anon', 'public.hmy_otp_gate(text, text, uuid)', 'EXECUTE'), 'códigos: los límites de envío solo los usa el servicio de envío')
   ) as v(ok, what) loop
     raise notice '%  %', case when r.ok then 'ok -' else 'FALLA -' end, r.what;
     if not r.ok then v_failed := v_failed + 1; end if;

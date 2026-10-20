@@ -12,21 +12,26 @@ class AppError implements Exception {
   static AppError from(Object error) {
     if (error is AppError) return error;
     final raw = error.toString();
+    final otp = _otpError(raw);
+    if (otp != null) return otp;
     for (final entry in _codes.entries) {
       if (raw.contains(entry.key)) return AppError(entry.value, code: entry.key);
     }
     final lower = raw.toLowerCase();
-    if (lower.contains('invalid login credentials')) {
-      return const AppError('Correo o contraseña incorrectos.', code: 'invalid_credentials');
-    }
-    if (lower.contains('email not confirmed')) {
-      return const AppError('Primero confirma tu correo con el código que te enviamos.', code: 'email_not_confirmed');
-    }
-    if (lower.contains('user already registered') || lower.contains('already been registered')) {
-      return const AppError('Ya existe una cuenta con ese correo. Prueba ingresar.', code: 'user_exists');
-    }
     if (lower.contains('token has expired') || lower.contains('otp') && lower.contains('invalid')) {
-      return const AppError('El código no es válido o ya venció. Pide uno nuevo.', code: 'otp_invalid');
+      return const AppError('El código no es correcto o ya venció. Revísalo o pide uno nuevo.', code: 'otp_invalid');
+    }
+    if (lower.contains('phone') && (lower.contains('already') || lower.contains('exists'))) {
+      return AppError.from('phone_exists');
+    }
+    if (lower.contains('email') && (lower.contains('already') || lower.contains('exists'))) {
+      return AppError.from('email_exists');
+    }
+    if (lower.contains('phone provider') || lower.contains('sending sms') || lower.contains('sms_send_failed')) {
+      return const AppError(
+        'Todavía no podemos enviar códigos a este número. Vuelve a intentar más tarde.',
+        code: 'HMY_OTP_UNAVAILABLE',
+      );
     }
     if (lower.contains('rate limit') || lower.contains('too many')) {
       return const AppError(
@@ -43,7 +48,44 @@ class AppError implements Exception {
     return const AppError('Algo salió mal. Vuelve a intentar en un momento.');
   }
 
+  /// Errores al pedir o verificar el código de 6 dígitos (vienen del
+  /// servicio de envío o de Supabase Auth).
+  static AppError? _otpError(String raw) {
+    final soon =
+        RegExp(r'HMY_OTP_TOO_SOON:(\d+)').firstMatch(raw) ??
+        RegExp(r'only request this after (\d+) seconds').firstMatch(raw);
+    if (soon != null) {
+      return AppError('Espera ${soon.group(1)} segundos para pedir otro código.', code: 'HMY_OTP_TOO_SOON');
+    }
+    final off = RegExp(r'HMY_OTP_(CHANNEL_OFF|SEND_FAILED):(whatsapp|sms)').firstMatch(raw);
+    if (off != null) {
+      final (name, other) = off.group(2) == 'whatsapp' ? ('WhatsApp', 'SMS') : ('SMS', 'WhatsApp');
+      return AppError(
+        off.group(1) == 'CHANNEL_OFF'
+            ? 'Todavía no enviamos códigos por $name. Prueba por $other.'
+            : 'No pudimos enviar el código por $name. Vuelve a intentar o prueba por $other.',
+        code: 'HMY_OTP_${off.group(1)}',
+      );
+    }
+    return null;
+  }
+
   static const _codes = {
+    'HMY_OTP_LIMIT': 'Pediste muchos códigos seguidos. Espera una hora y vuelve a intentar.',
+    'HMY_OTP_TOO_MANY_ATTEMPTS': 'Escribiste mal el código varias veces. Pide un código nuevo.',
+    'HMY_OTP_NOT_CONFIGURED': 'El envío de códigos no está disponible ahora. Vuelve a intentar en un momento.',
+    'HMY_OTP_UNAVAILABLE': 'El envío de códigos no está disponible ahora. Vuelve a intentar en un momento.',
+    'HMY_INVALID_PHONE': 'Escribe un celular de Bolivia de 8 dígitos, por ejemplo 71234567.',
+    'HMY_INVALID_CHANNEL': 'Elige WhatsApp o SMS.',
+    'HMY_INVALID_NAME': 'Escribe tu nombre y apellido.',
+    'HMY_INVALID_CITY': 'Elige tu ciudad.',
+    'HMY_TERMS_REQUIRED': 'Para continuar, acepta los Términos de uso y la Política de privacidad.',
+    'HMY_SAME_PHONE': 'Ese ya es tu número.',
+    'HMY_INVALID_EMAIL': 'Revisa el correo electrónico.',
+    'phone_exists': 'Ese número ya tiene una cuenta. Si es tuyo, entra con ese número.',
+    'email_exists': 'Ese correo ya está en otra cuenta.',
+    'otp_expired': 'El código ya venció. Pide uno nuevo.',
+    'otp_invalid': 'El código no es correcto. Revísalo y vuelve a intentar.',
     'HMY_AUTH_REQUIRED': 'Ingresa a tu cuenta para continuar.',
     'HMY_FORBIDDEN': 'No tienes permiso para hacer esto.',
     'HMY_NOT_FOUND': 'No encontramos lo que buscas.',
@@ -89,7 +131,7 @@ class AppError implements Exception {
     'HMY_CONFIRMATION_EXPIRED': 'La confirmación venció. Vuelve a confirmar que eres tú.',
     'HMY_CONFIRMATION_USED': 'Cada operación necesita una confirmación nueva. Vuelve a confirmar que eres tú.',
     'HMY_BIOMETRIC_DISABLED':
-        'La huella o el rostro no están activados. Confirma con tu contraseña o actívalos en Perfil → Seguridad.',
+        'La huella o el rostro no están activados. Confirma con un código o actívalos en Perfil → Seguridad.',
     'HMY_PRO_NOT_CLEARED': 'Este profesional todavía no está habilitado para este servicio. Elige a otra persona.',
   };
 }

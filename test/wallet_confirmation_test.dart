@@ -7,6 +7,7 @@ import 'package:handimanya/core/theme/app_theme.dart';
 import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/core/utils/formatters.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
+import 'package:handimanya/data/models/user.dart';
 import 'package:handimanya/data/models/wallet.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:handimanya/features/pro_mode/wallet_page.dart';
@@ -14,6 +15,8 @@ import 'package:handimanya/features/security/confirm_identity.dart';
 import 'package:handimanya/features/security/security_page.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/demo_login.dart';
 
 /// Biometría simulada: devuelve los resultados en orden y cuenta las llamadas.
 class _FakeDeviceAuth implements DeviceAuth {
@@ -43,13 +46,13 @@ Future<({DemoAppBackend backend, SharedPreferences prefs})> _pump(
   bool biometricOn = false,
 }) async {
   await initializeDateFormatting('es');
-  final backend = DemoAppBackend(simulateDelays: false);
+  final backend = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
   addTearDown(backend.dispose);
-  await backend.signIn(email: DemoBackend.professionalEmail, password: DemoBackend.demoPassword);
+  await backend.signInAs(DemoBackend.professionalPhone);
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
   if (biometricOn) {
-    await backend.confirmPassword(DemoBackend.demoPassword);
+    await backend.confirmWithCode();
     await backend.setBiometricEnabled(true);
     await prefs.setBool(biometricPrefKey(backend.currentUser!.id), true);
   }
@@ -83,6 +86,14 @@ Future<void> _tap(WidgetTester tester, Finder f) async {
   await tester.pumpAndSettle();
 }
 
+/// "Enviarme el código" y luego las 6 cifras (se envía sola al completarlas).
+Future<void> _confirmWithCode(WidgetTester tester, {String code = DemoBackend.demoCode}) async {
+  await _tap(tester, find.byKey(const Key('confirm-submit')));
+  expect(find.byKey(const Key('confirm-code-field')), findsOneWidget);
+  await tester.enterText(find.byKey(const Key('confirm-code-field')), code);
+  await tester.pumpAndSettle();
+}
+
 /// Abre "Recargar saldo", llena el formulario y toca Continuar.
 Future<void> _startTopup(WidgetTester tester, {String amount = '150'}) async {
   await _tap(tester, find.text('Recargar saldo'));
@@ -99,68 +110,78 @@ void main() {
   group('reglas de confirmación (demostración, igual que la base)', () {
     late DemoBackend backend;
     setUp(() async {
-      backend = DemoBackend(simulateDelays: false);
-      await backend.signIn(email: DemoBackend.professionalEmail, password: DemoBackend.demoPassword);
+      backend = DemoBackend(simulateDelays: false, codeCooldown: Duration.zero);
+      await backend.signInAs(DemoBackend.professionalPhone);
     });
     tearDown(() => backend.dispose());
 
     Future<int> topup(String method, String key) =>
         backend.requestTopup(amount: 50, methodId: 1, authMethod: method, clientKey: key);
 
-    test('sin confirmar no se crea la recarga', () async {
-      await expectLater(topup('password', 'a'), _code('HMY_CONFIRMATION_EXPIRED'));
-      await expectLater(topup('biometric', 'a'), _code('HMY_BIOMETRIC_DISABLED'));
-      await expectLater(topup('pin', 'a'), _code('HMY_CONFIRMATION_REQUIRED'));
-      expect(await backend.topups(), isEmpty);
-    });
-
-    test('contraseña incorrecta: falla y no confirma', () async {
-      await expectLater(backend.confirmPassword('otra'), _code('invalid_credentials'));
-      await expectLater(topup('password', 'a'), _code('HMY_CONFIRMATION_EXPIRED'));
-    });
-
-    test('cada confirmación sirve para una sola recarga; repetir el intento no duplica', () async {
+    test('el código recién verificado confirma una sola recarga; repetir el intento no duplica', () async {
       final before = (await backend.wallet()).available;
-      await backend.confirmPassword(DemoBackend.demoPassword);
-      final id = await topup('password', 'k1');
-      expect(await topup('password', 'k1'), id, reason: 'mismo intento = misma solicitud');
-      await expectLater(topup('password', 'k2'), _code('HMY_CONFIRMATION_EXPIRED'));
+      final id = await topup('otp', 'k1');
+      expect(await topup('otp', 'k1'), id, reason: 'mismo intento = misma solicitud');
+      await expectLater(topup('otp', 'k2'), _code('HMY_CONFIRMATION_EXPIRED'));
       expect(await backend.topups(), hasLength(1));
       expect((await backend.wallet()).available, before, reason: 'pedir no acredita saldo');
     });
 
-    test('huella o rostro: activar exige la contraseña; desactivar, no', () async {
+    test('sin confirmar no se crea la recarga', () async {
+      await topup('otp', 'usado');
+      await expectLater(topup('otp', 'a'), _code('HMY_CONFIRMATION_EXPIRED'));
+      await expectLater(topup('biometric', 'a'), _code('HMY_BIOMETRIC_DISABLED'));
+      await expectLater(topup('password', 'a'), _code('HMY_CONFIRMATION_REQUIRED'), reason: 'ya no hay contraseñas');
+      await expectLater(topup('pin', 'a'), _code('HMY_CONFIRMATION_REQUIRED'));
+      expect(await backend.topups(), hasLength(1));
+    });
+
+    test('código incorrecto: falla y no confirma', () async {
+      await topup('otp', 'usado');
+      await backend.sendPhoneCode(phone: DemoBackend.professionalPhone, channel: CodeChannel.sms);
+      await expectLater(
+        backend.verifyPhoneCode(phone: DemoBackend.professionalPhone, code: '000000'),
+        _code('otp_invalid'),
+      );
+      await expectLater(topup('otp', 'a'), _code('HMY_CONFIRMATION_EXPIRED'));
+    });
+
+    test('huella o rostro: activar exige un código nuevo; desactivar, no', () async {
+      await topup('otp', 'usado');
       await expectLater(backend.setBiometricEnabled(true), _code('HMY_CONFIRMATION_EXPIRED'));
-      await backend.confirmPassword(DemoBackend.demoPassword);
+      await backend.confirmWithCode();
       await backend.setBiometricEnabled(true);
       expect(await backend.biometricEnabled(), isTrue);
       await topup('biometric', 'b1');
       await backend.setBiometricEnabled(false);
       await expectLater(topup('biometric', 'b2'), _code('HMY_BIOMETRIC_DISABLED'));
-      await backend.signIn(email: DemoBackend.adminEmail, password: DemoBackend.demoPassword);
+      await backend.signInAs(DemoBackend.adminPhone);
       final audit = await backend.auditLog();
-      expect(audit.where((e) => e.action == 'topup.request').single.details['auth_method'], 'biometric');
+      expect(
+        audit.where((e) => e.action == 'topup.request').map((e) => e.details['auth_method']),
+        unorderedEquals(['otp', 'biometric']),
+      );
       expect(audit.map((e) => e.action), containsAll(['security.biometric_on', 'security.biometric_off']));
     });
   });
 
   group('pantalla de recarga', () {
-    testWidgets('con contraseña: muestra el monto en Bs, envía y muestra el comprobante', (tester) async {
+    testWidgets('con código: muestra el monto en Bs, envía y muestra el comprobante', (tester) async {
       final r = await _pump(tester, const WalletPage(), deviceAuth: _FakeDeviceAuth(types: const {}));
       final before = (await r.backend.wallet()).available;
       await _startTopup(tester);
       expect(find.text('Confirma que eres tú'), findsOneWidget);
       expect(find.byKey(const Key('confirm-amount')), findsOneWidget);
       expect(find.text(Fmt.bs(150)), findsOneWidget);
-      expect(find.byKey(const Key('confirm-face')), findsNothing, reason: 'sin biometría solo hay contraseña');
+      expect(find.byKey(const Key('confirm-face')), findsNothing, reason: 'sin biometría solo hay código');
+      expect(find.text('Código al +591 7654 3210'), findsOneWidget);
       expect(await _pending(r.backend), isEmpty, reason: 'nada se envía antes de confirmar');
 
-      await tester.enterText(find.byKey(const Key('confirm-password-field')), DemoBackend.demoPassword);
-      await _tap(tester, find.byKey(const Key('confirm-submit')));
+      await _confirmWithCode(tester);
 
       expect(find.byKey(const Key('topup-receipt')), findsOneWidget);
       expect(find.text('Pendiente de verificación'), findsOneWidget);
-      expect(find.text('Contraseña'), findsOneWidget);
+      expect(find.text('Código'), findsOneWidget);
       expect(find.text('TX-77'), findsOneWidget);
       final pending = await _pending(r.backend);
       expect(pending.single.amount, 150);
@@ -169,12 +190,11 @@ void main() {
       expect(find.byKey(const Key('topup-receipt')), findsNothing);
     });
 
-    testWidgets('contraseña incorrecta: avisa y no envía nada', (tester) async {
+    testWidgets('código incorrecto: avisa y no envía nada', (tester) async {
       final r = await _pump(tester, const WalletPage(), deviceAuth: _FakeDeviceAuth(types: const {}));
       await _startTopup(tester);
-      await tester.enterText(find.byKey(const Key('confirm-password-field')), 'equivocada');
-      await _tap(tester, find.byKey(const Key('confirm-submit')));
-      expect(find.text('La contraseña no es correcta. No se envió nada.'), findsOneWidget);
+      await _confirmWithCode(tester, code: '000000');
+      expect(find.text('El código no es correcto. Revísalo y vuelve a intentar. No se envió nada.'), findsOneWidget);
       expect(find.byKey(const Key('topup-receipt')), findsNothing);
       expect(await r.backend.topups(), isEmpty);
     });
@@ -195,7 +215,7 @@ void main() {
       final r = await _pump(tester, const WalletPage(), deviceAuth: device, biometricOn: true);
       await _startTopup(tester);
       expect(find.byKey(const Key('confirm-fingerprint')), findsOneWidget);
-      expect(find.byKey(const Key('confirm-password-field')), findsNothing, reason: 'la huella viene elegida');
+      expect(find.byKey(const Key('confirm-code-field')), findsNothing, reason: 'la huella viene elegida');
 
       await _tap(tester, find.byKey(const Key('confirm-submit')));
       expect(find.text('Cancelaste la confirmación. No se envió nada.'), findsOneWidget);
@@ -212,7 +232,7 @@ void main() {
       expect(await _pending(r.backend), hasLength(1));
     });
 
-    testWidgets('huella bloqueada: pide usar la contraseña, que también funciona', (tester) async {
+    testWidgets('huella bloqueada: pide usar un código, que también funciona', (tester) async {
       final r = await _pump(
         tester,
         const WalletPage(),
@@ -221,10 +241,9 @@ void main() {
       );
       await _startTopup(tester);
       await _tap(tester, find.byKey(const Key('confirm-submit')));
-      expect(find.textContaining('Usa tu contraseña'), findsOneWidget);
-      await _tap(tester, find.byKey(const Key('confirm-password')));
-      await tester.enterText(find.byKey(const Key('confirm-password-field')), DemoBackend.demoPassword);
-      await _tap(tester, find.byKey(const Key('confirm-submit')));
+      expect(find.textContaining('Usa un código'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('confirm-code')));
+      await _confirmWithCode(tester);
       expect(find.byKey(const Key('topup-receipt')), findsOneWidget);
       expect(await _pending(r.backend), hasLength(1));
     });
@@ -256,7 +275,7 @@ void main() {
   });
 
   group('Perfil → Seguridad', () {
-    testWidgets('activar pide contraseña y huella; desactivar vuelve a la contraseña', (tester) async {
+    testWidgets('activar pide un código y la huella; desactivar vuelve al código', (tester) async {
       final device = _FakeDeviceAuth();
       final r = await _pump(tester, const SecurityPage(), deviceAuth: device);
       final sw = find.byKey(const Key('biometric-switch'));
@@ -264,9 +283,8 @@ void main() {
 
       await _tap(tester, sw);
       expect(find.text('Confirma que eres tú'), findsOneWidget);
-      expect(find.byKey(const Key('confirm-fingerprint')), findsNothing, reason: 'activar exige la contraseña');
-      await tester.enterText(find.byKey(const Key('confirm-password-field')), DemoBackend.demoPassword);
-      await _tap(tester, find.byKey(const Key('confirm-submit')));
+      expect(find.byKey(const Key('confirm-fingerprint')), findsNothing, reason: 'activar exige un código');
+      await _confirmWithCode(tester);
       expect(device.calls, 1);
       expect(tester.widget<SwitchListTile>(sw).value, isTrue);
       expect(await r.backend.biometricEnabled(), isTrue);
@@ -284,16 +302,15 @@ void main() {
         deviceAuth: _FakeDeviceAuth(results: [DeviceAuthResult.canceled]),
       );
       await _tap(tester, find.byKey(const Key('biometric-switch')));
-      await tester.enterText(find.byKey(const Key('confirm-password-field')), DemoBackend.demoPassword);
-      await _tap(tester, find.byKey(const Key('confirm-submit')));
+      await _confirmWithCode(tester);
       expect(tester.widget<SwitchListTile>(find.byKey(const Key('biometric-switch'))).value, isFalse);
       expect(await r.backend.biometricEnabled(), isFalse);
     });
 
-    testWidgets('sin biometría en el teléfono solo explica que se usa la contraseña', (tester) async {
+    testWidgets('sin biometría en el teléfono solo explica que se usa un código', (tester) async {
       await _pump(tester, const SecurityPage(), deviceAuth: _FakeDeviceAuth(types: const {}));
       expect(find.byKey(const Key('biometric-switch')), findsNothing);
-      expect(find.textContaining('Confirmarás con tu contraseña'), findsOneWidget);
+      expect(find.textContaining('Confirmarás con un código a tu celular'), findsOneWidget);
     });
   });
 }

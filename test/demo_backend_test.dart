@@ -4,6 +4,8 @@ import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/models/booking.dart';
 import 'package:handimanya/data/models/user.dart';
 
+import 'support/demo_login.dart';
+
 const _ya = BookingDraft(
   categoryId: 2, // Electricidad
   cityId: 1, // Santa Cruz
@@ -17,11 +19,11 @@ const _ya = BookingDraft(
 void main() {
   late DemoBackend backend;
 
-  setUp(() => backend = DemoBackend(simulateDelays: false));
+  setUp(() => backend = DemoBackend(simulateDelays: false, codeCooldown: Duration.zero));
   tearDown(() => backend.dispose());
 
-  Future<void> asPro() => backend.signIn(email: DemoBackend.professionalEmail, password: DemoBackend.demoPassword);
-  Future<void> asCustomer() => backend.signIn(email: DemoBackend.customerEmail, password: DemoBackend.demoPassword);
+  Future<void> asPro() => backend.signInAs(DemoBackend.professionalPhone);
+  Future<void> asCustomer() => backend.signInAs(DemoBackend.customerPhone);
 
   test('¡Ya! completo: oferta, aceptación, trabajo y comisión', () async {
     await asPro();

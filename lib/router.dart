@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import 'data/models/booking.dart';
 import 'data/models/user.dart';
 import 'data/providers.dart';
+import 'features/auth/complete_profile_page.dart';
+import 'features/auth/phone_auth_page.dart';
+import 'features/auth/recover_account_page.dart';
 import 'features/admin/admin_applications_page.dart';
 import 'features/admin/admin_cases_pages.dart';
 import 'features/admin/admin_catalog_audit_pages.dart';
@@ -13,11 +16,6 @@ import 'features/admin/admin_home_page.dart';
 import 'features/admin/admin_money_pages.dart';
 import 'features/admin/admin_users_page.dart';
 import 'features/admin/ai_control_center_page.dart';
-import 'features/auth/access_page.dart';
-import 'features/auth/forgot_password_page.dart';
-import 'features/auth/login_page.dart';
-import 'features/auth/register_page.dart';
-import 'features/auth/verify_email_page.dart';
 import 'features/booking/booking_detail_page.dart';
 import 'features/booking/my_requests_page.dart';
 import 'features/booking/choose_professional_page.dart';
@@ -46,10 +44,8 @@ abstract final class Routes {
   static const splash = '/';
   static const onboarding = '/bienvenida';
   static const access = '/acceso';
-  static const login = '/ingresar';
-  static const register = '/registro';
-  static const verify = '/verificar';
-  static const forgot = '/recuperar';
+  static const recover = '/recuperar';
+  static const completeProfile = '/completa-tu-perfil';
 
   static const home = '/inicio';
   static const search = '/buscar';
@@ -98,7 +94,7 @@ abstract final class Routes {
   static String booking(String id) => '/solicitud/$id';
   static String chat(String id) => '/chat/$id';
 
-  static const publicRoutes = {onboarding, access, login, register, forgot};
+  static const publicRoutes = {onboarding, access, recover};
 }
 
 /// Avisa a GoRouter cuando cambia la sesión, la cuenta o la bienvenida.
@@ -127,7 +123,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (Routes.publicRoutes.contains(loc)) return null;
       return Routes.access;
     }
-    if (!user.emailConfirmed) return loc == Routes.verify ? null : Routes.verify;
 
     final accountAsync = ref.read(accountProvider);
     final account = accountAsync.value;
@@ -136,6 +131,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       return loc == Routes.splash ? null : Routes.splash;
     }
 
+    // Cuenta nueva: después del código, nombre, ciudad y términos.
+    if (!account.profileComplete) return loc == Routes.completeProfile ? null : Routes.completeProfile;
+
     final homeForRole = account.isAdmin
         ? Routes.admin
         : account.isProfessionalMode
@@ -143,7 +141,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         : Routes.home;
     // La pantalla se oculta a quien no es admin; igual el servidor rechaza sus acciones.
     if (loc.startsWith(Routes.admin) && !account.isAdmin) return Routes.home;
-    final atEntry = loc == Routes.splash || loc == Routes.verify || Routes.publicRoutes.contains(loc);
+    final atEntry = loc == Routes.splash || loc == Routes.completeProfile || Routes.publicRoutes.contains(loc);
     if (atEntry) {
       final wantsPro = ref.read(entryIntentProvider) == AppRole.professional;
       if (wantsPro && !account.isApprovedProfessional && account.professionalStatus.canEdit) return Routes.apply;
@@ -163,20 +161,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: Routes.splash, builder: (_, _) => const SplashPage()),
       GoRoute(path: Routes.onboarding, builder: (_, _) => const OnboardingPage()),
-      GoRoute(path: Routes.access, builder: (_, _) => const AccessPage()),
-      GoRoute(
-        path: Routes.login,
-        builder: (_, s) => LoginPage(asProfessional: s.uri.queryParameters['rol'] == 'pro'),
-      ),
-      GoRoute(
-        path: Routes.register,
-        builder: (_, s) => RegisterPage(asProfessional: s.uri.queryParameters['rol'] == 'pro'),
-      ),
-      GoRoute(
-        path: Routes.verify,
-        builder: (_, s) => VerifyEmailPage(email: s.uri.queryParameters['correo']),
-      ),
-      GoRoute(path: Routes.forgot, builder: (_, _) => const ForgotPasswordPage()),
+      GoRoute(path: Routes.access, builder: (_, _) => const PhoneAuthPage()),
+      GoRoute(path: Routes.recover, builder: (_, _) => const RecoverAccountPage()),
+      GoRoute(path: Routes.completeProfile, builder: (_, _) => const CompleteProfilePage()),
 
       // Cliente
       StatefulShellRoute.indexedStack(

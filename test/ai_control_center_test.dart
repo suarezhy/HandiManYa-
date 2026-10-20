@@ -15,6 +15,8 @@ import 'package:handimanya/features/admin/ai_control_center_page.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/demo_login.dart';
+
 class _NoBiometrics implements DeviceAuth {
   @override
   Future<Set<DeviceBiometric>> available() async => const {};
@@ -38,21 +40,22 @@ void main() {
   group('bandeja de aprobación (demostración, igual que la base)', () {
     late DemoBackend backend;
     setUp(() async {
-      backend = DemoBackend(simulateDelays: false);
-      await backend.signIn(email: DemoBackend.adminEmail, password: DemoBackend.demoPassword);
+      backend = DemoBackend(simulateDelays: false, codeCooldown: Duration.zero);
+      await backend.signInAs(DemoBackend.adminPhone);
     });
     tearDown(() => backend.dispose());
 
     test('aprobar exige confirmar identidad y queda auditado', () async {
       final req = (await backend.aiItems(statuses: ['pending_approval'])).first;
       expect(req.fromAi, isTrue);
+      await expectLater(backend.decideAiItem(req.id, AiDecision.approve), _code('HMY_CONFIRMATION_REQUIRED'));
       await expectLater(
         backend.decideAiItem(req.id, AiDecision.approve, authMethod: 'password'),
-        _code('HMY_CONFIRMATION_EXPIRED'),
+        _code('HMY_CONFIRMATION_REQUIRED'),
+        reason: 'ya no hay contraseñas',
       );
       await expectLater(backend.decideAiItem(req.id, AiDecision.completed), _code('HMY_INVALID_STATUS'));
-      await backend.confirmPassword(DemoBackend.demoPassword);
-      await backend.decideAiItem(req.id, AiDecision.approve, authMethod: 'password');
+      await backend.decideAiItem(req.id, AiDecision.approve, authMethod: 'otp');
       await backend.decideAiItem(req.id, AiDecision.completed, note: 'Revisado');
       expect((await backend.aiItems(statuses: ['completed'])).map((i) => i.id), contains(req.id));
       expect((await backend.auditLog()).map((e) => e.action), containsAll(['ai_item.approve', 'ai_item.completed']));
@@ -67,16 +70,16 @@ void main() {
     });
 
     test('solo un administrador entra', () async {
-      await backend.signIn(email: DemoBackend.customerEmail, password: DemoBackend.demoPassword);
+      await backend.signInAs(DemoBackend.customerPhone);
       await expectLater(backend.aiOverview(), throwsA(isA<AppError>()));
     });
   });
 
-  testWidgets('el dueño aprueba con su contraseña y ve el reporte diario', (tester) async {
+  testWidgets('el dueño aprueba con un código y ve el reporte diario', (tester) async {
     await initializeDateFormatting('es');
-    final backend = DemoAppBackend(simulateDelays: false);
+    final backend = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
     addTearDown(backend.dispose);
-    await backend.signIn(email: DemoBackend.adminEmail, password: DemoBackend.demoPassword);
+    await backend.signInAs(DemoBackend.adminPhone);
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     tester.view.physicalSize = const Size(1170, 2532);
@@ -110,8 +113,9 @@ void main() {
     await tester.tap(find.text('Aprobar'));
     await tester.pumpAndSettle();
     expect(find.text('Confirma que eres tú'), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('confirm-password-field')), DemoBackend.demoPassword);
     await tester.tap(find.byKey(const Key('confirm-submit')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('confirm-code-field')), DemoBackend.demoCode);
     await tester.pumpAndSettle();
     expect((await backend.aiItems(statuses: ['approved'])), hasLength(1));
 

@@ -29,13 +29,28 @@ enum VerificationStatus {
       VerificationStatus.values.firstWhere((s) => s.key == v, orElse: () => VerificationStatus.notStarted);
 }
 
-/// Sesión de autenticación (solo lo que necesita la navegación).
+/// Por dónde llega el código de 6 dígitos.
+enum CodeChannel {
+  whatsapp('whatsapp', 'WhatsApp'),
+  sms('sms', 'SMS');
+
+  const CodeChannel(this.key, this.label);
+  final String key;
+  final String label;
+
+  static CodeChannel parse(String? v) => v == sms.key ? sms : whatsapp;
+}
+
+/// Sesión de autenticación (solo lo que necesita la navegación). Se entra con
+/// el celular; el correo es opcional.
 class AuthUser {
-  const AuthUser({required this.id, required this.email, required this.emailConfirmed});
+  const AuthUser({required this.id, this.phone, this.email});
 
   final String id;
-  final String email;
-  final bool emailConfirmed;
+
+  /// +591…, o null en cuentas antiguas creadas con correo.
+  final String? phone;
+  final String? email;
 }
 
 class UserProfile {
@@ -44,6 +59,9 @@ class UserProfile {
     required this.email,
     required this.fullName,
     this.phone,
+    this.phoneVerified = false,
+    this.emailConfirmed = false,
+    this.profileComplete = true,
     this.cityId,
     this.activeRole = AppRole.customer,
     this.roles = const {AppRole.customer},
@@ -59,6 +77,13 @@ class UserProfile {
   final String email;
   final String fullName;
   final String? phone;
+  final bool phoneVerified;
+
+  /// El correo es opcional; [email] queda vacío si no lo agregó.
+  final bool emailConfirmed;
+
+  /// Ya puso nombre y ciudad y aceptó los términos (después del código).
+  final bool profileComplete;
   final int? cityId;
   final AppRole activeRole;
   final Set<AppRole> roles;
@@ -91,6 +116,9 @@ class UserProfile {
     email: email,
     fullName: fullName ?? this.fullName,
     phone: phone != null ? phone() : this.phone,
+    phoneVerified: phoneVerified,
+    emailConfirmed: emailConfirmed,
+    profileComplete: profileComplete,
     cityId: cityId != null ? cityId() : this.cityId,
     activeRole: activeRole ?? this.activeRole,
     roles: roles ?? this.roles,

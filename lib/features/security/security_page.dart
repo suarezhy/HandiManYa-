@@ -28,12 +28,12 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
     final backend = ref.read(backendProvider);
     try {
       if (on) {
-        // 1) Contraseña (el servidor exige que sea recién confirmada para activar).
+        // 1) Código nuevo (el servidor exige que sea recién verificado para activar).
         final ok = await confirmIdentity(
           context,
           operation: 'Activar huella o rostro',
           submitLabel: 'Confirmar',
-          passwordOnly: true,
+          codeOnly: true,
         );
         if (ok == null || !mounted) return;
         // 2) Probar la biometría del teléfono antes de activarla.
@@ -43,13 +43,14 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
           showMessage(context, 'No se activó: no pudimos confirmar tu ${device.first.short}.');
           return;
         }
-        await backend.setBiometricEnabled(true);
+        await backend.setBiometricEnabled(true, authMethod: ok.serverMethod);
         await prefs.setBool(biometricPrefKey(user.id), true);
         if (mounted) showMessage(context, 'Listo. Podrás confirmar tus recargas con tu ${device.first.short}.');
       } else {
         await backend.setBiometricEnabled(false);
         await prefs.remove(biometricPrefKey(user.id));
-        if (mounted) showMessage(context, 'Desactivado. Confirmarás con tu contraseña.');
+        await prefs.remove(appLockPrefKey(user.id));
+        if (mounted) showMessage(context, 'Desactivado. Confirmarás con un código a tu celular.');
       }
     } catch (e) {
       if (mounted) showError(context, e);
@@ -92,14 +93,16 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
                         'Usar ${d.map((b) => b.short).join(' o ')}',
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
                       ),
-                      subtitle: Text(on ? 'Activado en este teléfono' : 'Desactivado: confirmas con tu contraseña'),
+                      subtitle: Text(
+                        on ? 'Activado en este teléfono' : 'Desactivado: confirmas con un código a tu celular',
+                      ),
                       value: on,
                       onChanged: _busy ? null : (v) => _toggle(v, d),
                     ),
                   ),
                   (AsyncData(value: final d), _) when d.isEmpty => const InfoBanner(
                     icon: Icons.phonelink_lock_outlined,
-                    text: 'Este dispositivo no tiene huella ni reconocimiento facial configurados. Confirmarás con tu contraseña.',
+                    text: 'Este dispositivo no tiene huella ni reconocimiento facial configurados. Confirmarás con un código a tu celular.',
                   ),
                   (AsyncError(), _) || (_, AsyncError()) => ErrorView(
                     error: (device.error ?? enabled.error)!,
@@ -109,10 +112,27 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
                   ),
                   _ => const LoadingView(),
                 },
+                if (enabled.value == true) ...[
+                  const SizedBox(height: HySpacing.sm),
+                  AppCard(
+                    child: SwitchListTile(
+                      key: const Key('app-lock-switch'),
+                      contentPadding: EdgeInsets.zero,
+                      secondary: const Icon(Icons.lock_person_outlined, size: 32, color: HyColors.primary),
+                      title: const Text(
+                        'Pedirla al abrir la app',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: const Text('Tu sesión sigue abierta; solo se desbloquea con tu huella o rostro.'),
+                      value: ref.watch(appLockEnabledProvider),
+                      onChanged: (v) => ref.read(appLockEnabledProvider.notifier).set(v),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: HySpacing.md),
                 const InfoBanner(
                   icon: Icons.verified_user_outlined,
-                  text: 'Tu huella y tu rostro nunca salen del teléfono: los revisa el propio teléfono y HandiMan ¡Ya! no los ve ni los guarda. Tu contraseña tampoco se guarda en el teléfono.',
+                  text: 'Tu huella y tu rostro nunca salen del teléfono: los revisa el propio teléfono y HandiMan ¡Ya! no los ve ni los guarda. Para entrar usas tu celular y un código; no hay contraseñas.',
                 ),
               ],
             ),

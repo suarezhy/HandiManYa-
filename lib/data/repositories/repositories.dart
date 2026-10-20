@@ -18,27 +18,38 @@ abstract interface class AuthRepository {
   AuthUser? get currentUser;
   Stream<AuthUser?> authChanges();
 
-  Future<void> signUp({
-    required String email,
-    required String password,
-    required String fullName,
-    required String phone,
-    required int cityId,
-    required bool wantsToBeProfessional,
-  });
+  /// Envía un código de 6 dígitos al celular (+591…) por WhatsApp o SMS.
+  /// Es lo mismo para entrar y para crear la cuenta.
+  Future<void> sendPhoneCode({required String phone, required CodeChannel channel});
 
-  Future<void> verifyEmailCode({required String email, required String code});
-  Future<void> resendEmailCode(String email);
-  Future<void> signIn({required String email, required String password});
-  Future<void> sendPasswordReset(String email);
-  Future<void> verifyRecoveryCode({required String email, required String code});
-  Future<void> updatePassword(String newPassword);
+  /// Verifica el código. Si el número ya tiene cuenta, entra a esa cuenta; si
+  /// es nuevo, la crea (un número, una cuenta). Un código recién verificado
+  /// también sirve como confirmación ('otp') de una operación de dinero.
+  Future<void> verifyPhoneCode({required String phone, required String code});
+
+  /// Recuperar la cuenta sin el celular: código al correo que la persona
+  /// agregó y confirmó en su perfil. No crea cuentas.
+  Future<void> sendEmailLoginCode(String email);
+  Future<void> verifyEmailLoginCode({required String email, required String code});
+
   Future<void> signOut();
 }
 
 abstract interface class AccountRepository {
   Future<UserProfile> myAccount();
-  Future<void> updateProfile({required String fullName, String? phone, int? cityId});
+
+  /// Después del primer código: nombre, ciudad y aceptación de términos.
+  Future<void> completeSignup({required String fullName, required int cityId, required bool acceptTerms});
+  Future<void> updateProfile({required String fullName, int? cityId});
+
+  /// Cambiar de número: código al número nuevo; al verificarlo, la cuenta
+  /// (con sus pedidos y billetera) pasa a entrar con ese número.
+  Future<void> requestPhoneChange({required String phone, required CodeChannel channel});
+  Future<void> verifyPhoneChange({required String phone, required String code});
+
+  /// Correo opcional (sirve para recuperar la cuenta): se confirma con un código.
+  Future<void> requestEmailChange(String email);
+  Future<void> verifyEmailChange({required String email, required String code});
   Future<void> setActiveRole(AppRole role);
   Future<void> completeOnboarding();
   Future<void> requestAccountDeletion();
@@ -145,15 +156,12 @@ abstract interface class ProRepository {
     required String clientKey,
   });
 
-  /// Confirmación de identidad: vuelve a verificar la contraseña de la cuenta
-  /// en el servidor. La contraseña no se guarda.
-  Future<void> confirmPassword(String password);
-
   /// Si la cuenta permite confirmar operaciones con huella o rostro.
   Future<bool> biometricEnabled();
 
-  /// Activar exige [confirmPassword] justo antes; desactivar, no.
-  Future<void> setBiometricEnabled(bool enabled);
+  /// Activar exige un código recién verificado ([AuthRepository.verifyPhoneCode]
+  /// con el celular de la cuenta); desactivar, no.
+  Future<void> setBiometricEnabled(bool enabled, {String authMethod = 'otp'});
 
   /// Base y radio de trabajo del profesional (privados).
   Future<ServiceLocation?> serviceLocation();

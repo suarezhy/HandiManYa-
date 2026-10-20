@@ -22,6 +22,8 @@ import 'package:handimanya/router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/demo_login.dart';
+
 /// Las listas pedidas para cada categoría, en orden (fuente: el dueño del proyecto).
 const expectedProblems = {
   'plomeria': [
@@ -216,7 +218,7 @@ Future<DemoAppBackend> _pumpApp(WidgetTester tester, {double textScale = 1}) asy
   await initializeDateFormatting('es');
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
-  final backend = DemoAppBackend(simulateDelays: false);
+  final backend = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
   addTearDown(backend.dispose);
   tester.view.physicalSize = const Size(1170, 2532);
   tester.view.devicePixelRatio = 3;
@@ -238,23 +240,7 @@ Future<DemoAppBackend> _pumpApp(WidgetTester tester, {double textScale = 1}) asy
   return backend;
 }
 
-Future<void> _login(WidgetTester tester, {String email = DemoBackend.customerEmail}) async {
-  await tester.tap(find.text('Omitir'));
-  await tester.pumpAndSettle();
-  final door = find.text('Necesito un servicio');
-  await tester.ensureVisible(door);
-  await tester.pumpAndSettle();
-  await tester.tap(door);
-  await tester.pumpAndSettle();
-  final fields = find.byType(TextFormField);
-  await tester.enterText(fields.at(0), email);
-  await tester.enterText(fields.at(1), DemoBackend.demoPassword);
-  final submit = find.widgetWithText(FilledButton, 'Ingresar');
-  await tester.ensureVisible(submit);
-  await tester.pumpAndSettle();
-  await tester.tap(submit);
-  await tester.pumpAndSettle();
-}
+Future<void> _login(WidgetTester tester, {String phone = DemoBackend.customerPhone}) => loginWithPhone(tester, phone);
 
 Future<void> _tap(WidgetTester tester, Finder f) async {
   await tester.ensureVisible(f);
@@ -326,10 +312,10 @@ void main() {
 
   group('solicitudes con problemas (demostración)', () {
     late DemoBackend backend;
-    setUp(() => backend = DemoBackend(simulateDelays: false));
+    setUp(() => backend = DemoBackend(simulateDelays: false, codeCooldown: Duration.zero));
     tearDown(() => backend.dispose());
-    Future<void> asCustomer() => backend.signIn(email: DemoBackend.customerEmail, password: DemoBackend.demoPassword);
-    Future<void> asAdmin() => backend.signIn(email: DemoBackend.adminEmail, password: DemoBackend.demoPassword);
+    Future<void> asCustomer() => backend.signInAs(DemoBackend.customerPhone);
+    Future<void> asAdmin() => backend.signInAs(DemoBackend.adminPhone);
 
     BookingDraft ya(int category, List<int> ids, {String description = '', String? other}) => BookingDraft(
       categoryId: category,
@@ -535,7 +521,7 @@ void main() {
 
     testWidgets('el administrador agrega una opción y el cliente la ve', (tester) async {
       await _pumpApp(tester);
-      await _login(tester, email: DemoBackend.adminEmail);
+      await _login(tester, phone: DemoBackend.adminPhone);
       await _tapText(tester, 'Catálogo');
       expect(find.text('Plomería'), findsOneWidget);
       await _tap(

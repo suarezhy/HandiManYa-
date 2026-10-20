@@ -6,6 +6,8 @@ import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/models/booking.dart';
 import 'package:handimanya/data/models/geo.dart';
 
+import 'support/demo_login.dart';
+
 BookingDraft _yaAt(double lat, double lng) => BookingDraft(
   categoryId: 2,
   cityId: 1,
@@ -23,11 +25,11 @@ PhotoUpload _photo() => PhotoUpload(bytes: Uint8List.fromList([1, 2, 3]), fileNa
 void main() {
   late DemoBackend backend;
 
-  setUp(() => backend = DemoBackend(simulateDelays: false));
+  setUp(() => backend = DemoBackend(simulateDelays: false, codeCooldown: Duration.zero));
   tearDown(() => backend.dispose());
 
-  Future<void> asPro() => backend.signIn(email: DemoBackend.professionalEmail, password: DemoBackend.demoPassword);
-  Future<void> asCustomer() => backend.signIn(email: DemoBackend.customerEmail, password: DemoBackend.demoPassword);
+  Future<void> asPro() => backend.signInAs(DemoBackend.professionalPhone);
+  Future<void> asCustomer() => backend.signInAs(DemoBackend.customerPhone);
 
   test('distancia entre dos puntos de Santa Cruz', () {
     // Plaza 24 de Septiembre a Equipetrol: unos 3 km.

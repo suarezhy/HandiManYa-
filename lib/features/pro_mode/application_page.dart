@@ -353,7 +353,9 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                         size: 20,
                       ),
                       const SizedBox(width: 6),
-                      Text(_docs == 0 ? 'Todavía no subiste documentos' : '$_docs documento(s) subido(s)'),
+                      Expanded(
+                        child: Text(_docs == 0 ? 'Todavía no subiste documentos' : '$_docs documento(s) subido(s)'),
+                      ),
                     ],
                   ),
                 const SizedBox(height: HySpacing.lg),

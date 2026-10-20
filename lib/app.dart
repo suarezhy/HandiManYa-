@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/tokens.dart';
 import 'data/providers.dart';
+import 'features/security/app_lock.dart';
 import 'router.dart';
 
 class HandiManYaApp extends ConsumerWidget {
@@ -29,7 +30,7 @@ class HandiManYaApp extends ConsumerWidget {
         final scaled = media.copyWith(textScaler: media.textScaler.clamp(minScaleFactor: 1, maxScaleFactor: 1.6));
         return MediaQuery(
           data: scaled,
-          child: demo ? _DemoFrame(child: child!) : child!,
+          child: AppLockGate(child: demo ? _DemoFrame(child: child!) : child!),
         );
       },
     );

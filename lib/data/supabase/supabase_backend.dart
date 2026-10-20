@@ -3,8 +3,6 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
-import '../../core/config/env.dart';
-import '../../core/utils/app_error.dart';
 import '../models/admin.dart';
 import '../models/ai_control.dart';
 import '../models/booking.dart';
@@ -49,8 +47,14 @@ class SupabaseBackend
       (path == null || path.isEmpty) ? null : _db.storage.from('avatars').getPublicUrl(path);
 
   // ---------------------------------------------------------------- Auth
-  AuthUser? _map(User? u) =>
-      u == null ? null : AuthUser(id: u.id, email: u.email ?? '', emailConfirmed: u.emailConfirmedAt != null);
+  AuthUser? _map(User? u) => u == null
+      ? null
+      : AuthUser(
+          id: u.id,
+          // Supabase guarda el número sin "+".
+          phone: (u.phone ?? '').isEmpty ? null : '+${u.phone!.replaceFirst('+', '')}',
+          email: (u.email ?? '').isEmpty ? null : u.email,
+        );
 
   @override
   AuthUser? get currentUser => _map(_db.auth.currentUser);
@@ -58,50 +62,29 @@ class SupabaseBackend
   @override
   Stream<AuthUser?> authChanges() => _db.auth.onAuthStateChange.map((s) => _map(s.session?.user));
 
+  static OtpChannel _channel(CodeChannel c) => c == CodeChannel.whatsapp ? OtpChannel.whatsapp : OtpChannel.sms;
+
+  // Supabase no le pasa el canal al servicio de envío: se guarda antes.
+  Future<void> _chooseChannel(String phone, CodeChannel channel) =>
+      _db.rpc('choose_code_channel', params: {'p_phone': phone, 'p_channel': channel.key});
+
   @override
-  Future<void> signUp({
-    required String email,
-    required String password,
-    required String fullName,
-    required String phone,
-    required int cityId,
-    required bool wantsToBeProfessional,
-  }) async {
-    await _db.auth.signUp(
-      email: email.trim(),
-      password: password,
-      emailRedirectTo: Env.authRedirectUrl,
-      data: {
-        'full_name': fullName.trim(),
-        'phone': phone,
-        'city_id': '$cityId',
-        'terms_accepted': 'true',
-        'wants_professional': wantsToBeProfessional ? 'true' : 'false',
-      },
-    );
+  Future<void> sendPhoneCode({required String phone, required CodeChannel channel}) async {
+    await _chooseChannel(phone, channel);
+    await _db.auth.signInWithOtp(phone: phone, channel: _channel(channel), shouldCreateUser: true);
   }
 
   @override
-  Future<void> verifyEmailCode({required String email, required String code}) =>
-      _db.auth.verifyOTP(type: OtpType.signup, email: email.trim(), token: code.trim());
+  Future<void> verifyPhoneCode({required String phone, required String code}) =>
+      _db.auth.verifyOTP(type: OtpType.sms, phone: phone, token: code.trim());
 
   @override
-  Future<void> resendEmailCode(String email) => _db.auth.resend(type: OtpType.signup, email: email.trim());
+  Future<void> sendEmailLoginCode(String email) =>
+      _db.auth.signInWithOtp(email: email.trim().toLowerCase(), shouldCreateUser: false);
 
   @override
-  Future<void> signIn({required String email, required String password}) =>
-      _db.auth.signInWithPassword(email: email.trim(), password: password);
-
-  @override
-  Future<void> sendPasswordReset(String email) =>
-      _db.auth.resetPasswordForEmail(email.trim(), redirectTo: Env.authRedirectUrl);
-
-  @override
-  Future<void> verifyRecoveryCode({required String email, required String code}) =>
-      _db.auth.verifyOTP(type: OtpType.recovery, email: email.trim(), token: code.trim());
-
-  @override
-  Future<void> updatePassword(String newPassword) => _db.auth.updateUser(UserAttributes(password: newPassword));
+  Future<void> verifyEmailLoginCode({required String email, required String code}) =>
+      _db.auth.verifyOTP(type: OtpType.email, email: email.trim().toLowerCase(), token: code.trim());
 
   @override
   Future<void> signOut() => _db.auth.signOut();
@@ -117,6 +100,9 @@ class SupabaseBackend
       email: m['email'] as String? ?? '',
       fullName: m['full_name'] as String? ?? '',
       phone: m['phone'] as String?,
+      phoneVerified: m['phone_verified'] as bool? ?? false,
+      emailConfirmed: m['email_confirmed'] as bool? ?? false,
+      profileComplete: m['profile_complete'] as bool? ?? false,
       cityId: (m['city_id'] as num?)?.toInt(),
       activeRole: AppRole.parse(m['active_role'] as String?),
       roles: {for (final r in (m['roles'] as List? ?? const [])) AppRole.parse(r as String)},
@@ -130,9 +116,34 @@ class SupabaseBackend
   }
 
   @override
-  Future<void> updateProfile({required String fullName, String? phone, int? cityId}) async {
-    await _db.from('profiles').update({'full_name': fullName.trim(), 'phone': phone, 'city_id': cityId}).eq('id', _uid);
+  Future<void> completeSignup({required String fullName, required int cityId, required bool acceptTerms}) => _db.rpc(
+    'complete_signup',
+    params: {'p_full_name': fullName.trim(), 'p_city_id': cityId, 'p_accept_terms': acceptTerms},
+  );
+
+  @override
+  Future<void> updateProfile({required String fullName, int? cityId}) async {
+    await _db.from('profiles').update({'full_name': fullName.trim(), 'city_id': cityId}).eq('id', _uid);
   }
+
+  // El número y el correo los cambia Supabase Auth, después de un código.
+  @override
+  Future<void> requestPhoneChange({required String phone, required CodeChannel channel}) async {
+    await _chooseChannel(phone, channel);
+    await _db.auth.updateUser(UserAttributes(phone: phone));
+  }
+
+  @override
+  Future<void> verifyPhoneChange({required String phone, required String code}) =>
+      _db.auth.verifyOTP(type: OtpType.phoneChange, phone: phone, token: code.trim());
+
+  @override
+  Future<void> requestEmailChange(String email) =>
+      _db.auth.updateUser(UserAttributes(email: email.trim().toLowerCase()));
+
+  @override
+  Future<void> verifyEmailChange({required String email, required String code}) =>
+      _db.auth.verifyOTP(type: OtpType.emailChange, email: email.trim().toLowerCase(), token: code.trim());
 
   @override
   Future<void> setActiveRole(AppRole role) => _db.rpc('set_active_role', params: {'p_role': role.key});
@@ -601,21 +612,14 @@ class SupabaseBackend
   }
 
   @override
-  Future<void> confirmPassword(String password) async {
-    final email = _db.auth.currentUser?.email;
-    if (email == null) throw AppError.from('HMY_AUTH_REQUIRED');
-    // Un inicio de sesión nuevo: el servidor exige que sea reciente (claim amr).
-    await _db.auth.signInWithPassword(email: email, password: password);
-  }
-
-  @override
   Future<bool> biometricEnabled() async {
     final m = await _db.from('security_settings').select('biometric_enabled').eq('user_id', _uid).maybeSingle();
     return m?['biometric_enabled'] as bool? ?? false;
   }
 
   @override
-  Future<void> setBiometricEnabled(bool enabled) => _db.rpc('set_biometric_enabled', params: {'p_enabled': enabled});
+  Future<void> setBiometricEnabled(bool enabled, {String authMethod = 'otp'}) =>
+      _db.rpc('set_biometric_enabled', params: {'p_enabled': enabled, 'p_auth_method': authMethod});
 
   @override
   Future<ServiceLocation?> serviceLocation() async {

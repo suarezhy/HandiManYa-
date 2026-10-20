@@ -35,7 +35,7 @@ class DemoBackend
         SafetyRepository,
         AdminRepository,
         AiControlRepository {
-  DemoBackend({this.simulateDelays = true}) {
+  DemoBackend({this.simulateDelays = true, this.codeCooldown = const Duration(seconds: 60)}) {
     _seed();
     _seedAdmin();
   }
@@ -43,8 +43,14 @@ class DemoBackend
   /// En las pruebas automáticas se apaga para que todo sea inmediato.
   final bool simulateDelays;
 
-  static const demoPassword = 'Demo1234';
+  /// Espera mínima para pedir otro código al mismo número (como Supabase).
+  final Duration codeCooldown;
+
+  /// Solo modo demostración: el código siempre es este y no se envía nada.
   static const demoCode = '123456';
+  static const customerPhone = '+59171234567';
+  static const professionalPhone = '+59176543210';
+  static const adminPhone = '+59170000000';
   static const customerEmail = 'cliente@demo.bo';
   static const professionalEmail = 'profesional@demo.bo';
   static const adminEmail = 'admin@demo.bo';
@@ -146,7 +152,7 @@ class DemoBackend
 
   void _seed() {
     for (final p in DemoData.professionals) {
-      final account = _Account(id: p.$1, email: '${p.$1}@demo.bo', password: '', fullName: p.$2, cityId: p.$4)
+      final account = _Account(id: p.$1, email: '${p.$1}@demo.bo', fullName: p.$2, cityId: p.$4)
         ..confirmed = true
         ..roles.add(AppRole.professional);
       _accounts[account.email] = account;
@@ -167,24 +173,16 @@ class DemoBackend
       );
     }
 
-    final customer =
-        _Account(id: 'demo-cliente', email: customerEmail, password: demoPassword, fullName: 'Carla Rojas', cityId: 1)
-          ..phone = '+59171234567'
-          ..confirmed = true;
+    final customer = _Account(id: 'demo-cliente', email: customerEmail, fullName: 'Carla Rojas', cityId: 1)
+      ..phone = customerPhone
+      ..confirmed = true;
     _accounts[customer.email] = customer;
 
-    final pro =
-        _Account(
-            id: 'demo-pro',
-            email: professionalEmail,
-            password: demoPassword,
-            fullName: 'Miguel Ángel Suárez',
-            cityId: 1,
-          )
-          ..phone = '+59176543210'
-          ..confirmed = true
-          ..roles.add(AppRole.professional)
-          ..activeRole = AppRole.professional;
+    final pro = _Account(id: 'demo-pro', email: professionalEmail, fullName: 'Miguel Ángel Suárez', cityId: 1)
+      ..phone = professionalPhone
+      ..confirmed = true
+      ..roles.add(AppRole.professional)
+      ..activeRole = AppRole.professional;
     _accounts[pro.email] = pro;
     _pros[pro.id] = _Pro(
       id: pro.id,
@@ -218,11 +216,11 @@ class DemoBackend
 
   /// Datos de ejemplo para el panel de administración.
   void _seedAdmin() {
-    final admin =
-        _Account(id: 'demo-admin', email: adminEmail, password: demoPassword, fullName: 'Equipo HandiMan', cityId: 1)
-          ..confirmed = true
-          ..onboardingDone = true
-          ..roles.add(AppRole.admin);
+    final admin = _Account(id: 'demo-admin', email: adminEmail, fullName: 'Equipo HandiMan', cityId: 1)
+      ..phone = adminPhone
+      ..confirmed = true
+      ..onboardingDone = true
+      ..roles.add(AppRole.admin);
     _accounts[admin.email] = admin;
 
     final now = DateTime.now();
@@ -237,7 +235,7 @@ class DemoBackend
       ),
       ('demo-post-2', 'Silvia Arancibia', 5, 11, 'Limpieza de casas y oficinas. Llevo mis propios productos.', 20),
     ]) {
-      _accounts['$id@demo.bo'] = _Account(id: id, email: '$id@demo.bo', password: '', fullName: name, cityId: 1)
+      _accounts['$id@demo.bo'] = _Account(id: id, email: '$id@demo.bo', fullName: name, cityId: 1)
         ..confirmed = true
         ..phone = id.endsWith('1') ? '+59170012345' : '+59170054321';
       _pros[id] =
@@ -303,7 +301,7 @@ class DemoBackend
     final neighbor = _accounts.putIfAbsent(
       'vecino2@demo.bo',
       () =>
-          _Account(id: 'demo-vecino2', email: 'vecino2@demo.bo', password: '', fullName: 'Jorge Salvatierra', cityId: 1)
+          _Account(id: 'demo-vecino2', email: 'vecino2@demo.bo', fullName: 'Jorge Salvatierra', cityId: 1)
             ..confirmed = true,
     );
     final disputed =
@@ -346,9 +344,18 @@ class DemoBackend
 
   final _wallets = <String, List<double>>{}; // [disponible, reservado]
 
-  AuthUser _authUser(_Account a) => AuthUser(id: a.id, email: a.email, emailConfirmed: a.confirmed);
+  AuthUser _authUser(_Account a) => AuthUser(id: a.id, phone: a.phone, email: a.email.isEmpty ? null : a.email);
 
   // ================================================================= Auth
+  // Como Supabase Auth con ingreso por celular: código de 6 dígitos que vence
+  // en 5 minutos, un minuto entre envíos al mismo número, hasta 5 por hora, y
+  // el código se anula después de 5 intentos fallidos. Aquí no se envía nada:
+  // el código de demostración es siempre [demoCode].
+  static const codeExpiry = Duration(minutes: 5);
+  static const maxCodeAttempts = 5;
+  final _codes = <String, _PendingCode>{};
+  final _codeSends = <String, List<DateTime>>{};
+
   @override
   AuthUser? get currentUser => _session == null ? null : _authUser(_session!);
 
@@ -357,71 +364,84 @@ class DemoBackend
 
   void _emitAuth() => _auth.add(currentUser);
 
+  _Account? _byPhone(String phone) => _accounts.values.where((a) => a.phone == phone).firstOrNull;
+
+  void _sendCode(String key, {required String purpose, String? target}) {
+    final now = DateTime.now();
+    final sends = (_codeSends[key] ??= [])..removeWhere((t) => now.difference(t) > const Duration(hours: 1));
+    if (sends.isNotEmpty && now.difference(sends.last) < codeCooldown) {
+      final wait = codeCooldown - now.difference(sends.last);
+      throw AppError.from('HMY_OTP_TOO_SOON:${wait.inSeconds + 1}');
+    }
+    if (sends.length >= 5) throw AppError.from('HMY_OTP_LIMIT');
+    sends.add(now);
+    _codes[key] = _PendingCode(now, purpose, target);
+  }
+
+  /// Revisa el código y lo consume si es correcto.
+  _PendingCode _checkCode(String key, String code, String purpose) {
+    final pending = _codes[key];
+    if (pending == null || pending.purpose != purpose || DateTime.now().difference(pending.sentAt) > codeExpiry) {
+      _codes.remove(key);
+      throw AppError.from('otp_expired');
+    }
+    if (code.trim() != demoCode) {
+      pending.attempts++;
+      if (pending.attempts >= maxCodeAttempts) {
+        _codes.remove(key);
+        throw AppError.from('HMY_OTP_TOO_MANY_ATTEMPTS');
+      }
+      throw AppError.from('otp_invalid');
+    }
+    _codes.remove(key);
+    return pending;
+  }
+
+  /// Como el claim amr "otp": un código recién verificado confirma una operación.
+  void _signInWithCode(_Account a) {
+    _session = a;
+    _confirmedAt[a.id] = DateTime.now();
+    _emitAuth();
+  }
+
   @override
-  Future<void> signUp({
-    required String email,
-    required String password,
-    required String fullName,
-    required String phone,
-    required int cityId,
-    required bool wantsToBeProfessional,
-  }) async {
+  Future<void> sendPhoneCode({required String phone, required CodeChannel channel}) async {
+    await _latency();
+    if (!RegExp(r'^\+591[67][0-9]{7}$').hasMatch(phone)) throw AppError.from('HMY_INVALID_PHONE');
+    _sendCode(phone, purpose: 'login');
+  }
+
+  @override
+  Future<void> verifyPhoneCode({required String phone, required String code}) async {
+    await _latency();
+    _checkCode(phone, code, 'login');
+    // Un número, una cuenta: si ya existe entra; si no, se crea.
+    var a = _byPhone(phone);
+    if (a == null) {
+      a = _Account(id: _id('u'), fullName: '', termsAccepted: false)
+        ..phone = phone
+        ..confirmed = true;
+      _accounts[phone] = a;
+    }
+    _signInWithCode(a);
+  }
+
+  @override
+  Future<void> sendEmailLoginCode(String email) async {
     await _latency();
     final key = email.trim().toLowerCase();
-    if (_accounts.containsKey(key)) {
-      throw const AppError('Ya existe una cuenta con ese correo. Prueba ingresar.', code: 'user_exists');
-    }
-    final a = _Account(id: _id('u'), email: key, password: password, fullName: fullName.trim(), cityId: cityId)
-      ..phone = phone;
-    _accounts[key] = a;
-    _session = a;
-    _emitAuth();
+    // Como Supabase: no dice si el correo existe (no crea cuentas).
+    _sendCode('email:$key', purpose: 'email-login');
   }
 
   @override
-  Future<void> verifyEmailCode({required String email, required String code}) async {
+  Future<void> verifyEmailLoginCode({required String email, required String code}) async {
     await _latency();
-    final a = _accounts[email.trim().toLowerCase()];
-    if (a == null || code.trim() != demoCode) {
-      throw const AppError('El código no es válido o ya venció. Pide uno nuevo.', code: 'otp_invalid');
-    }
-    a.confirmed = true;
-    _session = a;
-    _emitAuth();
-  }
-
-  @override
-  Future<void> resendEmailCode(String email) => _latency();
-
-  @override
-  Future<void> signIn({required String email, required String password}) async {
-    await _latency();
-    final a = _accounts[email.trim().toLowerCase()];
-    if (a == null || a.password != password) {
-      throw const AppError('Correo o contraseña incorrectos.', code: 'invalid_credentials');
-    }
-    _session = a;
-    _emitAuth();
-  }
-
-  @override
-  Future<void> sendPasswordReset(String email) => _latency();
-
-  @override
-  Future<void> verifyRecoveryCode({required String email, required String code}) async {
-    await _latency();
-    final a = _accounts[email.trim().toLowerCase()];
-    if (a == null || code.trim() != demoCode) {
-      throw const AppError('El código no es válido o ya venció. Pide uno nuevo.', code: 'otp_invalid');
-    }
-    _session = a;
-    _emitAuth();
-  }
-
-  @override
-  Future<void> updatePassword(String newPassword) async {
-    await _latency();
-    _me.password = newPassword;
+    final key = email.trim().toLowerCase();
+    _checkCode('email:$key', code, 'email-login');
+    final a = _accounts.values.where((a) => a.email == key && a.email.isNotEmpty).firstOrNull;
+    if (a == null) throw AppError.from('otp_invalid');
+    _signInWithCode(a);
   }
 
   @override
@@ -442,6 +462,9 @@ class DemoBackend
       email: a.email,
       fullName: a.fullName,
       phone: a.phone,
+      phoneVerified: a.phone != null,
+      emailConfirmed: a.email.isNotEmpty,
+      profileComplete: a.fullName.trim().length >= 3 && a.cityId != null && a.termsAccepted,
       cityId: a.cityId,
       activeRole: a.activeRole,
       roles: {...a.roles},
@@ -455,12 +478,65 @@ class DemoBackend
   }
 
   @override
-  Future<void> updateProfile({required String fullName, String? phone, int? cityId}) async {
+  Future<void> completeSignup({required String fullName, required int cityId, required bool acceptTerms}) async {
+    await _latency();
+    final name = fullName.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (name.length < 3 || name.length > 120) throw AppError.from('HMY_INVALID_NAME');
+    if (!DemoData.cities.any((c) => c.id == cityId)) throw AppError.from('HMY_INVALID_CITY');
+    if (!acceptTerms) throw AppError.from('HMY_TERMS_REQUIRED');
+    _me
+      ..fullName = name
+      ..cityId = cityId
+      ..termsAccepted = true;
+  }
+
+  @override
+  Future<void> updateProfile({required String fullName, int? cityId}) async {
     await _latency();
     _me
       ..fullName = fullName.trim()
-      ..phone = phone
       ..cityId = cityId;
+  }
+
+  @override
+  Future<void> requestPhoneChange({required String phone, required CodeChannel channel}) async {
+    await _latency();
+    final me = _me;
+    if (!RegExp(r'^\+591[67][0-9]{7}$').hasMatch(phone)) throw AppError.from('HMY_INVALID_PHONE');
+    if (phone == me.phone) throw AppError.from('HMY_SAME_PHONE');
+    if (_byPhone(phone) != null) throw AppError.from('phone_exists');
+    _sendCode('change:${me.id}', purpose: 'phone-change', target: phone);
+  }
+
+  @override
+  Future<void> verifyPhoneChange({required String phone, required String code}) async {
+    await _latency();
+    final me = _me;
+    final pending = _checkCode('change:${me.id}', code, 'phone-change');
+    if (pending.target != phone) throw AppError.from('otp_invalid');
+    if (_byPhone(phone) != null) throw AppError.from('phone_exists');
+    me.phone = phone;
+    _log('auth.phone_changed', 'profiles', me.id);
+    _emitAuth();
+  }
+
+  @override
+  Future<void> requestEmailChange(String email) async {
+    await _latency();
+    final key = email.trim().toLowerCase();
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(key)) throw AppError.from('HMY_INVALID_EMAIL');
+    if (_accounts.values.any((a) => a.email == key && a.id != _me.id)) throw AppError.from('email_exists');
+    _sendCode('email-change:${_me.id}', purpose: 'email-change', target: key);
+  }
+
+  @override
+  Future<void> verifyEmailChange({required String email, required String code}) async {
+    await _latency();
+    final me = _me;
+    final pending = _checkCode('email-change:${me.id}', code, 'email-change');
+    if (pending.target != email.trim().toLowerCase()) throw AppError.from('otp_invalid');
+    me.email = pending.target!;
+    _emitAuth();
   }
 
   @override
@@ -1374,7 +1450,7 @@ class DemoBackend
         final ghost = _accounts.putIfAbsent(
           'vecino@demo.bo',
           () =>
-              _Account(id: 'demo-vecino', email: 'vecino@demo.bo', password: '', fullName: 'Doña Elena Paz', cityId: 1)
+              _Account(id: 'demo-vecino', email: 'vecino@demo.bo', fullName: 'Doña Elena Paz', cityId: 1)
                 ..confirmed = true,
         );
         final b =
@@ -1573,24 +1649,15 @@ class DemoBackend
   }
 
   @override
-  Future<void> confirmPassword(String password) async {
-    await _latency();
-    final me = _me;
-    if (me.password != password) {
-      throw const AppError('Correo o contraseña incorrectos.', code: 'invalid_credentials');
-    }
-    _confirmedAt[me.id] = DateTime.now();
-  }
-
-  @override
   Future<bool> biometricEnabled() async => _biometric.contains(_me.id);
 
   @override
-  Future<void> setBiometricEnabled(bool enabled) async {
+  Future<void> setBiometricEnabled(bool enabled, {String authMethod = 'otp'}) async {
     await _latency(100);
     final me = _me;
     if (enabled) {
-      _requireConfirmation('password');
+      if (authMethod != 'otp') throw AppError.from('HMY_CONFIRMATION_REQUIRED');
+      _requireConfirmation('otp');
       _biometric.add(me.id);
     } else {
       _biometric.remove(me.id);
@@ -1598,12 +1665,12 @@ class DemoBackend
     _log(enabled ? 'security.biometric_on' : 'security.biometric_off', 'security_settings', me.id);
   }
 
-  /// Como hmy_require_confirmation: contraseña de hace menos de 5 minutos y
-  /// de un solo uso, o huella/rostro activados en la cuenta.
+  /// Como hmy_require_confirmation: código verificado hace menos de 5 minutos
+  /// y de un solo uso, o huella/rostro activados en la cuenta.
   void _requireConfirmation(String method) {
     final me = _me;
     switch (method) {
-      case 'password':
+      case 'otp':
         final at = _confirmedAt.remove(me.id);
         if (at == null || DateTime.now().difference(at) > const Duration(minutes: 5)) {
           throw AppError.from('HMY_CONFIRMATION_EXPIRED');
@@ -2190,7 +2257,7 @@ class DemoBackend
     final q = query.trim().toLowerCase();
     final list = [
       for (final a in _accounts.values)
-        if (a.password.isNotEmpty || a.id.startsWith('demo-') || _pros.containsKey(a.id))
+        if (a.phone != null || a.id.startsWith('demo-') || _pros.containsKey(a.id))
           if (q.isEmpty ||
               a.fullName.toLowerCase().contains(q) ||
               a.email.toLowerCase().contains(q) ||
@@ -2461,13 +2528,15 @@ class DemoBackend
 }
 
 class _Account {
-  _Account({required this.id, required this.email, required this.password, required this.fullName, this.cityId});
+  _Account({required this.id, this.email = '', required this.fullName, this.cityId, this.termsAccepted = true});
 
   final String id;
-  final String email;
-  String password;
+
+  /// Correo confirmado (opcional); vacío si no agregó uno.
+  String email;
   String fullName;
   String? phone;
+  bool termsAccepted;
   int? cityId;
   bool confirmed = false;
   bool onboardingDone = false;
@@ -2477,6 +2546,17 @@ class _Account {
   DateTime? suspendedAt;
   String? suspensionReason;
   final Set<String> blocked = {};
+}
+
+class _PendingCode {
+  _PendingCode(this.sentAt, this.purpose, this.target);
+
+  final DateTime sentAt;
+  final String purpose;
+
+  /// Número o correo nuevo, en un cambio.
+  final String? target;
+  int attempts = 0;
 }
 
 class _Doc {

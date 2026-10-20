@@ -24,6 +24,8 @@ grant usage on schema extensions to anon, authenticated, service_role;
 create table auth.users (
   id uuid primary key,
   email text unique,
+  phone text unique,
+  phone_confirmed_at timestamptz,
   raw_user_meta_data jsonb default '{}'::jsonb,
   email_confirmed_at timestamptz,
   created_at timestamptz default now()

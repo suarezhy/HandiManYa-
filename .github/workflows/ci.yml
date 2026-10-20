@@ -51,10 +51,20 @@ jobs:
       - run: supabase/tests/run_local.sh
       - run: supabase/tests/check_target_test.sh
 
+  functions:
+    name: Servicio de envío de códigos (pruebas)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --experimental-strip-types --no-warnings --test supabase/functions/send-otp/send-otp.test.ts
+
   demo:
     name: Publicar demo web (GitHub Pages)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [app, database]
+    needs: [app, database, functions]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

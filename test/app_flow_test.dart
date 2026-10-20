@@ -14,11 +14,13 @@ import 'package:handimanya/router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/demo_login.dart';
+
 Future<DemoAppBackend> _pumpApp(WidgetTester tester, {double textScale = 1}) async {
   await initializeDateFormatting('es');
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
-  final backend = DemoAppBackend(simulateDelays: false);
+  final backend = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
   addTearDown(backend.dispose);
   tester.view.physicalSize = const Size(1170, 2532);
   tester.view.devicePixelRatio = 3;
@@ -40,26 +42,8 @@ Future<DemoAppBackend> _pumpApp(WidgetTester tester, {double textScale = 1}) asy
   return backend;
 }
 
-Future<void> _login(WidgetTester tester, {required bool professional, String? email}) async {
-  await tester.tap(find.text('Omitir'));
-  await tester.pumpAndSettle();
-  final door = find.text(professional ? 'Soy profesional' : 'Necesito un servicio');
-  await tester.ensureVisible(door);
-  await tester.pumpAndSettle();
-  await tester.tap(door);
-  await tester.pumpAndSettle();
-  final fields = find.byType(TextFormField);
-  await tester.enterText(
-    fields.at(0),
-    email ?? (professional ? DemoBackend.professionalEmail : DemoBackend.customerEmail),
-  );
-  await tester.enterText(fields.at(1), DemoBackend.demoPassword);
-  final submit = find.widgetWithText(FilledButton, 'Ingresar');
-  await tester.ensureVisible(submit);
-  await tester.pumpAndSettle();
-  await tester.tap(submit);
-  await tester.pumpAndSettle();
-}
+Future<void> _login(WidgetTester tester, {required bool professional, String? phone}) =>
+    loginWithPhone(tester, phone ?? (professional ? DemoBackend.professionalPhone : DemoBackend.customerPhone));
 
 class _FakeLocation implements LocationService {
   const _FakeLocation();
@@ -146,7 +130,7 @@ void main() {
   for (final scale in [1.0, 1.6]) {
     testWidgets('el administrador entra a su panel y abre cada sección (letra x$scale)', (tester) async {
       await _pumpApp(tester, textScale: scale);
-      await _login(tester, professional: false, email: DemoBackend.adminEmail);
+      await _login(tester, professional: false, phone: DemoBackend.adminPhone);
       expect(find.text('Panel de administración'), findsOneWidget);
       for (final section in [
         'Postulaciones',
@@ -191,7 +175,7 @@ void main() {
     await _tapText(tester, 'Trabajo mal hecho');
     await _tapText(tester, 'Enviar reporte');
     expect(tester.takeException(), isNull);
-    await backend.signIn(email: DemoBackend.adminEmail, password: DemoBackend.demoPassword);
+    await backend.signInAs(DemoBackend.adminPhone);
     expect((await backend.adminReports()).any((r) => r.reportedName == 'Juan Carlos Mamani'), isTrue);
   });
 

@@ -1,4 +1,4 @@
--- Corre las pruebas 10–70 contra el proyecto Supabase real SIN dejar rastro:
+-- Corre las pruebas 10–80 contra el proyecto Supabase real SIN dejar rastro:
 -- todo va dentro de una transacción que siempre termina en ROLLBACK.
 -- Si una prueba falla, psql se detiene (ON_ERROR_STOP) y la transacción
 -- abierta también se descarta. No usa 00_supabase_stub.sql (Supabase ya
@@ -8,8 +8,8 @@
 \set ON_ERROR_STOP 1
 begin;
 do $$ begin
-  if exists (select 1 from auth.users where email like '%@test.bo') then
-    raise exception 'HMY: ya existen usuarios de prueba (@test.bo); no se corrió nada.';
+  if exists (select 1 from auth.users where email like '%@test.bo' or phone like '5916000080%') then
+    raise exception 'HMY: ya existen usuarios de prueba (@test.bo o +59160000 80x); no se corrió nada.';
   end if;
 end $$;
 \ir 10_schema_tests.sql
@@ -19,5 +19,6 @@ end $$;
 \ir 50_service_problems_tests.sql
 \ir 60_wallet_confirmation_tests.sql
 \ir 70_ai_control_center_tests.sql
+\ir 80_phone_auth_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'

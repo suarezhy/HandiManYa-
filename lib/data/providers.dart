@@ -37,7 +37,7 @@ class _SupabaseAppBackend extends SupabaseBackend implements AppBackend {
 }
 
 class DemoAppBackend extends DemoBackend implements AppBackend {
-  DemoAppBackend({super.simulateDelays});
+  DemoAppBackend({super.simulateDelays, super.codeCooldown});
 }
 
 AppBackend createBackend() => Env.hasBackend ? _SupabaseAppBackend(Supabase.instance.client) : DemoAppBackend();
@@ -56,7 +56,7 @@ final authUserProvider = StreamProvider<AuthUser?>((ref) async* {
 /// Cuenta del usuario (roles y estado vienen de la base de datos).
 final accountProvider = FutureProvider<UserProfile?>((ref) async {
   final user = ref.watch(authUserProvider).value;
-  if (user == null || !user.emailConfirmed) return null;
+  if (user == null) return null;
   // Se recarga con los avisos en tiempo real (por ejemplo, cuando aprueban el perfil).
   ref.watch(bookingChangesProvider);
   return ref.watch(backendProvider).myAccount();

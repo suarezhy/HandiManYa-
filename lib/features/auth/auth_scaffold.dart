@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../core/utils/validators.dart';
 import '../../core/widgets/brand_logo.dart';
 import '../../data/demo/demo_backend.dart';
+import '../../data/models/user.dart';
 import '../../data/providers.dart';
 
 /// Marco común de las pantallas de acceso: logo, título y contenido con
@@ -50,67 +55,143 @@ class AuthScaffold extends StatelessWidget {
   }
 }
 
-/// En modo demostración muestra las cuentas de prueba.
+/// En modo demostración muestra el código y los números de prueba.
 class DemoAccountsHint extends ConsumerWidget {
-  const DemoAccountsHint({super.key, required this.professional});
-
-  final bool professional;
+  const DemoAccountsHint({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!ref.watch(isDemoProvider)) return const SizedBox.shrink();
-    final email = professional ? DemoBackend.professionalEmail : DemoBackend.customerEmail;
+    String n(String p) => p.substring(4);
     return Container(
       margin: const EdgeInsets.only(bottom: HySpacing.lg),
       padding: const EdgeInsets.all(HySpacing.sm),
       decoration: BoxDecoration(color: HyColors.infoSoft, borderRadius: BorderRadius.circular(HyRadii.md)),
       child: Text(
-        'Cuenta de prueba: $email · contraseña ${DemoBackend.demoPassword}\n'
-        'Código de verificación de correo: ${DemoBackend.demoCode}',
+        'Modo demostración: no se envía nada y el código es ${DemoBackend.demoCode}.\n'
+        'Cliente ${n(DemoBackend.customerPhone)} · Profesional ${n(DemoBackend.professionalPhone)} · '
+        'Admin ${n(DemoBackend.adminPhone)}. Cualquier otro número crea una cuenta nueva.',
         style: const TextStyle(color: HyColors.info, fontWeight: FontWeight.w600),
       ),
     );
   }
 }
 
-class PasswordField extends StatefulWidget {
-  const PasswordField({
-    super.key,
-    required this.controller,
-    this.label = 'Contraseña',
-    this.validator,
-    this.autofillHints = const [AutofillHints.password],
-    this.onSubmitted,
-  });
+/// Celular de Bolivia con +591 fijo.
+class PhoneField extends StatelessWidget {
+  const PhoneField({super.key, required this.controller, this.onSubmitted, this.label = 'Número de celular'});
 
   final TextEditingController controller;
-  final String label;
-  final String? Function(String?)? validator;
-  final Iterable<String> autofillHints;
   final ValueChanged<String>? onSubmitted;
-
-  @override
-  State<PasswordField> createState() => _PasswordFieldState();
-}
-
-class _PasswordFieldState extends State<PasswordField> {
-  bool _hidden = true;
+  final String label;
 
   @override
   Widget build(BuildContext context) => TextFormField(
-    controller: widget.controller,
-    obscureText: _hidden,
-    autofillHints: widget.autofillHints,
-    validator: widget.validator,
-    onFieldSubmitted: widget.onSubmitted,
+    key: const Key('phone-field'),
+    controller: controller,
+    keyboardType: TextInputType.phone,
+    autofillHints: const [AutofillHints.telephoneNumberNational],
+    textInputAction: TextInputAction.done,
+    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: 1),
+    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d +\-]')), LengthLimitingTextInputFormatter(16)],
     decoration: InputDecoration(
-      labelText: widget.label,
-      prefixIcon: const Icon(Icons.lock_outline),
-      suffixIcon: IconButton(
-        tooltip: _hidden ? 'Mostrar contraseña' : 'Ocultar contraseña',
-        icon: Icon(_hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-        onPressed: () => setState(() => _hidden = !_hidden),
-      ),
+      labelText: label,
+      hintText: '7123 4567',
+      prefixIcon: const Icon(Icons.phone_iphone),
+      prefixText: '🇧🇴 +591  ',
     ),
+    validator: Validators.boliviaPhone,
+    onFieldSubmitted: onSubmitted,
   );
+}
+
+/// WhatsApp o SMS.
+class ChannelPicker extends StatelessWidget {
+  const ChannelPicker({super.key, required this.value, required this.onChanged});
+
+  final CodeChannel value;
+  final ValueChanged<CodeChannel> onChanged;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text('¿Por dónde quieres recibir el código?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const SizedBox(height: HySpacing.xs),
+      SegmentedButton<CodeChannel>(
+        segments: const [
+          ButtonSegment(
+            value: CodeChannel.whatsapp,
+            label: Text('WhatsApp', key: Key('channel-whatsapp')),
+            icon: Icon(Icons.chat_rounded),
+          ),
+          ButtonSegment(
+            value: CodeChannel.sms,
+            label: Text('SMS', key: Key('channel-sms')),
+            icon: Icon(Icons.sms_outlined),
+          ),
+        ],
+        selected: {value},
+        showSelectedIcon: false,
+        onSelectionChanged: (s) => onChanged(s.first),
+      ),
+    ],
+  );
+}
+
+/// Las 6 cifras del código. Se envía solo al completar los 6 números.
+class CodeField extends StatelessWidget {
+  const CodeField({super.key, required this.controller, required this.onCompleted, this.fieldKey});
+
+  final TextEditingController controller;
+  final VoidCallback onCompleted;
+  final Key? fieldKey;
+
+  @override
+  Widget build(BuildContext context) => TextFormField(
+    key: fieldKey ?? const Key('code-field'),
+    controller: controller,
+    autofocus: true,
+    keyboardType: TextInputType.number,
+    autofillHints: const [AutofillHints.oneTimeCode],
+    textAlign: TextAlign.center,
+    style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: 10),
+    inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+    decoration: const InputDecoration(labelText: 'Código de 6 números', hintText: '······'),
+    validator: Validators.otp,
+    onChanged: (v) {
+      if (v.length == 6) onCompleted();
+    },
+  );
+}
+
+/// +591 7123 4567
+String formatBoliviaPhone(String phone) {
+  final d = phone.replaceFirst('+591', '');
+  return d.length == 8 ? '+591 ${d.substring(0, 4)} ${d.substring(4)}' : phone;
+}
+
+/// Cuenta regresiva para volver a pedir un código.
+mixin ResendCooldown<T extends StatefulWidget> on State<T> {
+  int cooldown = 0;
+  Timer? _cooldownTimer;
+
+  void startCooldown([int seconds = 60]) {
+    _cooldownTimer?.cancel();
+    setState(() => cooldown = seconds);
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted || cooldown <= 1) {
+        t.cancel();
+        if (mounted) setState(() => cooldown = 0);
+        return;
+      }
+      setState(() => cooldown--);
+    });
+  }
+
+  @override
+  void dispose() {
+    _cooldownTimer?.cancel();
+    super.dispose();
+  }
 }

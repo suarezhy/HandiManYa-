@@ -6,7 +6,9 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/app_error.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
+import '../../data/models/user.dart';
 import '../../data/providers.dart';
+import '../auth/auth_scaffold.dart';
 
 /// Preferencia de este teléfono: el profesional activó huella o rostro aquí.
 String biometricPrefKey(String userId) => 'security.biometric.$userId';
@@ -19,12 +21,34 @@ final biometricEnabledProvider = FutureProvider<bool>((ref) async {
   return ref.watch(backendProvider).biometricEnabled();
 });
 
+/// Preferencia de este teléfono: pedir huella o rostro al abrir la app.
+String appLockPrefKey(String userId) => 'security.applock.$userId';
+
+class AppLockEnabled extends Notifier<bool> {
+  @override
+  bool build() {
+    final user = ref.watch(authUserProvider).value;
+    if (user == null) return false;
+    final prefs = ref.watch(prefsProvider);
+    return (prefs.getBool(biometricPrefKey(user.id)) ?? false) && (prefs.getBool(appLockPrefKey(user.id)) ?? false);
+  }
+
+  Future<void> set(bool on) async {
+    final user = ref.read(authUserProvider).value;
+    if (user == null) return;
+    state = on;
+    await ref.read(prefsProvider).setBool(appLockPrefKey(user.id), on);
+  }
+}
+
+final appLockEnabledProvider = NotifierProvider<AppLockEnabled, bool>(AppLockEnabled.new);
+
 final deviceBiometricsProvider = FutureProvider<Set<DeviceBiometric>>(
   (ref) => ref.watch(deviceAuthProvider).available(),
 );
 
 /// Resultado de una confirmación exitosa. [serverMethod] es lo que se envía a
-/// la base (`password` o `biometric`); la base vuelve a validar.
+/// la base (`otp` o `biometric`); la base vuelve a validar.
 class IdentityConfirmation {
   const IdentityConfirmation(this.serverMethod, this.label);
 
@@ -41,7 +65,7 @@ Future<IdentityConfirmation?> confirmIdentity(
   double? amount,
   List<(String, String)> details = const [],
   String submitLabel = 'Confirmar y enviar',
-  bool passwordOnly = false,
+  bool codeOnly = false,
 }) => showModalBottomSheet<IdentityConfirmation>(
   context: context,
   isScrollControlled: true,
@@ -51,7 +75,7 @@ Future<IdentityConfirmation?> confirmIdentity(
     amount: amount,
     details: details,
     submitLabel: submitLabel,
-    passwordOnly: passwordOnly,
+    codeOnly: codeOnly,
   ),
 );
 
@@ -62,64 +86,102 @@ class ConfirmIdentitySheet extends ConsumerStatefulWidget {
     this.amount,
     this.details = const [],
     this.submitLabel = 'Confirmar y enviar',
-    this.passwordOnly = false,
+    this.codeOnly = false,
   });
 
   final String operation;
   final double? amount;
   final List<(String, String)> details;
   final String submitLabel;
-  final bool passwordOnly;
+  final bool codeOnly;
 
   @override
   ConsumerState<ConfirmIdentitySheet> createState() => _ConfirmIdentitySheetState();
 }
 
-class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> {
-  final _password = TextEditingController();
+class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> with ResendCooldown {
+  final _code = TextEditingController();
 
-  /// null = contraseña.
+  /// null = código por WhatsApp o SMS.
   DeviceBiometric? _method;
+  var _channel = CodeChannel.whatsapp;
   bool _picked = false;
-  bool _hide = true;
+  bool _codeSent = false;
   bool _busy = false;
   String? _error;
 
+  String? get _phone => ref.read(backendProvider).currentUser?.phone;
+
   @override
   void dispose() {
-    _password.dispose();
+    _code.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (_busy) return;
-    final biometric = _method;
-    if (biometric == null && _password.text.isEmpty) {
-      return setState(() => _error = 'Escribe tu contraseña.');
+  Future<void> _sendCode() async {
+    final phone = _phone;
+    if (phone == null) {
+      return setState(() => _error = 'Agrega tu celular en Perfil → Información personal para recibir códigos.');
     }
     setState(() {
       _busy = true;
       _error = null;
     });
+    try {
+      await ref.read(backendProvider).sendPhoneCode(phone: phone, channel: _channel);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _codeSent = true;
+      });
+      startCooldown();
+    } catch (e) {
+      final err = AppError.from(e);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          // Ya hay un código en camino: se puede escribir igual.
+          if (err.code == 'HMY_OTP_TOO_SOON') _codeSent = true;
+          _error = err.message;
+        });
+      }
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_busy) return;
+    final biometric = _method;
     if (biometric == null) {
+      if (!_codeSent) return _sendCode();
+      if (!RegExp(r'^\d{6}$').hasMatch(_code.text)) {
+        return setState(() => _error = 'Escribe el código de 6 números.');
+      }
+      setState(() {
+        _busy = true;
+        _error = null;
+      });
       try {
-        await ref.read(backendProvider).confirmPassword(_password.text);
-        _password.clear();
-        if (mounted) Navigator.pop(context, const IdentityConfirmation('password', 'Contraseña'));
+        // Verificar el código es un inicio de sesión nuevo: el servidor exige
+        // que sea de hace menos de 5 minutos y lo usa para una sola operación.
+        await ref.read(backendProvider).verifyPhoneCode(phone: _phone!, code: _code.text);
+        _code.clear();
+        if (mounted) Navigator.pop(context, const IdentityConfirmation('otp', 'Código'));
       } catch (e) {
-        _password.clear();
+        _code.clear();
         final err = AppError.from(e);
         if (mounted) {
           setState(() {
             _busy = false;
-            _error = err.code == 'invalid_credentials'
-                ? 'La contraseña no es correcta. No se envió nada.'
-                : '${err.message} No se envió nada.';
+            _error = '${err.message} No se envió nada.';
           });
         }
       }
       return;
     }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     final result = await ref
         .read(deviceAuthProvider)
         .authenticate('Confirma ${widget.operation.toLowerCase()} en HandiMan ¡Ya!');
@@ -132,8 +194,8 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> {
       _busy = false;
       _error = switch (result) {
         DeviceAuthResult.canceled => 'Cancelaste la confirmación. No se envió nada.',
-        DeviceAuthResult.lockedOut => 'La ${biometric.short} quedó bloqueada por muchos intentos. Usa tu contraseña.',
-        DeviceAuthResult.unavailable => 'La ${biometric.short} no está disponible ahora. Usa tu contraseña.',
+        DeviceAuthResult.lockedOut => 'La ${biometric.short} quedó bloqueada por muchos intentos. Usa un código.',
+        DeviceAuthResult.unavailable => 'La ${biometric.short} no está disponible ahora. Usa un código.',
         _ => 'No pudimos confirmar que eres tú. No se envió nada.',
       };
     });
@@ -141,14 +203,15 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final device = widget.passwordOnly
+    final device = widget.codeOnly
         ? const <DeviceBiometric>{}
         : (ref.watch(deviceBiometricsProvider).value ?? const <DeviceBiometric>{});
-    final enabled = !widget.passwordOnly && (ref.watch(biometricEnabledProvider).value ?? false);
+    final enabled = !widget.codeOnly && (ref.watch(biometricEnabledProvider).value ?? false);
     final options = enabled ? device.toList() : const <DeviceBiometric>[];
     if (!_picked && options.isNotEmpty) _method = options.first;
     if (_method != null && !options.contains(_method)) _method = null;
     final amount = widget.amount;
+    final phone = ref.watch(authUserProvider).value?.phone;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -204,9 +267,9 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> {
                       }),
               ),
             _MethodTile(
-              key: const Key('confirm-password'),
-              icon: Icons.password_rounded,
-              label: 'Contraseña',
+              key: const Key('confirm-code'),
+              icon: Icons.sms_outlined,
+              label: phone == null ? 'Código a tu celular' : 'Código al ${formatBoliviaPhone(phone)}',
               selected: _method == null,
               onTap: _busy
                   ? null
@@ -216,7 +279,7 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> {
                       _error = null;
                     }),
             ),
-            if (!widget.passwordOnly && !enabled && device.isNotEmpty)
+            if (!widget.codeOnly && !enabled && device.isNotEmpty)
               const Padding(
                 padding: EdgeInsets.only(top: HySpacing.xs),
                 child: Text(
@@ -224,26 +287,21 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> {
                   style: TextStyle(color: HyColors.textSecondary),
                 ),
               ),
-            if (_method == null) ...[
+            if (_method == null && !_codeSent) ...[
               const SizedBox(height: HySpacing.sm),
-              TextField(
-                key: const Key('confirm-password-field'),
-                controller: _password,
-                obscureText: _hide,
-                enabled: !_busy,
-                autocorrect: false,
-                enableSuggestions: false,
-                autofillHints: const [AutofillHints.password],
-                onSubmitted: (_) => _submit(),
-                decoration: InputDecoration(
-                  labelText: 'Contraseña de tu cuenta',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    tooltip: _hide ? 'Mostrar contraseña' : 'Ocultar contraseña',
-                    icon: Icon(_hide ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                    onPressed: () => setState(() => _hide = !_hide),
-                  ),
-                ),
+              ChannelPicker(value: _channel, onChanged: (c) => setState(() => _channel = c)),
+            ],
+            if (_method == null && _codeSent) ...[
+              const SizedBox(height: HySpacing.sm),
+              Text(
+                'Te enviamos un código por ${_channel.label}. Vence en 5 minutos.',
+                style: const TextStyle(color: HyColors.textSecondary),
+              ),
+              const SizedBox(height: HySpacing.xs),
+              CodeField(controller: _code, onCompleted: _submit, fieldKey: const Key('confirm-code-field')),
+              TextButton(
+                onPressed: cooldown > 0 || _busy ? null : _sendCode,
+                child: Text(cooldown > 0 ? 'Puedes pedir otro código en $cooldown s' : 'Enviar el código de nuevo'),
               ),
             ],
             if (_error != null)
@@ -258,7 +316,11 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> {
             const SizedBox(height: HySpacing.md),
             PrimaryButton(
               key: const Key('confirm-submit'),
-              label: _method == null ? widget.submitLabel : 'Confirmar con ${_method!.short}',
+              label: _method != null
+                  ? 'Confirmar con ${_method!.short}'
+                  : _codeSent
+                  ? widget.submitLabel
+                  : 'Enviarme el código',
               icon: _method == null ? Icons.lock_open_rounded : Icons.fingerprint,
               loading: _busy,
               onPressed: _submit,
