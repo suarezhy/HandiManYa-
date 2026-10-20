@@ -45,7 +45,7 @@ jobs:
       - name: Revisar los secretos de GitHub
         run: |
           missing=0
-          [ -n "${ANON_KEY}" ] || echo "::warning::Falta el secreto SUPABASE_ANON_KEY: solo se prueban el webhook y la base; no se crea ninguna sesión."
+          [ -n "${ANON_KEY}" ] || { echo "::error::Falta el secreto SUPABASE_ANON_KEY (Settings > Secrets and variables > Actions > Repository secrets). Sin él no se puede probar la verificación y la corrida no cuenta como aprobada."; missing=1; }
 
           [ -n "${SUPABASE_ACCESS_TOKEN}" ] || echo "Sin SUPABASE_ACCESS_TOKEN: no se despliega; se prueban las funciones ya desplegadas."
           exit $missing
