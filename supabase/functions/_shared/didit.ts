@@ -68,18 +68,26 @@ export async function verifyDiditSignature(
   const ts = headers.get('x-timestamp');
   // Más de 5 minutos de diferencia: se descarta (evita reenvíos viejos).
   if (!ts || !/^\d+$/.test(ts) || Math.abs(nowSeconds - Number(ts)) > 300) return false;
-  const v2 = headers.get('x-signature-v2');
-  if (v2) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(rawBody);
-    } catch {
-      return false;
-    }
-    if (timingSafeEqual(v2.toLowerCase(), await hmacHex(secret, canonicalJson(parsed)))) return true;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return false;
   }
+  const v2 = headers.get('x-signature-v2');
   const raw = headers.get('x-signature');
-  return raw ? timingSafeEqual(raw.toLowerCase(), await hmacHex(secret, rawBody)) : false;
+  const signed =
+    (!!v2 && timingSafeEqual(v2.toLowerCase(), await hmacHex(secret, canonicalJson(parsed)))) ||
+    (!!raw && timingSafeEqual(raw.toLowerCase(), await hmacHex(secret, rawBody)));
+  if (!signed) return false;
+  // X-Timestamp no va firmado: quien copie un aviso podría cambiarlo. El
+  // "timestamp" del cuerpo sí va firmado, así que también debe ser reciente.
+  const bodyTs = (parsed as Record<string, unknown> | null)?.timestamp;
+  if (bodyTs !== undefined && bodyTs !== null) {
+    const n = Number(bodyTs);
+    if (!Number.isFinite(n) || Math.abs(nowSeconds - n) > 300) return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------

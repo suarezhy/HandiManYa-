@@ -195,6 +195,32 @@ test('aviso de Didit: sin firma válida, se rechaza', async () => {
   assert.equal(old.status, 401);
 });
 
+test('aviso de Didit: un aviso firmado pero viejo no entra aunque cambien X-Timestamp', async () => {
+  const { fn, calls } = fakeFetch({ hmy_identity_decision: { updated: true } });
+  const now = Math.floor(Date.now() / 1000);
+  const old = await handleWebhook(await webhook(event({ timestamp: now - 3600 })), base, fn);
+  assert.equal(old.status, 401);
+  assert.equal(calls.length, 0);
+  const fresh = await handleWebhook(await webhook(event({ timestamp: now - 10 })), base, fn);
+  assert.equal(fresh.status, 200);
+});
+
+test('aviso de Didit: una firma falsa no pasa aunque traiga las dos cabeceras', async () => {
+  const { fn, calls } = fakeFetch({});
+  const body = JSON.stringify(event());
+  const req = new Request('https://x.supabase.co/functions/v1/didit-webhook', {
+    method: 'POST',
+    body,
+    headers: {
+      'X-Timestamp': String(Math.floor(Date.now() / 1000)),
+      'X-Signature-V2': await hmacHex('otro-secreto', canonicalJson(JSON.parse(body))),
+      'X-Signature': await hmacHex('otro-secreto', body),
+    },
+  });
+  assert.equal((await handleWebhook(req, base, fn)).status, 401);
+  assert.equal(calls.length, 0);
+});
+
 test('aviso de Didit: guarda lo mínimo y borra la sesión en Didit', async () => {
   const { fn, calls } = fakeFetch({ hmy_identity_decision: { updated: true } });
   const r = await handleWebhook(await webhook(event()), base, fn);
