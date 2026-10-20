@@ -13,12 +13,13 @@ const PASSWORD = process.env.E2E_PASSWORD;
 const fn = (name) => `${URL_}/functions/v1/${name}`;
 
 let token;
+const needsUser = { skip: ANON ? false : 'falta SUPABASE_ANON_KEY' };
 let firstUrl;
 
 async function call(name, { auth, body, method = 'POST', headers = {} } = {}) {
   const res = await fetch(fn(name), {
     method,
-    headers: { apikey: ANON, 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}), ...headers },
+    headers: { ...(ANON ? { apikey: ANON } : {}), 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}), ...headers },
     ...(body !== undefined ? { body } : {}),
   });
   let json = null;
@@ -30,11 +31,11 @@ async function call(name, { auth, body, method = 'POST', headers = {} } = {}) {
   return { status: res.status, json };
 }
 
-test('la cuenta de prueba entra con contraseña', async () => {
-  assert.ok(URL_ && ANON && PASSWORD, 'faltan E2E_URL, E2E_ANON_KEY o E2E_PASSWORD');
+test('la cuenta de prueba entra con contraseña', needsUser, async () => {
+  assert.ok(URL_ && PASSWORD, 'faltan E2E_URL o E2E_PASSWORD');
   const res = await fetch(`${URL_}/auth/v1/token?grant_type=password`, {
     method: 'POST',
-    headers: { apikey: ANON, 'Content-Type': 'application/json' },
+    headers: { ...(ANON ? { apikey: ANON } : {}), 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: 'didit-pro@test.bo', password: PASSWORD }),
   });
   assert.equal(res.status, 200);
@@ -47,7 +48,7 @@ test('identity-check: sin sesión iniciada, no', async () => {
   assert.equal(r.status, 401);
 });
 
-test('identity-check: crea una sesión del sandbox de Didit (gratis)', async () => {
+test('identity-check: crea una sesión del sandbox de Didit (gratis)', needsUser, async () => {
   const r = await call('identity-check', { auth: token });
   const hint = {
     HMY_IDENTITY_OFF: 'falta DIDIT_API_KEY o DIDIT_WORKFLOW_ID en los secretos de la función',
@@ -62,14 +63,14 @@ test('identity-check: crea una sesión del sandbox de Didit (gratis)', async () 
   firstUrl = r.json.verification_url;
 });
 
-test('identity-check: pedirla otra vez retoma la misma sesión (no crea otra)', async () => {
+test('identity-check: pedirla otra vez retoma la misma sesión (no crea otra)', needsUser, async () => {
   const r = await call('identity-check', { auth: token });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.verification_url, firstUrl);
   assert.equal(r.json.sandbox, true);
 });
 
-test('identity-check/sync: solo con la clave del servidor', async () => {
+test('identity-check/sync: solo con la clave del servidor', needsUser, async () => {
   const r = await call('identity-check/sync', { auth: token });
   assert.equal(r.status, 401);
   assert.equal(r.json?.error, 'HMY_FORBIDDEN');
