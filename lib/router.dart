@@ -22,6 +22,7 @@ import 'features/onboarding/onboarding_page.dart';
 import 'features/pro_mode/application_page.dart';
 import 'features/pro_mode/pro_home_page.dart';
 import 'features/pro_mode/pro_jobs_page.dart';
+import 'features/pro_mode/service_area_page.dart';
 import 'features/pro_mode/wallet_page.dart';
 import 'features/professional/professional_profile_page.dart';
 import 'features/profile/edit_profile_page.dart';
@@ -59,6 +60,7 @@ abstract final class Routes {
   static const apply = '/postular';
   static const wallet = '/billetera';
   static const support = '/ayuda';
+  static const serviceArea = '/zona-de-trabajo';
 
   static String professional(String id) => '/profesional/$id';
   static String requestPro(String id, BookingMode mode) => '/profesional/$id/solicitar?modo=${mode.key}';
@@ -227,6 +229,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.apply, builder: (_, _) => const ApplicationPage()),
       GoRoute(path: Routes.wallet, builder: (_, _) => const WalletPage()),
       GoRoute(path: Routes.support, builder: (_, _) => const SupportPage()),
+      GoRoute(path: Routes.serviceArea, builder: (_, _) => const ServiceAreaPage()),
     ],
   );
 });

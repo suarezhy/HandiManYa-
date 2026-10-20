@@ -67,5 +67,11 @@ class AppError implements Exception {
     'HMY_INVALID_METHOD': 'Elige un método de recarga válido.',
     'HMY_TOO_MANY_PENDING': 'Ya tienes recargas pendientes de revisión.',
     'HMY_WALLET_NOT_FOUND': 'Tu billetera se activa cuando tu perfil es aprobado.',
+    'HMY_INVALID_LOCATION': 'Esa ubicación no parece estar en Bolivia. Revísala o escribe la dirección.',
+    'HMY_INVALID_RADIUS': 'Elige una distancia entre 1 y 50 km.',
+    'HMY_INVALID_ZONE': 'Esa zona no pertenece a la ciudad elegida.',
+    'HMY_NO_APPLICATION': 'Primero completa tu postulación como profesional.',
+    'HMY_TOO_MANY_PHOTOS': 'Puedes subir hasta 5 fotos.',
+    'HMY_INVALID_PATH': 'No pudimos guardar el archivo. Vuelve a intentar.',
   };
 }

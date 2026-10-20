@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/app.dart';
+import 'package:handimanya/core/services/location_service.dart';
 import 'package:handimanya/core/widgets/buttons.dart';
+import 'package:handimanya/data/models/geo.dart';
 import 'package:handimanya/features/booking/request_flow_page.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Future<void> _pumpApp(WidgetTester tester, {double textScale = 1}) async {
+Future<DemoAppBackend> _pumpApp(WidgetTester tester, {double textScale = 1}) async {
   await initializeDateFormatting('es');
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -20,7 +22,11 @@ Future<void> _pumpApp(WidgetTester tester, {double textScale = 1}) async {
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [prefsProvider.overrideWithValue(prefs), backendProvider.overrideWithValue(backend)],
+      overrides: [
+        prefsProvider.overrideWithValue(prefs),
+        backendProvider.overrideWithValue(backend),
+        locationServiceProvider.overrideWithValue(const _FakeLocation()),
+      ],
       child: MediaQuery(
         data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
         child: const HandiManYaApp(),
@@ -28,6 +34,7 @@ Future<void> _pumpApp(WidgetTester tester, {double textScale = 1}) async {
     ),
   );
   await tester.pumpAndSettle();
+  return backend;
 }
 
 Future<void> _login(WidgetTester tester, {required bool professional}) async {
@@ -45,6 +52,21 @@ Future<void> _login(WidgetTester tester, {required bool professional}) async {
   await tester.ensureVisible(submit);
   await tester.pumpAndSettle();
   await tester.tap(submit);
+  await tester.pumpAndSettle();
+}
+
+class _FakeLocation implements LocationService {
+  const _FakeLocation();
+
+  @override
+  Future<GeoPoint> current() async => const GeoPoint(-17.7800, -63.1800);
+}
+
+Future<void> _tapText(WidgetTester tester, String label) async {
+  final f = find.text(label).last;
+  await tester.ensureVisible(f);
+  await tester.pumpAndSettle();
+  await tester.tap(f);
   await tester.pumpAndSettle();
 }
 
@@ -98,5 +120,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byType(RequestFlowPage), findsOneWidget);
+  });
+
+  testWidgets('el profesional marca su zona de trabajo con el GPS', (tester) async {
+    final backend = await _pumpApp(tester);
+    await _login(tester, professional: true);
+    await _tapText(tester, 'Perfil');
+    await _tapText(tester, 'Mi zona de trabajo');
+    await _tapText(tester, 'Actualizar con mi ubicación actual');
+    expect(find.text('Usar tu ubicación'), findsOneWidget); // explicación antes del permiso
+    await _tapText(tester, 'Continuar');
+    await _tapText(tester, 'Guardar');
+    expect(tester.takeException(), isNull);
+    final loc = await backend.serviceLocation();
+    expect(loc?.latitude, -17.78);
+    expect(loc?.longitude, -63.18);
   });
 }

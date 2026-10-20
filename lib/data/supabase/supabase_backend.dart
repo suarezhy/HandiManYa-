@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 import '../../core/config/env.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
+import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
 import '../models/user.dart';
@@ -211,9 +212,21 @@ class SupabaseBackend
           .toList();
 
   @override
-  Future<int> countYaAvailable({required int categoryId, required int cityId, int? zoneId}) async => (await _db.rpc(
+  Future<int> countYaAvailable({
+    required int categoryId,
+    required int cityId,
+    int? zoneId,
+    double? latitude,
+    double? longitude,
+  }) async => (await _db.rpc(
     'count_ya_available',
-    params: {'p_category': categoryId, 'p_city': cityId, 'p_zone': zoneId},
+    params: {
+      'p_category': categoryId,
+      'p_city': cityId,
+      'p_zone': zoneId,
+      'p_latitude': latitude,
+      'p_longitude': longitude,
+    },
   ) as num).toInt();
 
   // ---------------------------------------------------------------- Solicitudes
@@ -230,6 +243,8 @@ class SupabaseBackend
           'p_address_reference': d.addressReference,
           'p_zone_id': d.zoneId,
           'p_payment_method': d.paymentMethod?.key,
+          'p_latitude': d.latitude,
+          'p_longitude': d.longitude,
         },
       ) as String;
     }
@@ -246,6 +261,8 @@ class SupabaseBackend
         'p_scheduled_start': d.scheduledStart?.toUtc().toIso8601String(),
         'p_duration_minutes': d.durationMinutes,
         'p_payment_method': d.paymentMethod?.key,
+        'p_latitude': d.latitude,
+        'p_longitude': d.longitude,
       },
     ) as String;
   }
@@ -257,10 +274,42 @@ class SupabaseBackend
           .toList();
 
   @override
-  Future<BookingDetail> detail(String bookingId) async => BookingDetail.fromMap(
-    Map<String, dynamic>.from(await _db.rpc('booking_detail', params: {'p_booking': bookingId}) as Map),
-    photo: _publicPhoto,
-  );
+  Future<BookingDetail> detail(String bookingId) async {
+    final m = Map<String, dynamic>.from(await _db.rpc('booking_detail', params: {'p_booking': bookingId}) as Map);
+    // Las fotos están en un depósito privado: se firman por una hora.
+    final paths = [for (final p in (m['photos'] as List? ?? const [])) (p as Map)['path'] as String];
+    var photos = const <BookingPhoto>[];
+    if (paths.isNotEmpty) {
+      try {
+        final signed = await _db.storage.from('booking-photos').createSignedUrlsResult(paths, 3600);
+        photos = [
+          for (final u in signed)
+            if (u is SignedUrlSuccess) BookingPhoto(url: u.signedUrl),
+        ];
+      } catch (_) {
+        // Sin permiso para ver las fotos: se muestra la solicitud sin ellas.
+      }
+    }
+    return BookingDetail.fromMap(m, photo: _publicPhoto, photos: photos);
+  }
+
+  @override
+  Future<void> addPhotos(String bookingId, List<PhotoUpload> photos) async {
+    final uid = _uid;
+    for (final p in photos) {
+      final ext = p.contentType.split('/').last.replaceAll('jpeg', 'jpg');
+      final path = '$bookingId/${uid}_${DateTime.now().microsecondsSinceEpoch}.$ext';
+      await _db.storage
+          .from('booking-photos')
+          .uploadBinary(path, p.bytes, fileOptions: FileOptions(contentType: p.contentType));
+      await _db.from('booking_photos').insert({
+        'booking_id': bookingId,
+        'kind': 'problem',
+        'storage_path': path,
+        'uploaded_by': uid,
+      });
+    }
+  }
 
   @override
   Stream<void> changes() {
@@ -495,6 +544,42 @@ class SupabaseBackend
   ).map(TopupRequest.fromMap).toList();
 
   @override
-  Future<void> requestTopup({required double amount, required int methodId, String? reference}) =>
-      _db.rpc('request_topup', params: {'p_amount': amount, 'p_method': methodId, 'p_reference': reference});
+  Future<void> requestTopup({
+    required double amount,
+    required int methodId,
+    String? reference,
+    PhotoUpload? proof,
+  }) async {
+    String? proofPath;
+    if (proof != null) {
+      final ext = proof.contentType.split('/').last.replaceAll('jpeg', 'jpg');
+      proofPath = '$_uid/recarga_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      await _db.storage
+          .from('topup-proofs')
+          .uploadBinary(proofPath, proof.bytes, fileOptions: FileOptions(contentType: proof.contentType));
+    }
+    await _db.rpc(
+      'request_topup',
+      params: {'p_amount': amount, 'p_method': methodId, 'p_reference': reference, 'p_proof_path': proofPath},
+    );
+  }
+
+  @override
+  Future<ServiceLocation?> serviceLocation() async {
+    final m = await _db
+        .from('professional_locations')
+        .select('base_latitude, base_longitude, service_radius_km')
+        .eq('professional_id', _uid)
+        .maybeSingle();
+    if (m == null) return null;
+    return ServiceLocation(
+      latitude: (m['base_latitude'] as num).toDouble(),
+      longitude: (m['base_longitude'] as num).toDouble(),
+      radiusKm: (m['service_radius_km'] as num).toInt(),
+    );
+  }
+
+  @override
+  Future<void> setServiceLocation({required double latitude, required double longitude, required int radiusKm}) => _db
+      .rpc('set_service_location', params: {'p_latitude': latitude, 'p_longitude': longitude, 'p_radius_km': radiusKm});
 }

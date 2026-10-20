@@ -81,6 +81,13 @@ class ProfilePage extends ConsumerWidget {
                   ),
                 if (account.isApprovedProfessional)
                   _Tile(
+                    icon: Icons.radar_outlined,
+                    title: 'Mi zona de trabajo',
+                    subtitle: 'Punto de partida y distancia',
+                    onTap: () => context.push(Routes.serviceArea),
+                  ),
+                if (account.isApprovedProfessional)
+                  _Tile(
                     icon: Icons.badge_outlined,
                     title: 'Mi perfil profesional',
                     subtitle: 'Como te ven los clientes',

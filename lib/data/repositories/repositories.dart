@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../models/booking.dart';
 import '../models/catalog.dart';
+import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
 import '../models/user.dart';
@@ -52,7 +53,13 @@ abstract interface class ProfessionalRepository {
   Future<List<ProfessionalSummary>> search(SearchFilters filters, {int limit = 20, int offset = 0});
   Future<ProfessionalDetail?> professionalDetail(String id);
   Future<List<Review>> reviews(String professionalId);
-  Future<int> countYaAvailable({required int categoryId, required int cityId, int? zoneId});
+  Future<int> countYaAvailable({
+    required int categoryId,
+    required int cityId,
+    int? zoneId,
+    double? latitude,
+    double? longitude,
+  });
 }
 
 abstract interface class BookingRepository {
@@ -60,6 +67,9 @@ abstract interface class BookingRepository {
   Future<String> create(BookingDraft draft);
   Future<List<BookingSummary>> myBookings({required bool asProfessional});
   Future<BookingDetail> detail(String bookingId);
+
+  /// Sube fotos del problema a una solicitud propia (máximo 5).
+  Future<void> addPhotos(String bookingId, List<PhotoUpload> photos);
 
   /// Avisa cuando cambia alguna solicitud del usuario (tiempo real).
   Stream<void> changes();
@@ -116,5 +126,9 @@ abstract interface class ProRepository {
   Future<List<LedgerEntry>> ledger();
   Future<List<TopupMethod>> topupMethods();
   Future<List<TopupRequest>> topups();
-  Future<void> requestTopup({required double amount, required int methodId, String? reference});
+  Future<void> requestTopup({required double amount, required int methodId, String? reference, PhotoUpload? proof});
+
+  /// Base y radio de trabajo del profesional (privados).
+  Future<ServiceLocation?> serviceLocation();
+  Future<void> setServiceLocation({required double latitude, required double longitude, required int radiusKm});
 }

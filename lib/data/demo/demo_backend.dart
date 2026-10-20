@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import '../../core/utils/app_error.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
+import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
 import '../models/user.dart';
@@ -136,6 +137,7 @@ class DemoBackend
       ratingCount: 14,
       completedJobs: 18,
       status: VerificationStatus.approved,
+      location: const ServiceLocation(latitude: -17.7621, longitude: -63.1848, radiusKm: 8),
     )..documentCount = 2;
     _wallets[pro.id] = [50, 0];
     _ledger[pro.id] = [
@@ -418,20 +420,43 @@ class DemoBackend
     ];
   }
 
-  Iterable<_Pro> _eligible(int categoryId, int cityId, int? zoneId, String customerId) => _pros.values.where(
-    (p) =>
-        p.status == VerificationStatus.approved &&
-        p.available &&
-        p.id != customerId &&
-        p.cityId == cityId &&
-        p.primaryCategoryId == categoryId &&
-        (zoneId == null || p.zoneIds.isEmpty || p.zoneIds.contains(zoneId)),
-  );
+  Iterable<_Pro> _eligible(
+    int categoryId,
+    int cityId,
+    int? zoneId,
+    String customerId, {
+    double? latitude,
+    double? longitude,
+  }) => _pros.values.where((p) {
+    if (p.status != VerificationStatus.approved || !p.available || p.id == customerId) return false;
+    if (p.cityId != cityId || p.primaryCategoryId != categoryId) return false;
+    final base = p.location;
+    // Igual que el servidor: con ubicación manda el radio; sin ella, la zona.
+    if (latitude != null && longitude != null && base != null) {
+      return distanceKm(latitude, longitude, base.latitude, base.longitude) <= base.radiusKm;
+    }
+    return zoneId == null || p.zoneIds.isEmpty || p.zoneIds.contains(zoneId);
+  });
+
+  double? _distanceFor(String proId, BookingDraft d) {
+    final base = _pros[proId]?.location;
+    if (base == null || d.latitude == null || d.longitude == null) return null;
+    // Como el servidor: se mide desde el punto aproximado (~1 km).
+    double round2(double v) => (v * 100).roundToDouble() / 100;
+    final km = distanceKm(round2(d.latitude!), round2(d.longitude!), base.latitude, base.longitude);
+    return (km * 10).roundToDouble() / 10;
+  }
 
   @override
-  Future<int> countYaAvailable({required int categoryId, required int cityId, int? zoneId}) async {
+  Future<int> countYaAvailable({
+    required int categoryId,
+    required int cityId,
+    int? zoneId,
+    double? latitude,
+    double? longitude,
+  }) async {
     await _latency(150);
-    return _eligible(categoryId, cityId, zoneId, _session?.id ?? '').length;
+    return _eligible(categoryId, cityId, zoneId, _session?.id ?? '', latitude: latitude, longitude: longitude).length;
   }
 
   // ================================================================= Solicitudes
@@ -554,7 +579,14 @@ class DemoBackend
     );
 
     if (d.isYa) {
-      final eligible = _eligible(d.categoryId, d.cityId, d.zoneId, me.id).toList();
+      final eligible = _eligible(
+        d.categoryId,
+        d.cityId,
+        d.zoneId,
+        me.id,
+        latitude: d.latitude,
+        longitude: d.longitude,
+      ).toList();
       if (eligible.isEmpty) {
         throw const AppError(
           'No hay profesionales disponibles ahora para este servicio en tu zona. Prueba en otra zona o programa para después.',
@@ -652,6 +684,7 @@ class DemoBackend
       finalAmount: b.finalAmount,
       hasReview: b.hasReview,
       isOffer: b.professionalId == null,
+      distanceKm: asProfessional ? _distanceFor(_me.id, b.draft) : null,
     );
   }
 
@@ -723,11 +756,20 @@ class DemoBackend
               ratingCount: pro.ratingCount,
               isVerified: true,
             ),
-      address: addressVisible ? BookingAddress(line: b.draft.address, reference: b.draft.addressReference) : null,
+      address: addressVisible
+          ? BookingAddress(
+              line: b.draft.address,
+              reference: b.draft.addressReference,
+              latitude: b.draft.latitude,
+              longitude: b.draft.longitude,
+            )
+          : null,
       conversationId: b.conversationId,
       hasReview: b.hasReview,
       offersSent: isCustomer ? b.offersCount : null,
       events: List.of(b.events),
+      distanceKm: isCustomer ? null : _distanceFor(me, b.draft),
+      photos: List.of(b.photos),
     );
   }
 
@@ -1084,6 +1126,8 @@ class DemoBackend
                   addressReference: 'Casa de rejas blancas, frente a la plaza',
                   zoneId: 12,
                   paymentMethod: PaymentMethod.qr,
+                  latitude: -17.7712,
+                  longitude: -63.1951,
                 ),
                 createdAt: DateTime.now(),
               )
@@ -1205,7 +1249,12 @@ class DemoBackend
   Future<List<TopupRequest>> topups() async => List.of(_topups[_me.id] ?? const []);
 
   @override
-  Future<void> requestTopup({required double amount, required int methodId, String? reference}) async {
+  Future<void> requestTopup({
+    required double amount,
+    required int methodId,
+    String? reference,
+    PhotoUpload? proof,
+  }) async {
     await _latency();
     if (amount <= 0 || amount > 10000) throw AppError.from('HMY_INVALID_AMOUNT');
     final list = _topups.putIfAbsent(_me.id, () => []);
@@ -1237,6 +1286,34 @@ class DemoBackend
       _post(proId, LedgerType.topup, amount, 0, 'Recarga acreditada');
       _notify(proId, 'topup', 'Recarga acreditada', 'Sumamos ${amount.toStringAsFixed(2)} Bs a tu billetera.');
     });
+  }
+
+  @override
+  Future<void> addPhotos(String bookingId, List<PhotoUpload> photos) async {
+    await _latency(400);
+    final b = _get(bookingId);
+    if (b.customerId != _me.id) throw AppError.from('HMY_FORBIDDEN');
+    if (b.photos.length + photos.length > 5) throw AppError.from('HMY_TOO_MANY_PHOTOS');
+    b.photos.addAll([for (final p in photos) BookingPhoto(bytes: p.bytes)]);
+    _changes.add(null);
+  }
+
+  @override
+  Future<ServiceLocation?> serviceLocation() async {
+    await _latency(100);
+    return _pros[_me.id]?.location;
+  }
+
+  @override
+  Future<void> setServiceLocation({required double latitude, required double longitude, required int radiusKm}) async {
+    await _latency();
+    final p = _pros[_me.id];
+    if (p == null) throw AppError.from('HMY_NO_APPLICATION');
+    if (latitude < -23.5 || latitude > -9 || longitude < -70 || longitude > -57) {
+      throw AppError.from('HMY_INVALID_LOCATION');
+    }
+    if (radiusKm < 1 || radiusKm > 50) throw AppError.from('HMY_INVALID_RADIUS');
+    p.location = ServiceLocation(latitude: latitude, longitude: longitude, radiusKm: radiusKm);
   }
 }
 
@@ -1271,9 +1348,11 @@ class _Pro {
     required this.ratingCount,
     required this.completedJobs,
     required this.status,
+    this.location,
   });
 
   final String id;
+  ServiceLocation? location;
   final String displayName;
   final int primaryCategoryId;
   final int cityId;
@@ -1319,6 +1398,7 @@ class _Booking {
   double reserved = 0;
   bool captured = false;
   String? conversationId;
+  final List<BookingPhoto> photos = [];
 
   Set<String> get offers => _offers;
   set offers(Set<String> v) {

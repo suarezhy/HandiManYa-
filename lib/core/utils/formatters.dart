@@ -11,6 +11,10 @@ abstract final class Fmt {
 
   static String rating(double value) => NumberFormat('0.0', 'es_BO').format(value);
 
+  /// "1,2 km" o "800 m".
+  static String km(double value) =>
+      value < 1 ? '${(value * 1000).round()} m' : '${NumberFormat('0.0', 'es_BO').format(value)} km';
+
   static String date(DateTime d) => DateFormat("EEEE d 'de' MMMM", 'es').format(d.toLocal());
   static String shortDate(DateTime d) => DateFormat('d MMM', 'es').format(d.toLocal());
   static String time(DateTime d) => DateFormat('HH:mm', 'es').format(d.toLocal());

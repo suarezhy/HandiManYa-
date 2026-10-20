@@ -66,5 +66,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Usamos tu ubicación solo para encontrar profesionales cerca de ti (o trabajos cerca, si eres profesional). Tu dirección exacta solo la ve el profesional que acepta tu pedido.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Para tomar fotos del problema, de tu documento o del comprobante de recarga.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Para elegir fotos del problema, de tu documento o del comprobante de recarga.</string>
 </dict>
 </plist>

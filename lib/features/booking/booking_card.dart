@@ -43,6 +43,7 @@ class BookingCard extends StatelessWidget {
                     : Fmt.dateTime(b.scheduledStart ?? b.createdAt),
               ),
               _Meta(icon: Icons.place_outlined, text: b.zone ?? b.city.replaceAll(' de la Sierra', '')),
+              if (b.distanceKm != null) _Meta(icon: Icons.near_me_outlined, text: 'A ${Fmt.km(b.distanceKm!)}'),
               if (b.quoteAmount != null) _Meta(icon: Icons.request_quote_outlined, text: Fmt.bs(b.quoteAmount!)),
             ],
           ),

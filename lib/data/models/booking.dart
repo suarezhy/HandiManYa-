@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/tokens.dart';
@@ -131,6 +133,7 @@ class BookingSummary {
     this.finalAmount,
     this.hasReview = false,
     this.isOffer = false,
+    this.distanceKm,
   });
 
   final String id;
@@ -144,6 +147,9 @@ class BookingSummary {
   final String description;
   final DateTime? scheduledStart;
   final DateTime createdAt;
+
+  /// Distancia aproximada (km) del pedido a la base del profesional.
+  final double? distanceKm;
   final String? otherUserId;
   final String? otherName;
   final String? otherPhotoUrl;
@@ -171,6 +177,7 @@ class BookingSummary {
     finalAmount: _dn(m['final_amount']),
     hasReview: m['has_review'] as bool? ?? false,
     isOffer: m['is_offer'] as bool? ?? false,
+    distanceKm: _dn(m['distance_km']),
   );
 }
 
@@ -189,10 +196,40 @@ class BookingEvent {
 }
 
 class BookingAddress {
-  const BookingAddress({required this.line, this.reference});
+  const BookingAddress({required this.line, this.reference, this.latitude, this.longitude});
 
   final String line;
   final String? reference;
+  final double? latitude;
+  final double? longitude;
+
+  /// Enlace para abrir la ruta en Google Maps (o el navegador).
+  Uri get directionsUrl => latitude != null && longitude != null
+      ? Uri.https('www.google.com', '/maps/dir/', {'api': '1', 'destination': '$latitude,$longitude'})
+      : Uri.https('www.google.com', '/maps/search/', {'api': '1', 'query': line});
+}
+
+/// Foto ya guardada: URL firmada (Supabase) o bytes (modo demostración).
+class BookingPhoto {
+  const BookingPhoto({this.url, this.bytes, this.kind = 'problem'});
+
+  final String? url;
+  final Uint8List? bytes;
+  final String kind;
+}
+
+/// Foto elegida en el teléfono, lista para subir.
+class PhotoUpload {
+  const PhotoUpload({required this.bytes, required this.fileName});
+
+  final Uint8List bytes;
+  final String fileName;
+
+  String get contentType => switch (fileName.split('.').last.toLowerCase()) {
+    'png' => 'image/png',
+    'webp' => 'image/webp',
+    _ => 'image/jpeg',
+  };
 }
 
 class BookingProfessional {
@@ -244,6 +281,9 @@ class BookingDetail {
     this.hasReview = false,
     this.offersSent,
     this.events = const [],
+    this.distanceKm,
+    this.photoPaths = const [],
+    this.photos = const [],
   });
 
   final String id;
@@ -275,10 +315,19 @@ class BookingDetail {
   final bool hasReview;
   final int? offersSent;
   final List<BookingEvent> events;
+  final double? distanceKm;
+
+  /// Rutas en el almacenamiento; [photos] trae las fotos listas para mostrar.
+  final List<String> photoPaths;
+  final List<BookingPhoto> photos;
 
   String get areaLabel => zone == null ? city : '$zone, ${city.replaceAll(' de la Sierra', '')}';
 
-  factory BookingDetail.fromMap(Map<String, dynamic> m, {String? Function(String?)? photo}) {
+  factory BookingDetail.fromMap(
+    Map<String, dynamic> m, {
+    String? Function(String?)? photo,
+    List<BookingPhoto> photos = const [],
+  }) {
     final pro = m['professional'] as Map<String, dynamic>?;
     final addr = m['address'] as Map<String, dynamic>?;
     return BookingDetail(
@@ -317,13 +366,21 @@ class BookingDetail {
             ),
       address: addr == null
           ? null
-          : BookingAddress(line: addr['line'] as String, reference: addr['reference'] as String?),
+          : BookingAddress(
+              line: addr['line'] as String,
+              reference: addr['reference'] as String?,
+              latitude: _dn(addr['latitude']),
+              longitude: _dn(addr['longitude']),
+            ),
       conversationId: m['conversation_id'] as String?,
       hasReview: m['has_review'] as bool? ?? false,
       offersSent: (m['offers_sent'] as num?)?.toInt(),
       events: [
         for (final e in (m['events'] as List? ?? const [])) BookingEvent.fromMap(Map<String, dynamic>.from(e as Map)),
       ],
+      distanceKm: _dn(m['distance_km']),
+      photoPaths: [for (final p in (m['photos'] as List? ?? const [])) (p as Map)['path'] as String],
+      photos: photos,
     );
   }
 }
@@ -342,6 +399,8 @@ class BookingDraft {
     this.scheduledStart,
     this.durationMinutes = 120,
     this.paymentMethod,
+    this.latitude,
+    this.longitude,
   });
 
   final int categoryId;
@@ -357,6 +416,10 @@ class BookingDraft {
   final DateTime? scheduledStart;
   final int durationMinutes;
   final PaymentMethod? paymentMethod;
+
+  /// Punto exacto (GPS). Solo lo ve el profesional asignado.
+  final double? latitude;
+  final double? longitude;
 
   bool get isYa => mode == BookingMode.now && professionalId == null;
 }

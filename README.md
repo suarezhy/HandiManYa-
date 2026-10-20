@@ -47,6 +47,13 @@ supabase/
 test/          app tests (validators, the full ¡Ya! flow, every tab at normal and large text)
 ```
 
+Location: the customer can share their GPS point (after a Spanish explanation
+of why). Professionals set a base point and a radius in "Mi zona de trabajo".
+Until a professional accepts, they only see a point rounded to about 1 km and
+the distance; the exact address and point unlock after acceptance. Up to 5
+problem photos per request, visible only to the customer, professionals with a
+pending offer, and the assigned professional.
+
 The app never decides permissions. Row level security and server functions in
 the database do: who can see an exact address, who can accept an offer, wallet
 movements, status changes.
@@ -91,7 +98,6 @@ their own if they find the old tables (`profiles`, `provider_profiles`,
 ## Still to do
 
 - Admin web panel (verify professionals, approve top-ups, disputes, commissions).
-- Photos attached to a request (the storage rules already exist).
 - SMS phone verification needs a paid SMS provider.
 - Terms and privacy texts are drafts and need review by a lawyer in Bolivia.
 - App Store and Google Play publishing.

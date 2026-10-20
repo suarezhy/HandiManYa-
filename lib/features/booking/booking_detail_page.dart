@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
@@ -10,6 +11,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/booking.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
+import '../common/photo_picker.dart';
 
 /// Detalle de una solicitud. Muestra el estado en tiempo real y solo las
 /// acciones que el servidor permite en ese estado para quien la mira.
@@ -138,6 +140,12 @@ class _Content extends StatelessWidget {
                     : '${Fmt.date(b.scheduledStart!)}, ${Fmt.time(b.scheduledStart!)}',
               ),
               _Line(icon: Icons.place_outlined, label: 'Zona', value: b.areaLabel),
+              if (b.distanceKm != null)
+                _Line(
+                  icon: Icons.near_me_outlined,
+                  label: 'Distancia',
+                  value: 'A unos ${Fmt.km(b.distanceKm!)} de tu base (aproximado)',
+                ),
               if (b.paymentMethod != null)
                 _Line(
                   icon: b.paymentMethod!.icon,
@@ -153,6 +161,7 @@ class _Content extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(b.description, style: const TextStyle(fontSize: 17)),
+              if (b.photos.isNotEmpty) ...[const SizedBox(height: HySpacing.md), BookingPhotosStrip(photos: b.photos)],
             ],
           ),
         ),
@@ -189,8 +198,20 @@ class _Content extends StatelessWidget {
                 ),
               ],
             ),
-          )
-        else if (!b.viewerIsCustomer)
+          ),
+        if (b.address != null && !b.viewerIsCustomer) ...[
+          const SizedBox(height: HySpacing.sm),
+          PrimaryButton(
+            label: 'Cómo llegar',
+            icon: Icons.directions_rounded,
+            color: HyColors.navy,
+            onPressed: () async {
+              final ok = await launchUrl(b.address!.directionsUrl, mode: LaunchMode.externalApplication);
+              if (!ok && context.mounted) showMessage(context, 'No pudimos abrir el mapa. Copia la dirección.');
+            },
+          ),
+        ],
+        if (b.address == null && !b.viewerIsCustomer)
           const InfoBanner(icon: Icons.lock_outline, text: 'La dirección exacta se muestra cuando aceptas el trabajo.'),
 
         if (b.status == BookingStatus.workFinished || b.status == BookingStatus.completed) ...[

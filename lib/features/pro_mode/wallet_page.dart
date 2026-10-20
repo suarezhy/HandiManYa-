@@ -9,6 +9,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/wallet.dart';
 import '../../data/providers.dart';
+import '../common/photo_picker.dart';
 
 /// Billetera prepagada del profesional: saldo, recargas y movimientos.
 class WalletPage extends ConsumerWidget {
@@ -247,6 +248,7 @@ class _TopupSheetState extends ConsumerState<_TopupSheet> {
   final _amount = TextEditingController();
   final _reference = TextEditingController();
   int? _methodId;
+  PhotoUpload? _proof;
   bool _sending = false;
 
   @override
@@ -267,6 +269,7 @@ class _TopupSheetState extends ConsumerState<_TopupSheet> {
             amount: double.parse(_amount.text.replaceAll(',', '.')),
             methodId: _methodId!,
             reference: _reference.text.trim().isEmpty ? null : _reference.text.trim(),
+            proof: _proof,
           ),
       success: 'Recibimos tu recarga. La acreditaremos apenas la verifiquemos.',
     );
@@ -347,12 +350,50 @@ class _TopupSheetState extends ConsumerState<_TopupSheet> {
                   prefixIcon: Icon(Icons.tag),
                 ),
               ),
+              const SizedBox(height: HySpacing.md),
+              _ProofPicker(proof: _proof, onChanged: (p) => setState(() => _proof = p)),
               const SizedBox(height: HySpacing.lg),
               PrimaryButton(label: 'Registrar recarga', loading: _sending, onPressed: _methodId == null ? null : _send),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Foto del comprobante de pago. Ayuda a verificar la recarga más rápido.
+class _ProofPicker extends StatelessWidget {
+  const _ProofPicker({required this.proof, required this.onChanged});
+
+  final PhotoUpload? proof;
+  final ValueChanged<PhotoUpload?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = proof;
+    if (p == null) {
+      return OutlinedButton.icon(
+        onPressed: () async {
+          final picked = await pickPhoto(context);
+          if (picked != null) onChanged(picked);
+        },
+        icon: const Icon(Icons.add_a_photo_outlined),
+        label: const Text('Adjuntar foto del comprobante'),
+      );
+    }
+    return Row(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(HyRadii.md),
+          child: Image.memory(p.bytes, width: 64, height: 64, fit: BoxFit.cover),
+        ),
+        const SizedBox(width: HySpacing.sm),
+        const Expanded(
+          child: Text('Comprobante adjunto', style: TextStyle(fontWeight: FontWeight.w700)),
+        ),
+        TextButton(onPressed: () => onChanged(null), child: const Text('Quitar')),
+      ],
     );
   }
 }

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/location_service.dart';
+import '../../data/models/geo.dart';
+import '../common/photo_picker.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
@@ -46,6 +49,9 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
   PaymentMethod _payment = PaymentMethod.cash;
   bool _sending = false;
   String? _scheduleError;
+  GeoPoint? _point;
+  bool _locating = false;
+  List<PhotoUpload> _photos = const [];
 
   bool get _isYa => widget.professionalId == null;
 
@@ -102,14 +108,38 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
               scheduledStart: _mode == BookingMode.scheduled ? _scheduledStart : null,
               durationMinutes: _duration,
               paymentMethod: _payment,
+              latitude: _point?.latitude,
+              longitude: _point?.longitude,
             ),
           );
+      if (_photos.isNotEmpty) {
+        try {
+          await ref.read(backendProvider).addPhotos(id, _photos);
+        } catch (_) {
+          if (mounted) {
+            showMessage(context, 'Tu pedido se envió, pero no pudimos subir las fotos. Puedes mandarlas por el chat.');
+          }
+        }
+      }
       ref.invalidate(myBookingsProvider(false));
       if (mounted) context.pushReplacement(Routes.booking(id));
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _useMyLocation() async {
+    if (!await explainLocationUse(context, professional: false) || !mounted) return;
+    setState(() => _locating = true);
+    try {
+      final p = await ref.read(locationServiceProvider).current();
+      if (mounted) setState(() => _point = p);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _locating = false);
     }
   }
 
@@ -309,11 +339,8 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             const SizedBox(height: HySpacing.xs),
             const Text('Hora de Bolivia.', style: TextStyle(color: HyColors.textMuted, fontSize: 14)),
           ],
-          const SizedBox(height: HySpacing.md),
-          const InfoBanner(
-            icon: Icons.photo_camera_outlined,
-            text: 'Pronto podrás adjuntar fotos. Por ahora, puedes enviarlas por el chat cuando el profesional acepte.',
-          ),
+          const SizedBox(height: HySpacing.lg),
+          PhotoPickerRow(photos: _photos, onChanged: (p) => setState(() => _photos = p)),
         ],
       ),
     );
@@ -345,6 +372,13 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: HySpacing.md),
+          _GpsCard(
+            point: _point,
+            locating: _locating,
+            onTap: _useMyLocation,
+            onClear: () => setState(() => _point = null),
           ),
           const SizedBox(height: HySpacing.md),
           DropdownButtonFormField<int?>(
@@ -404,7 +438,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
           ),
           if (_isYa && city != null && _categoryId != null) ...[
             const SizedBox(height: HySpacing.lg),
-            _AvailableCount(categoryId: _categoryId!, cityId: city.id, zoneId: _zoneId),
+            _AvailableCount(categoryId: _categoryId!, cityId: city.id, zoneId: _zoneId, point: _point),
           ],
         ],
       ),
@@ -490,18 +524,63 @@ class _PaymentOption extends StatelessWidget {
   );
 }
 
+class _GpsCard extends StatelessWidget {
+  const _GpsCard({required this.point, required this.locating, required this.onTap, required this.onClear});
+
+  final GeoPoint? point;
+  final bool locating;
+  final VoidCallback onTap;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    if (point == null) {
+      return SecondaryButton(
+        label: locating ? 'Buscando tu ubicación…' : 'Usar mi ubicación actual',
+        icon: Icons.my_location_rounded,
+        onPressed: locating ? null : onTap,
+      );
+    }
+    return AppCard(
+      color: HyColors.greenSoft,
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, color: HyColors.greenDark),
+          const SizedBox(width: HySpacing.sm),
+          const Expanded(
+            child: Text(
+              'Ubicación tomada. Buscaremos profesionales cerca de este punto.',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(onPressed: onClear, child: const Text('Quitar')),
+        ],
+      ),
+    );
+  }
+}
+
 class _AvailableCount extends ConsumerWidget {
-  const _AvailableCount({required this.categoryId, required this.cityId, this.zoneId});
+  const _AvailableCount({required this.categoryId, required this.cityId, this.zoneId, this.point});
 
   final int categoryId;
   final int cityId;
   final int? zoneId;
+  final GeoPoint? point;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return FutureBuilder<int>(
-      key: ValueKey('$categoryId-$cityId-$zoneId'),
-      future: ref.read(backendProvider).countYaAvailable(categoryId: categoryId, cityId: cityId, zoneId: zoneId),
+      key: ValueKey('$categoryId-$cityId-$zoneId-${point?.latitude}-${point?.longitude}'),
+      future: ref
+          .read(backendProvider)
+          .countYaAvailable(
+            categoryId: categoryId,
+            cityId: cityId,
+            zoneId: zoneId,
+            latitude: point?.latitude,
+            longitude: point?.longitude,
+          ),
       builder: (context, snap) {
         if (!snap.hasData) return const SizedBox(height: 48);
         final n = snap.data!;
