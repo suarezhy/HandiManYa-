@@ -69,35 +69,42 @@ PGHOST=... PGPORT=... PGUSER=postgres supabase/tests/run_local.sh
 
 GitHub Actions runs all three on every pull request.
 
-## Connecting a real Supabase project (later, step by step)
+## Supabase project: handimanya-flutter-dev
 
-The migrations are written for a **new, empty** Supabase project. They stop on
-their own if they find the old tables (`profiles`, `provider_profiles`,
-`service_requests`), so they cannot mix with existing data.
+The real backend is a new, separate Supabase project, `handimanya-flutter-dev`
+(ref `yldqopeldibwgbwmdnzy`). It has nothing to do with the old FlutterFlow
+projects, and the tooling here refuses to connect to them.
 
-1. Create a new Supabase project (region São Paulo is closest to Bolivia).
-2. Apply the files in `supabase/migrations/` in order. Only do this step with
-   the project owner's explicit OK.
-3. Authentication → Email: turn on "Confirm email" and put `{{ .Token }}` in
-   the "Confirm signup" and "Reset password" templates, so users get a
-   6-digit code.
-4. Build the app with the project's URL and public (anon/publishable) key:
+`config/supabase-dev.json` holds the project URL and the **publishable** key.
+Both are public by design: the database rules (RLS) protect the data. The
+`service_role`/secret key and the database password never go in this repo.
 
-   ```bash
-   flutter run \
-     --dart-define=SUPABASE_URL=https://YOUR-PROJECT.supabase.co \
-     --dart-define=SUPABASE_ANON_KEY=YOUR-PUBLIC-KEY
-   ```
+```bash
+flutter run --dart-define-from-file=config/supabase-dev.json
+```
 
-   Never put the `service_role` key in the app.
-5. Make the first admin by adding a row with role `admin` to `user_roles`
-   from the Supabase dashboard.
-6. Commission rules start empty on purpose. The admin sets them; the app never
-   invents a percentage.
+Without that file the app runs in demo mode, as before.
+
+### Loading the database (only with the owner's OK)
+
+The workflow `.github/workflows/supabase-migrations.yml` connects with the
+repository secret `SUPABASE_DB_URL` (the "Session pooler" connection string,
+which includes the database password). It checks the string points at
+`yldqopeldibwgbwmdnzy` and stops for any other project.
+
+- Push the branch `supabase/revisar-dev`: read-only check (lists tables).
+- Push the branch `supabase/aplicar-dev`: applies every file in
+  `supabase/migrations/` in **one transaction**. On the first error it stops
+  and nothing is kept.
+
+After applying:
+1. Authentication → Email: turn on "Confirm email" and put `{{ .Token }}` in
+   the "Confirm signup" and "Reset password" templates (6-digit codes).
+2. Make the first admin: add a row `(user_id, 'admin')` to `user_roles`.
+3. Commission rules start empty on purpose. The admin creates them in the panel.
 
 ## Still to do
 
-- Admin web panel (verify professionals, approve top-ups, disputes, commissions).
 - SMS phone verification needs a paid SMS provider.
 - Terms and privacy texts are drafts and need review by a lawyer in Bolivia.
 - App Store and Google Play publishing.

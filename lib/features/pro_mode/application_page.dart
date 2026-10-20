@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import '../../data/models/catalog.dart';
 import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
+import '../legal/legal_texts.dart';
 
 /// Postulación para ser profesional: datos, zonas, documentos y envío.
 class ApplicationPage extends ConsumerWidget {
@@ -93,6 +95,7 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
   late final Set<int> _zones = {...widget.app.zoneIds};
   late int _docs = widget.app.documentCount;
   bool _saving = false;
+  bool _acceptedRules = false;
   bool _uploading = false;
 
   @override
@@ -149,16 +152,21 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
   }
 
   Future<void> _submit() async {
+    if (!_acceptedRules) {
+      showMessage(context, 'Para enviar, acepta las Reglas para profesionales y la Política de comisiones.');
+      return;
+    }
     setState(() => _saving = true);
     final saved = await _save(quiet: true);
+    final api = ref.read(backendProvider);
     final ok =
         saved &&
         mounted &&
-        await runGuarded(
-          context,
-          () => ref.read(backendProvider).submitApplication(),
-          success: '¡Postulación enviada! Te avisaremos cuando esté revisada.',
-        );
+        await runGuarded(context, () async {
+          await api.recordConsent(LegalDoc.proRules.key, legalVersion);
+          await api.recordConsent(LegalDoc.commissions.key, legalVersion);
+          await api.submitApplication();
+        }, success: '¡Postulación enviada! Te avisaremos cuando esté revisada.');
     if (!mounted) return;
     setState(() => _saving = false);
     if (ok) {
@@ -329,7 +337,41 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                       Text(_docs == 0 ? 'Todavía no subiste documentos' : '$_docs documento(s) subido(s)'),
                     ],
                   ),
-                const SizedBox(height: HySpacing.xl),
+                const SizedBox(height: HySpacing.lg),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Checkbox(value: _acceptedRules, onChanged: (v) => setState(() => _acceptedRules = v ?? false)),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text.rich(
+                          TextSpan(
+                            style: const TextStyle(fontSize: 16, color: HyColors.text),
+                            children: [
+                              const TextSpan(text: 'Leí y acepto las '),
+                              TextSpan(
+                                text: 'Reglas para profesionales',
+                                style: const TextStyle(color: HyColors.primaryDark, fontWeight: FontWeight.w700),
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () => showLegalDoc(context, LegalDoc.proRules),
+                              ),
+                              const TextSpan(text: ' y la '),
+                              TextSpan(
+                                text: 'Política de comisiones',
+                                style: const TextStyle(color: HyColors.primaryDark, fontWeight: FontWeight.w700),
+                                recognizer: TapGestureRecognizer()
+                                  ..onTap = () => showLegalDoc(context, LegalDoc.commissions),
+                              ),
+                              const TextSpan(text: '.'),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: HySpacing.md),
                 PrimaryButton(
                   label: 'Enviar postulación',
                   icon: Icons.send_rounded,

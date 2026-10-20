@@ -27,7 +27,9 @@ abstract interface class AppBackend
         BookingRepository,
         MessagingRepository,
         NotificationRepository,
-        ProRepository {}
+        ProRepository,
+        SafetyRepository,
+        AdminRepository {}
 
 class _SupabaseAppBackend extends SupabaseBackend implements AppBackend {
   _SupabaseAppBackend(super.db);

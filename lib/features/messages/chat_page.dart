@@ -8,6 +8,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/messaging.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
+import '../common/safety_menu.dart';
 
 /// Chat en tiempo real de una solicitud (Supabase Realtime). Solo los dos
 /// participantes pueden leer y escribir; lo controla la base de datos.
@@ -77,6 +78,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               tooltip: 'Ver solicitud',
               icon: const Icon(Icons.receipt_long_outlined),
               onPressed: () => context.push(Routes.booking(conversation.bookingId)),
+            ),
+          if (conversation?.otherId != null)
+            SafetyMenuButton(
+              userId: conversation!.otherId!,
+              name: conversation.otherName,
+              bookingId: conversation.bookingId,
             ),
         ],
       ),

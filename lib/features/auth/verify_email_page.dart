@@ -9,6 +9,7 @@ import '../../core/utils/validators.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/providers.dart';
+import '../legal/legal_texts.dart';
 import 'auth_scaffold.dart';
 
 class VerifyEmailPage extends ConsumerStatefulWidget {
@@ -40,7 +41,16 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
     if (!_form.currentState!.validate()) return;
     setState(() => _loading = true);
     await runGuarded(context, () async {
-      await ref.read(backendProvider).verifyEmailCode(email: _email, code: _code.text);
+      final api = ref.read(backendProvider);
+      await api.verifyEmailCode(email: _email, code: _code.text);
+      // Al crear la cuenta aceptó Términos y Privacidad: queda registrada la versión.
+      for (final doc in const [LegalDoc.terms, LegalDoc.privacy, LegalDoc.acceptableUse]) {
+        try {
+          await api.recordConsent(doc.key, legalVersion);
+        } catch (_) {
+          // No bloquea el ingreso; se vuelve a registrar en la próxima aceptación.
+        }
+      }
       ref.invalidate(accountProvider);
     });
     if (mounted) setState(() => _loading = false);

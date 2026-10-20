@@ -65,6 +65,15 @@ class ProfilePage extends ConsumerWidget {
                 ),
                 const SizedBox(height: HySpacing.md),
                 _RoleCard(account: account, onSwitch: switchRole),
+                if (account.isAdmin) ...[
+                  const SizedBox(height: HySpacing.sm),
+                  _Tile(
+                    icon: Icons.admin_panel_settings_outlined,
+                    title: 'Panel de administración',
+                    subtitle: 'Verificaciones, recargas, reportes y más',
+                    onTap: () => context.go(Routes.admin),
+                  ),
+                ],
                 const SectionHeader(title: 'Cuenta'),
                 _Tile(
                   icon: Icons.place_outlined,
@@ -105,16 +114,15 @@ class ProfilePage extends ConsumerWidget {
                   subtitle: 'Preguntas frecuentes y contacto',
                   onTap: () => context.push(Routes.support),
                 ),
-                _Tile(
-                  icon: Icons.description_outlined,
-                  title: 'Términos y condiciones',
-                  onTap: () => showLegalSheet(context, title: 'Términos y condiciones', body: termsDraft),
-                ),
-                _Tile(
-                  icon: Icons.privacy_tip_outlined,
-                  title: 'Privacidad',
-                  onTap: () => showLegalSheet(context, title: 'Privacidad', body: privacyDraft),
-                ),
+                for (final doc in LegalDoc.values)
+                  if (account.roles.contains(AppRole.professional) ||
+                      account.professionalStatus != VerificationStatus.notStarted ||
+                      (doc != LegalDoc.commissions && doc != LegalDoc.proRules))
+                    _Tile(
+                      icon: doc == LegalDoc.privacy ? Icons.privacy_tip_outlined : Icons.description_outlined,
+                      title: doc.title,
+                      onTap: () => showLegalDoc(context, doc),
+                    ),
                 const SizedBox(height: HySpacing.lg),
                 OutlinedButton.icon(
                   onPressed: () async {

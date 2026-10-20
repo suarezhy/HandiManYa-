@@ -209,15 +209,13 @@ class _TermsCheckbox extends StatelessWidget {
                       TextSpan(
                         text: 'Términos de uso',
                         style: link,
-                        recognizer: TapGestureRecognizer()
-                          ..onTap = () => showLegalSheet(context, title: 'Términos de uso', body: termsDraft),
+                        recognizer: TapGestureRecognizer()..onTap = () => showLegalDoc(context, LegalDoc.terms),
                       ),
                       const TextSpan(text: ' y la '),
                       TextSpan(
                         text: 'Política de privacidad',
                         style: link,
-                        recognizer: TapGestureRecognizer()
-                          ..onTap = () => showLegalSheet(context, title: 'Política de privacidad', body: privacyDraft),
+                        recognizer: TapGestureRecognizer()..onTap = () => showLegalDoc(context, LegalDoc.privacy),
                       ),
                       const TextSpan(text: '.'),
                     ],

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
 import '../../core/config/env.dart';
+import '../models/admin.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/geo.dart';
@@ -28,7 +29,9 @@ class SupabaseBackend
         BookingRepository,
         MessagingRepository,
         NotificationRepository,
-        ProRepository {
+        ProRepository,
+        SafetyRepository,
+        AdminRepository {
   SupabaseBackend(this._db);
 
   final SupabaseClient _db;
@@ -103,7 +106,9 @@ class SupabaseBackend
   // ---------------------------------------------------------------- Cuenta
   @override
   Future<UserProfile> myAccount() async {
-    final m = Map<String, dynamic>.from(await _db.rpc('my_account') as Map);
+    final results = await Future.wait([_db.rpc('my_account'), _db.rpc('my_status')]);
+    final m = Map<String, dynamic>.from(results[0] as Map);
+    final st = Map<String, dynamic>.from(results[1] as Map? ?? const {});
     return UserProfile(
       id: m['id'] as String,
       email: m['email'] as String? ?? '',
@@ -115,6 +120,9 @@ class SupabaseBackend
       professionalStatus: VerificationStatus.parse(m['professional_status'] as String?),
       onboardingCompleted: m['onboarding_completed'] as bool? ?? false,
       deletionRequested: m['deletion_requested'] as bool? ?? false,
+      isSuspended: st['suspended_at'] != null,
+      suspensionReason: st['suspension_reason'] as String?,
+      blockedIds: {for (final id in (st['blocked'] as List? ?? const [])) id as String},
     );
   }
 
@@ -160,7 +168,7 @@ class SupabaseBackend
 
   @override
   Future<List<Promotion>> promotions(int? cityId) async {
-    final rows = _rows(await _db.from('promotions').select().order('sort_order'));
+    final rows = _rows(await _db.from('promotions').select().eq('is_active', true).order('sort_order'));
     return rows
         .where((r) => r['city_id'] == null || (r['city_id'] as num).toInt() == cityId)
         .map(Promotion.fromMap)
@@ -582,4 +590,214 @@ class SupabaseBackend
   @override
   Future<void> setServiceLocation({required double latitude, required double longitude, required int radiusKm}) => _db
       .rpc('set_service_location', params: {'p_latitude': latitude, 'p_longitude': longitude, 'p_radius_km': radiusKm});
+
+  // ---------------------------------------------------------------- Seguridad
+  @override
+  Future<void> reportUser({required String userId, required ReportReason reason, String? details, String? bookingId}) =>
+      _db.rpc(
+        'report_user',
+        params: {'p_user': userId, 'p_reason': reason.key, 'p_details': details, 'p_booking': bookingId},
+      );
+
+  @override
+  Future<void> blockUser(String userId) => _db.rpc('block_user', params: {'p_user': userId});
+
+  @override
+  Future<void> unblockUser(String userId) => _db.rpc('unblock_user', params: {'p_user': userId});
+
+  @override
+  Future<void> recordConsent(String document, String version) =>
+      _db.rpc('record_consent', params: {'p_document': document, 'p_version': version});
+
+  @override
+  Future<void> contactSupport({required String subject, required String body, String? bookingId}) => _db
+      .from('support_tickets')
+      .insert({'user_id': _uid, 'subject': subject.trim(), 'body': body.trim(), 'booking_id': bookingId});
+
+  // ---------------------------------------------------------------- Administración
+  Future<String?> _signed(String bucket, String? path) async {
+    if (path == null || path.isEmpty) return null;
+    try {
+      return await _db.storage.from(bucket).createSignedUrl(path, 3600);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<AdminDashboard> adminDashboard() async =>
+      AdminDashboard(Map<String, dynamic>.from(await _db.rpc('admin_dashboard') as Map));
+
+  @override
+  Future<List<AdminApplication>> adminApplications({String status = 'pending'}) async =>
+      _rows(await _db.rpc('admin_applications', params: {'p_status': status})).map(AdminApplication.fromMap).toList();
+
+  @override
+  Future<AdminApplicationDetail> adminApplicationDetail(String professionalId) async {
+    final m = Map<String, dynamic>.from(
+      await _db.rpc('admin_application_detail', params: {'p_professional': professionalId}) as Map,
+    );
+    final docs = _rows(m['documents']);
+    return AdminApplicationDetail(
+      summary: AdminApplication.fromMap({...m, 'documents': docs.length}),
+      bio: m['bio'] as String?,
+      yearsExperience: (m['years_experience'] as num?)?.toInt(),
+      reviewNote: m['review_note'] as String?,
+      zones: [for (final z in (m['zones'] as List? ?? const [])) z as String],
+      categories: [for (final c in (m['categories'] as List? ?? const [])) c as String],
+      documents: [
+        for (final d in docs)
+          AdminDocument(
+            id: (d['id'] as num).toInt(),
+            docType: d['doc_type'] as String,
+            status: DocumentStatus.parse(d['status'] as String?),
+            reviewNote: d['review_note'] as String?,
+            url: await _signed('professional-documents', d['storage_path'] as String?),
+          ),
+      ],
+      history: [
+        for (final e in _rows(m['history']))
+          (
+            status: VerificationStatus.parse(e['to_status'] as String?),
+            note: e['note'] as String?,
+            at: DateTime.parse(e['created_at'] as String),
+          ),
+      ],
+    );
+  }
+
+  @override
+  Future<void> reviewApplication(String professionalId, VerificationStatus decision, {String? note}) => _db.rpc(
+    'review_professional_application',
+    params: {'p_professional': professionalId, 'p_decision': decision.key, 'p_note': note},
+  );
+
+  @override
+  Future<void> reviewDocument(int documentId, DocumentStatus status, {String? note}) =>
+      _db.rpc('admin_review_document', params: {'p_document': documentId, 'p_status': status.key, 'p_note': note});
+
+  @override
+  Future<List<AdminTopup>> adminTopups({String status = 'pending'}) async {
+    final rows = _rows(await _db.rpc('admin_topups', params: {'p_status': status}));
+    return [
+      for (final r in rows) AdminTopup.fromMap(r, proofUrl: await _signed('topup-proofs', r['proof_path'] as String?)),
+    ];
+  }
+
+  @override
+  Future<void> reviewTopup(int topupId, {required bool approve, String? note}) =>
+      _db.rpc('review_topup', params: {'p_topup': topupId, 'p_approve': approve, 'p_note': note});
+
+  @override
+  Future<void> adjustWallet(String professionalId, double amount, String reason) => _db.rpc(
+    'admin_wallet_adjustment',
+    params: {
+      'p_professional': professionalId,
+      'p_amount': amount,
+      'p_reason': reason,
+      'p_key': '${DateTime.now().microsecondsSinceEpoch}',
+    },
+  );
+
+  @override
+  Future<List<AdminReport>> adminReports({String status = 'open'}) async =>
+      _rows(await _db.rpc('admin_reports', params: {'p_status': status})).map(AdminReport.fromMap).toList();
+
+  @override
+  Future<void> reviewReport(int reportId, CaseStatus status, {String? resolution}) => _db.rpc(
+    'admin_review_report',
+    params: {'p_report': reportId, 'p_status': status.key, 'p_resolution': resolution},
+  );
+
+  @override
+  Future<List<AdminDispute>> adminDisputes({String status = 'open'}) async =>
+      _rows(await _db.rpc('admin_disputes', params: {'p_status': status})).map(AdminDispute.fromMap).toList();
+
+  @override
+  Future<void> resolveDispute(String bookingId, DisputeOutcome outcome, String resolution) => _db.rpc(
+    'resolve_dispute',
+    params: {'p_booking': bookingId, 'p_outcome': outcome.status.key, 'p_resolution': resolution},
+  );
+
+  @override
+  Future<List<AdminTicket>> adminTickets({String status = 'open'}) async =>
+      _rows(await _db.rpc('admin_tickets', params: {'p_status': status})).map(AdminTicket.fromMap).toList();
+
+  @override
+  Future<void> updateTicket(int ticketId, TicketStatus status, {String? note}) =>
+      _db.rpc('admin_update_ticket', params: {'p_ticket': ticketId, 'p_status': status.key, 'p_note': note});
+
+  @override
+  Future<List<AdminUser>> adminUsers(String query) async =>
+      _rows(await _db.rpc('admin_users', params: {'p_query': query})).map(AdminUser.fromMap).toList();
+
+  @override
+  Future<void> setSuspension(String userId, {required bool suspend, String? reason}) =>
+      _db.rpc('admin_set_suspension', params: {'p_user': userId, 'p_suspend': suspend, 'p_reason': reason});
+
+  @override
+  Future<List<CommissionRule>> commissionRules() async =>
+      _rows(await _db.from('commission_rules').select().order('id')).map(CommissionRule.fromMap).toList();
+
+  @override
+  Future<void> saveCommissionRule(CommissionRule r) => _db.rpc(
+    'admin_save_commission_rule',
+    params: {
+      'p_id': r.id,
+      'p_name': r.name,
+      'p_category': r.categoryId,
+      'p_city': r.cityId,
+      'p_rate_percent': r.ratePercent,
+      'p_fixed_fee': r.fixedFee,
+      'p_reserve_amount': r.reserveAmount,
+      'p_min_balance': r.minBalance,
+      'p_capture_at': r.captureAt.key,
+      'p_active': r.isActive,
+    },
+  );
+
+  List<CatalogItem> _items(dynamic rows, {String? Function(Map<String, dynamic>)? subtitle}) => [
+    for (final r in _rows(rows))
+      CatalogItem(
+        id: (r['id'] as num).toInt(),
+        name: (r['name'] ?? r['title']) as String,
+        subtitle: subtitle?.call(r),
+        isActive: r['is_active'] as bool? ?? true,
+      ),
+  ];
+
+  @override
+  Future<List<CatalogItem>> adminCategories() async => _items(
+    await _db.from('service_categories').select('id, name, is_active, description').order('sort_order'),
+    subtitle: (r) => r['description'] as String?,
+  );
+
+  @override
+  Future<void> setCategoryActive(int id, bool active) =>
+      _db.from('service_categories').update({'is_active': active}).eq('id', id);
+
+  @override
+  Future<List<CatalogItem>> adminCities() async =>
+      _items(await _db.from('cities').select('id, name, is_active').order('name'));
+
+  @override
+  Future<void> setCityActive(int id, bool active) => _db.from('cities').update({'is_active': active}).eq('id', id);
+
+  @override
+  Future<List<CatalogItem>> adminPromotions() async => _items(
+    await _db.from('promotions').select('id, title, subtitle, is_active').order('sort_order'),
+    subtitle: (r) => r['subtitle'] as String?,
+  );
+
+  @override
+  Future<void> setPromotionActive(int id, bool active) =>
+      _db.from('promotions').update({'is_active': active}).eq('id', id);
+
+  @override
+  Future<void> createPromotion({required String title, String? subtitle, int? cityId}) =>
+      _db.from('promotions').insert({'title': title.trim(), 'subtitle': subtitle, 'city_id': cityId});
+
+  @override
+  Future<List<AuditEntry>> auditLog() async =>
+      _rows(await _db.rpc('admin_audit_entries', params: {'p_limit': 200})).map(AuditEntry.fromMap).toList();
 }

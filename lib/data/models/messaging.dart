@@ -6,6 +6,7 @@ class Conversation {
     required this.bookingId,
     required this.bookingCode,
     required this.otherName,
+    this.otherId,
     this.lastMessageAt,
     this.lastMessagePreview,
     this.unreadCount = 0,
@@ -16,6 +17,7 @@ class Conversation {
   final String bookingId;
   final String bookingCode;
   final String otherName;
+  final String? otherId;
   final DateTime? lastMessageAt;
   final String? lastMessagePreview;
   final int unreadCount;
@@ -26,6 +28,7 @@ class Conversation {
     bookingId: m['booking_id'] as String,
     bookingCode: m['booking_code'] as String,
     otherName: m['other_name'] as String,
+    otherId: m['other_user_id'] as String?,
     lastMessageAt: m['last_message_at'] == null ? null : DateTime.parse(m['last_message_at'] as String),
     lastMessagePreview: m['last_message_preview'] as String?,
     unreadCount: (m['unread_count'] as num?)?.toInt() ?? 0,

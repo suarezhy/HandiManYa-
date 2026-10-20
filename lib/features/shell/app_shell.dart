@@ -16,11 +16,49 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: shell,
+      body: Column(
+        children: [
+          const _SuspendedBanner(),
+          Expanded(child: shell),
+        ],
+      ),
       bottomNavigationBar: AppBottomNav(
         currentIndex: shell.currentIndex,
         professional: professional,
         onTap: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
+      ),
+    );
+  }
+}
+
+/// Aviso fijo cuando la cuenta está suspendida, con el motivo.
+class _SuspendedBanner extends ConsumerWidget {
+  const _SuspendedBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final account = ref.watch(accountProvider).value;
+    if (account == null || !account.isSuspended) return const SizedBox.shrink();
+    return Material(
+      color: HyColors.danger,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: HySpacing.page, vertical: HySpacing.sm),
+          child: Row(
+            children: [
+              const Icon(Icons.block, color: Colors.white),
+              const SizedBox(width: HySpacing.xs),
+              Expanded(
+                child: Text(
+                  'Tu cuenta está suspendida${account.suspensionReason == null ? '' : ': ${account.suspensionReason}'}. '
+                  'Puedes escribirnos desde Perfil > Ayuda.',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

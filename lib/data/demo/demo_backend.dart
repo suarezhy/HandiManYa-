@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import '../../core/utils/app_error.dart';
+import '../models/admin.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/geo.dart';
@@ -28,9 +29,12 @@ class DemoBackend
         BookingRepository,
         MessagingRepository,
         NotificationRepository,
-        ProRepository {
+        ProRepository,
+        SafetyRepository,
+        AdminRepository {
   DemoBackend({this.simulateDelays = true}) {
     _seed();
+    _seedAdmin();
   }
 
   /// En las pruebas automáticas se apaga para que todo sea inmediato.
@@ -40,6 +44,7 @@ class DemoBackend
   static const demoCode = '123456';
   static const customerEmail = 'cliente@demo.bo';
   static const professionalEmail = 'profesional@demo.bo';
+  static const adminEmail = 'admin@demo.bo';
 
   final _auth = StreamController<AuthUser?>.broadcast();
   final _changes = StreamController<void>.broadcast();
@@ -56,6 +61,17 @@ class DemoBackend
   final _timers = <Timer>[];
   _Account? _session;
   int _seq = 1;
+
+  // Administración (solo demostración)
+  final _reports = <AdminReport>[];
+  final _tickets = <AdminTicket>[];
+  final _audit = <AuditEntry>[];
+  final _rules = <CommissionRule>[];
+  final _inactiveCategories = <int>{};
+  final _inactiveCities = <int>{};
+  final _promos = <({Promotion promo, bool active})>[];
+  final _topupProofs = <int, Uint8List>{};
+  final _consents = <String>{};
 
   static const _reserveAmount = 5.0;
   static const _commissionFee = 10.0;
@@ -151,6 +167,134 @@ class DemoBackend
         createdAt: DateTime.now().subtract(const Duration(days: 3)),
       ),
     ];
+  }
+
+  /// Datos de ejemplo para el panel de administración.
+  void _seedAdmin() {
+    final admin =
+        _Account(id: 'demo-admin', email: adminEmail, password: demoPassword, fullName: 'Equipo HandiMan', cityId: 1)
+          ..confirmed = true
+          ..onboardingDone = true
+          ..roles.add(AppRole.admin);
+    _accounts[admin.email] = admin;
+
+    final now = DateTime.now();
+    for (final (id, name, cat, zone, bio, hours) in [
+      (
+        'demo-post-1',
+        'Rubén Gutiérrez',
+        1,
+        12,
+        'Plomero con 6 años de experiencia. Arreglo fugas y cambio griferías.',
+        3,
+      ),
+      ('demo-post-2', 'Silvia Arancibia', 5, 11, 'Limpieza de casas y oficinas. Llevo mis propios productos.', 20),
+    ]) {
+      _accounts['$id@demo.bo'] = _Account(id: id, email: '$id@demo.bo', password: '', fullName: name, cityId: 1)
+        ..confirmed = true
+        ..phone = id.endsWith('1') ? '+59170012345' : '+59170054321';
+      _pros[id] =
+          _Pro(
+              id: id,
+              displayName: name,
+              primaryCategoryId: cat,
+              cityId: 1,
+              zoneIds: {zone},
+              bio: bio,
+              years: 6,
+              priceFrom: null,
+              available: false,
+              ratingAvg: 0,
+              ratingCount: 0,
+              completedJobs: 0,
+              status: VerificationStatus.submitted,
+            )
+            ..submittedAt = now.subtract(Duration(hours: hours))
+            ..docs.addAll([_Doc(_seq++, 'ci_anverso'), _Doc(_seq++, 'ci_reverso')])
+            ..documentCount = 2
+            ..history.add((status: VerificationStatus.submitted, note: null, at: now.subtract(Duration(hours: hours))));
+    }
+
+    for (final (pro, amount, ref) in [('p1', 100.0, 'TRX-558210'), ('p3', 50.0, 'QR-90321')]) {
+      _wallets.putIfAbsent(pro, () => [40, 0]);
+      _topups
+          .putIfAbsent(pro, () => [])
+          .add(
+            TopupRequest(
+              id: _seq++,
+              amount: amount,
+              status: TopupStatus.pending,
+              reference: ref,
+              createdAt: now.subtract(const Duration(hours: 2)),
+            ),
+          );
+    }
+
+    _reports.add(
+      AdminReport(
+        id: _seq++,
+        reporterName: 'Doña Elena Paz',
+        reportedId: 'p6',
+        reportedName: 'Wilson Quispe',
+        reason: ReportReason.overcharge,
+        details: 'Acordamos Bs 150 y al terminar me cobró Bs 250.',
+        status: CaseStatus.open,
+        createdAt: now.subtract(const Duration(days: 1)),
+      ),
+    );
+    _tickets.add(
+      AdminTicket(
+        id: _seq++,
+        userName: 'Carla Rojas',
+        subject: 'No sé cómo cambiar mi ciudad',
+        body: 'Me mudé a Cochabamba y quiero ver profesionales de allá.',
+        status: TicketStatus.open,
+        createdAt: now.subtract(const Duration(hours: 5)),
+      ),
+    );
+
+    final neighbor = _accounts.putIfAbsent(
+      'vecino2@demo.bo',
+      () =>
+          _Account(id: 'demo-vecino2', email: 'vecino2@demo.bo', password: '', fullName: 'Jorge Salvatierra', cityId: 1)
+            ..confirmed = true,
+    );
+    final disputed =
+        _Booking(
+            id: _id('b'),
+            code: 'DSP482',
+            customerId: neighbor.id,
+            professionalId: 'p4',
+            draft: const BookingDraft(
+              categoryId: 4,
+              cityId: 1,
+              mode: BookingMode.now,
+              description: 'Pintar el living y el pasillo.',
+              address: 'Av. Beni 450',
+              zoneId: 11,
+              paymentMethod: PaymentMethod.cash,
+            ),
+            createdAt: now.subtract(const Duration(days: 2)),
+          )
+          ..status = BookingStatus.disputed
+          ..disputeReason = 'Dejó el trabajo a medias y no responde los mensajes.'
+          ..disputeOpenedBy = neighbor.id
+          ..disputeAt = now.subtract(const Duration(hours: 9));
+    disputed.events.add(
+      BookingEvent(status: BookingStatus.disputed, note: disputed.disputeReason, at: disputed.disputeAt!),
+    );
+    _bookings[disputed.id] = disputed;
+
+    _rules.add(
+      CommissionRule(
+        id: _seq++,
+        name: 'Regla de demostración (ejemplo, no es una tarifa real)',
+        fixedFee: _commissionFee,
+        reserveAmount: _reserveAmount,
+        minBalance: _reserveAmount,
+      ),
+    );
+    _promos.addAll([for (final p in DemoData.promotions) (promo: p, active: true)]);
   }
 
   final _wallets = <String, List<double>>{}; // [disponible, reservado]
@@ -257,6 +401,9 @@ class DemoBackend
       professionalStatus: pro?.status ?? VerificationStatus.notStarted,
       onboardingCompleted: a.onboardingDone,
       deletionRequested: a.deletionRequested,
+      isSuspended: a.suspendedAt != null,
+      suspensionReason: a.suspensionReason,
+      blockedIds: {...a.blocked},
     );
   }
 
@@ -291,16 +438,20 @@ class DemoBackend
 
   // ================================================================= Catálogo
   @override
-  Future<List<City>> cities() async => DemoData.cities;
+  Future<List<City>> cities() async => DemoData.cities.where((c) => !_inactiveCities.contains(c.id)).toList();
 
   @override
   Future<List<Zone>> zones(int cityId) async => DemoData.zones.where((z) => z.cityId == cityId).toList();
 
   @override
-  Future<List<ServiceCategory>> categories() async => DemoData.categories;
+  Future<List<ServiceCategory>> categories() async =>
+      DemoData.categories.where((c) => !_inactiveCategories.contains(c.id)).toList();
 
   @override
-  Future<List<Promotion>> promotions(int? cityId) async => DemoData.promotions;
+  Future<List<Promotion>> promotions(int? cityId) async => [
+    for (final p in _promos)
+      if (p.active) p.promo,
+  ];
 
   // ================================================================= Profesionales
   String _catName(int id) => DemoData.categories.firstWhere((c) => c.id == id).name;
@@ -429,6 +580,7 @@ class DemoBackend
     double? longitude,
   }) => _pros.values.where((p) {
     if (p.status != VerificationStatus.approved || !p.available || p.id == customerId) return false;
+    if (_blockedBetween(p.id, customerId)) return false;
     if (p.cityId != cityId || p.primaryCategoryId != categoryId) return false;
     final base = p.location;
     // Igual que el servidor: con ubicación manda el radio; sin ella, la zona.
@@ -568,7 +720,9 @@ class DemoBackend
   Future<String> create(BookingDraft d) async {
     await _latency(500);
     final me = _me;
+    if (me.suspendedAt != null) throw AppError.from('HMY_ACCOUNT_SUSPENDED');
     if (d.professionalId == me.id) throw AppError.from('HMY_CANNOT_BOOK_SELF');
+    if (d.professionalId != null && _blockedBetween(me.id, d.professionalId!)) throw AppError.from('HMY_BLOCKED');
     final b = _Booking(
       id: _id('b'),
       code: List.generate(6, (_) => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[_rng.nextInt(31)]).join(),
@@ -921,6 +1075,11 @@ class DemoBackend
     if (b.customerId != me && b.professionalId != me) throw AppError.from('HMY_FORBIDDEN');
     if (reason.trim().length < 5) throw AppError.from('HMY_REASON_REQUIRED');
     _requireStatus(b, {BookingStatus.onTheWay, BookingStatus.inProgress, BookingStatus.workFinished});
+    b
+      ..disputeReason = reason.trim()
+      ..disputeOpenedBy = me
+      ..disputeAt = DateTime.now()
+      ..disputeResolution = null;
     _move(b, BookingStatus.disputed, note: reason.trim(), actorId: me);
   }
 
@@ -970,6 +1129,7 @@ class DemoBackend
           id: c.id,
           bookingId: c.bookingId,
           bookingCode: _bookings[c.bookingId]!.code,
+          otherId: me == c.customerId ? c.professionalId : c.customerId,
           otherName: me == c.customerId
               ? _pros[c.professionalId]!.displayName
               : _accounts.values.firstWhere((a) => a.id == c.customerId).fullName.split(' ').first,
@@ -1000,6 +1160,8 @@ class DemoBackend
     final me = _me.id;
     if (c == null || (c.customerId != me && c.professionalId != me)) throw AppError.from('HMY_FORBIDDEN');
     if (!_bookings[c.bookingId]!.status.chatOpen) throw AppError.from('HMY_CHAT_CLOSED');
+    if (_me.suspendedAt != null) throw AppError.from('HMY_ACCOUNT_SUSPENDED');
+    if (_blockedBetween(c.customerId, c.professionalId)) throw AppError.from('HMY_BLOCKED');
     _sendAs(conversationId, me, body.trim());
     // Respuesta simulada del profesional de ejemplo.
     final other = me == c.customerId ? c.professionalId : c.customerId;
@@ -1196,6 +1358,7 @@ class DemoBackend
     final p = _pros[_me.id];
     if (p == null) throw AppError.from('HMY_NO_APPLICATION');
     p.documentCount++;
+    p.docs.add(_Doc(_seq++, docType, bytes));
   }
 
   @override
@@ -1205,7 +1368,10 @@ class DemoBackend
     if (p == null) throw AppError.from('HMY_NO_APPLICATION');
     if (p.documentCount == 0) throw AppError.from('HMY_DOCUMENTS_REQUIRED');
     if (p.displayName.length < 3) throw AppError.from('HMY_APPLICATION_INCOMPLETE');
-    p.status = VerificationStatus.submitted;
+    p
+      ..status = VerificationStatus.submitted
+      ..submittedAt = DateTime.now()
+      ..history.add((status: VerificationStatus.submitted, note: null, at: DateTime.now()));
     // Demostración: el "equipo de verificación" aprueba solo a los pocos segundos.
     final account = _me;
     _later(const Duration(seconds: 8), () {
@@ -1269,9 +1435,10 @@ class DemoBackend
         createdAt: DateTime.now(),
       ),
     );
-    // Demostración: la recarga se acredita sola a los pocos segundos.
     final proId = _me.id;
     final id = list.first.id;
+    if (proof != null) _topupProofs[id] = proof.bytes;
+    // Demostración: la recarga se acredita sola a los pocos segundos.
     _later(const Duration(seconds: 6), () {
       final i = list.indexWhere((t) => t.id == id);
       if (i < 0 || list[i].status != TopupStatus.pending) return;
@@ -1315,6 +1482,574 @@ class DemoBackend
     if (radiusKm < 1 || radiusKm > 50) throw AppError.from('HMY_INVALID_RADIUS');
     p.location = ServiceLocation(latitude: latitude, longitude: longitude, radiusKm: radiusKm);
   }
+
+  // ================================================================= Seguridad
+  _Account? _account(String id) => _accounts.values.where((a) => a.id == id).firstOrNull;
+
+  bool _blockedBetween(String a, String b) =>
+      (_account(a)?.blocked.contains(b) ?? false) || (_account(b)?.blocked.contains(a) ?? false);
+
+  String _nameOf(String id) => _pros[id]?.displayName ?? _account(id)?.fullName ?? 'Usuario';
+
+  @override
+  Future<void> reportUser({
+    required String userId,
+    required ReportReason reason,
+    String? details,
+    String? bookingId,
+  }) async {
+    await _latency();
+    final me = _me;
+    if (userId == me.id) throw AppError.from('HMY_NOT_FOUND');
+    final today = DateTime.now().subtract(const Duration(days: 1));
+    if (_reports.where((r) => r.reporterName == me.fullName && r.createdAt.isAfter(today)).length >= 5) {
+      throw AppError.from('HMY_RATE_LIMITED');
+    }
+    _reports.add(
+      AdminReport(
+        id: _seq++,
+        reporterName: me.fullName,
+        reportedId: userId,
+        reportedName: _nameOf(userId),
+        bookingId: bookingId,
+        reason: reason,
+        details: (details ?? '').trim().isEmpty ? null : details!.trim(),
+        status: CaseStatus.open,
+        createdAt: DateTime.now(),
+        reportsAgainst: _reports.where((r) => r.reportedId == userId).length + 1,
+      ),
+    );
+  }
+
+  @override
+  Future<void> blockUser(String userId) async {
+    await _latency();
+    if (userId == _me.id) throw AppError.from('HMY_NOT_FOUND');
+    _me.blocked.add(userId);
+    _changes.add(null);
+  }
+
+  @override
+  Future<void> unblockUser(String userId) async {
+    await _latency();
+    _me.blocked.remove(userId);
+    _changes.add(null);
+  }
+
+  @override
+  Future<void> recordConsent(String document, String version) async => _consents.add('${_me.id}:$document:$version');
+
+  /// Solo para pruebas: si el usuario aceptó esa versión.
+  bool hasConsent(String userId, String document, String version) => _consents.contains('$userId:$document:$version');
+
+  @override
+  Future<void> contactSupport({required String subject, required String body, String? bookingId}) async {
+    await _latency();
+    final me = _me;
+    final today = DateTime.now().subtract(const Duration(days: 1));
+    if (_tickets.where((t) => t.userName == me.fullName && t.createdAt.isAfter(today)).length >= 5) {
+      throw AppError.from('HMY_RATE_LIMITED');
+    }
+    _tickets.add(
+      AdminTicket(
+        id: _seq++,
+        userName: me.fullName,
+        bookingId: bookingId,
+        subject: subject.trim(),
+        body: body.trim(),
+        status: TicketStatus.open,
+        createdAt: DateTime.now(),
+      ),
+    );
+  }
+
+  // ================================================================= Administración
+  _Account _admin() {
+    final me = _me;
+    if (!me.roles.contains(AppRole.admin)) throw AppError.from('HMY_FORBIDDEN');
+    return me;
+  }
+
+  void _log(String action, String table, String id, [Map<String, dynamic> details = const {}]) => _audit.insert(
+    0,
+    AuditEntry(
+      id: _seq++,
+      actorName: _me.fullName,
+      action: action,
+      targetTable: table,
+      targetId: id,
+      details: details,
+      createdAt: DateTime.now(),
+    ),
+  );
+
+  AdminApplication _application(_Pro p) {
+    final a = _account(p.id);
+    return AdminApplication(
+      userId: p.id,
+      displayName: p.displayName,
+      fullName: a?.fullName ?? p.displayName,
+      phone: a?.phone,
+      email: a?.email,
+      cityName: _cityName(p.cityId),
+      categoryName: _catName(p.primaryCategoryId),
+      status: p.status,
+      submittedAt: p.submittedAt,
+      documents: p.docs.isEmpty ? p.documentCount : p.docs.length,
+    );
+  }
+
+  @override
+  Future<AdminDashboard> adminDashboard() async {
+    await _latency(200);
+    _admin();
+    final today = DateTime.now();
+    final start = DateTime(today.year, today.month, today.day);
+    final topups = _topups.values.expand((l) => l);
+    return AdminDashboard({
+      'pending_applications': _pros.values
+          .where((p) => p.status == VerificationStatus.submitted || p.status == VerificationStatus.underReview)
+          .length,
+      'pending_topups': topups.where((t) => t.status == TopupStatus.pending).length,
+      'open_disputes': _bookings.values.where((b) => b.status == BookingStatus.disputed).length,
+      'open_reports': _reports.where((r) => r.status.isOpen).length,
+      'open_tickets': _tickets.where((t) => t.status != TicketStatus.closed).length,
+      'bookings_today': _bookings.values.where((b) => b.createdAt.isAfter(start)).length,
+      'active_bookings': _bookings.values.where((b) => b.status.isActive).length,
+      'approved_professionals': _pros.values.where((p) => p.status == VerificationStatus.approved).length,
+      'available_professionals': _pros.values
+          .where((p) => p.status == VerificationStatus.approved && p.available)
+          .length,
+      'users': _accounts.length,
+      'active_commission_rules': _rules.where((r) => r.isActive).length,
+    });
+  }
+
+  @override
+  Future<List<AdminApplication>> adminApplications({String status = 'pending'}) async {
+    await _latency(200);
+    _admin();
+    bool keep(_Pro p) => switch (status) {
+      'pending' => p.status == VerificationStatus.submitted || p.status == VerificationStatus.underReview,
+      'all' => true,
+      _ => p.status.key == status,
+    };
+    final list = _pros.values.where(keep).map(_application).toList()
+      ..sort((a, b) => (a.submittedAt ?? DateTime(2000)).compareTo(b.submittedAt ?? DateTime(2000)));
+    return list;
+  }
+
+  @override
+  Future<AdminApplicationDetail> adminApplicationDetail(String professionalId) async {
+    await _latency(200);
+    _admin();
+    final p = _pros[professionalId];
+    if (p == null) throw AppError.from('HMY_NOT_FOUND');
+    return AdminApplicationDetail(
+      summary: _application(p),
+      bio: p.bio,
+      yearsExperience: p.years,
+      reviewNote: p.reviewNote,
+      zones: [for (final z in DemoData.zones.where((z) => p.zoneIds.contains(z.id))) z.name],
+      categories: [_catName(p.primaryCategoryId)],
+      documents: [
+        for (final d in p.docs)
+          AdminDocument(id: d.id, docType: d.type, status: d.status, bytes: d.bytes, reviewNote: d.note),
+      ],
+      history: p.history.reversed.toList(),
+    );
+  }
+
+  @override
+  Future<void> reviewApplication(String professionalId, VerificationStatus decision, {String? note}) async {
+    await _latency();
+    _admin();
+    final p = _pros[professionalId];
+    if (p == null) throw AppError.from('HMY_NO_APPLICATION');
+    final needsReason =
+        decision == VerificationStatus.rejected || decision == VerificationStatus.reverificationRequired;
+    if (needsReason && (note ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    p
+      ..status = decision
+      ..reviewNote = note
+      ..history.add((status: decision, note: note, at: DateTime.now()));
+    if (decision != VerificationStatus.approved) p.available = false;
+    final a = _account(professionalId);
+    if (decision == VerificationStatus.approved) {
+      a?.roles.add(AppRole.professional);
+      _wallets.putIfAbsent(professionalId, () => [0, 0]);
+      _notify(professionalId, 'verification', '¡Tu perfil fue aprobado!', 'Ya puedes recibir pedidos ¡Ya!.');
+    } else if (decision == VerificationStatus.rejected || decision == VerificationStatus.suspended) {
+      if (a != null && a.activeRole == AppRole.professional) a.activeRole = AppRole.customer;
+      _notify(professionalId, 'verification', 'Revisamos tu perfil', note ?? decision.label);
+    } else if (decision == VerificationStatus.reverificationRequired) {
+      _notify(professionalId, 'verification', 'Necesitamos que revises tu postulación', note!);
+    }
+    _log('professional.${decision.key}', 'professional_profiles', professionalId, {'note': ?note});
+    _changes.add(null);
+  }
+
+  @override
+  Future<void> reviewDocument(int documentId, DocumentStatus status, {String? note}) async {
+    await _latency();
+    _admin();
+    if (status == DocumentStatus.rejected && (note ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    final doc = _pros.values.expand((p) => p.docs).where((d) => d.id == documentId).firstOrNull;
+    if (doc == null) throw AppError.from('HMY_NOT_FOUND');
+    doc
+      ..status = status
+      ..note = (note ?? '').trim().isEmpty ? null : note!.trim();
+    _log('document.${status.key}', 'professional_documents', '$documentId', {'note': ?note});
+  }
+
+  @override
+  Future<List<AdminTopup>> adminTopups({String status = 'pending'}) async {
+    await _latency(200);
+    _admin();
+    return [
+      for (final e in _topups.entries)
+        for (final t in e.value)
+          if (status == 'all' || t.status.key == status)
+            AdminTopup(
+              id: t.id,
+              professionalId: e.key,
+              displayName: _nameOf(e.key),
+              amount: t.amount,
+              methodName: 'QR (ejemplo)',
+              reference: t.reference,
+              proofBytes: _topupProofs[t.id],
+              status: t.status,
+              reviewNote: t.reviewNote,
+              createdAt: t.createdAt,
+            ),
+    ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
+  @override
+  Future<void> reviewTopup(int topupId, {required bool approve, String? note}) async {
+    await _latency();
+    _admin();
+    for (final e in _topups.entries) {
+      final i = e.value.indexWhere((t) => t.id == topupId);
+      if (i < 0) continue;
+      final t = e.value[i];
+      if (t.status != TopupStatus.pending) throw AppError.from('HMY_ALREADY_REVIEWED');
+      e.value[i] = TopupRequest(
+        id: t.id,
+        amount: t.amount,
+        status: approve ? TopupStatus.approved : TopupStatus.rejected,
+        reference: t.reference,
+        reviewNote: note,
+        createdAt: t.createdAt,
+      );
+      if (approve) {
+        _post(e.key, LedgerType.topup, t.amount, 0, 'Recarga acreditada');
+        _notify(e.key, 'topup', 'Recarga acreditada', 'Sumamos ${t.amount.toStringAsFixed(2)} Bs a tu billetera.');
+      } else {
+        _notify(e.key, 'topup', 'Recarga rechazada', note ?? 'No pudimos verificar el pago.');
+      }
+      _log(approve ? 'topup.approve' : 'topup.reject', 'topup_requests', '$topupId', {'amount': t.amount});
+      _changes.add(null);
+      return;
+    }
+    throw AppError.from('HMY_NOT_FOUND');
+  }
+
+  @override
+  Future<void> adjustWallet(String professionalId, double amount, String reason) async {
+    await _latency();
+    _admin();
+    if (reason.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    final w = _wallets[professionalId];
+    if (w == null) throw AppError.from('HMY_WALLET_NOT_FOUND');
+    if (w[0] + amount < 0) throw AppError.from('HMY_INSUFFICIENT_BALANCE');
+    _post(professionalId, LedgerType.adjustment, amount, 0, reason.trim());
+    _log('wallet.adjust', 'wallets', professionalId, {'amount': amount, 'reason': reason.trim()});
+  }
+
+  @override
+  Future<List<AdminReport>> adminReports({String status = 'open'}) async {
+    await _latency(200);
+    _admin();
+    return [
+      for (final r in _reports)
+        if (status == 'all' || (status == 'open' ? r.status.isOpen : r.status.key == status))
+          AdminReport(
+            id: r.id,
+            reporterName: r.reporterName,
+            reportedId: r.reportedId,
+            reportedName: r.reportedName,
+            bookingId: r.bookingId,
+            reason: r.reason,
+            details: r.details,
+            status: r.status,
+            resolution: r.resolution,
+            createdAt: r.createdAt,
+            reportsAgainst: _reports.where((x) => x.reportedId == r.reportedId).length,
+          ),
+    ];
+  }
+
+  @override
+  Future<void> reviewReport(int reportId, CaseStatus status, {String? resolution}) async {
+    await _latency();
+    _admin();
+    final closing = status == CaseStatus.resolved || status == CaseStatus.dismissed;
+    if (closing && (resolution ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    final i = _reports.indexWhere((r) => r.id == reportId);
+    if (i < 0) throw AppError.from('HMY_NOT_FOUND');
+    final r = _reports[i];
+    _reports[i] = AdminReport(
+      id: r.id,
+      reporterName: r.reporterName,
+      reportedId: r.reportedId,
+      reportedName: r.reportedName,
+      bookingId: r.bookingId,
+      reason: r.reason,
+      details: r.details,
+      status: status,
+      resolution: (resolution ?? '').trim().isEmpty ? r.resolution : resolution!.trim(),
+      createdAt: r.createdAt,
+    );
+    _log('report.${status.key}', 'user_reports', '$reportId', {'resolution': ?resolution});
+  }
+
+  @override
+  Future<List<AdminDispute>> adminDisputes({String status = 'open'}) async {
+    await _latency(200);
+    _admin();
+    return [
+      for (final b in _bookings.values)
+        if (b.disputeReason != null && (status == 'all' || (status == 'open') == (b.status == BookingStatus.disputed)))
+          AdminDispute(
+            bookingId: b.id,
+            reason: b.disputeReason!,
+            isOpen: b.status == BookingStatus.disputed,
+            resolution: b.disputeResolution,
+            createdAt: b.disputeAt ?? b.createdAt,
+            openedByName: _nameOf(b.disputeOpenedBy ?? b.customerId),
+            customerName: _nameOf(b.customerId),
+            professionalName: b.professionalId == null ? null : _nameOf(b.professionalId!),
+            categoryName: _catName(b.draft.categoryId),
+          ),
+    ];
+  }
+
+  @override
+  Future<void> resolveDispute(String bookingId, DisputeOutcome outcome, String resolution) async {
+    await _latency();
+    final admin = _admin();
+    if (resolution.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    final b = _get(bookingId);
+    _requireStatus(b, {BookingStatus.disputed});
+    b.disputeResolution = resolution.trim();
+    _move(b, outcome.status, note: resolution.trim(), actorId: admin.id);
+    _log('dispute.resolve', 'bookings', bookingId, {'outcome': outcome.status.key, 'resolution': resolution.trim()});
+  }
+
+  @override
+  Future<List<AdminTicket>> adminTickets({String status = 'open'}) async {
+    await _latency(200);
+    _admin();
+    return [
+      for (final t in _tickets)
+        if (status == 'all' || (status == 'open' ? t.status != TicketStatus.closed : t.status.key == status)) t,
+    ];
+  }
+
+  @override
+  Future<void> updateTicket(int ticketId, TicketStatus status, {String? note}) async {
+    await _latency();
+    _admin();
+    final i = _tickets.indexWhere((t) => t.id == ticketId);
+    if (i < 0) throw AppError.from('HMY_NOT_FOUND');
+    final t = _tickets[i];
+    _tickets[i] = AdminTicket(
+      id: t.id,
+      userName: t.userName,
+      bookingId: t.bookingId,
+      subject: t.subject,
+      body: t.body,
+      status: status,
+      adminNote: (note ?? '').trim().isEmpty ? t.adminNote : note!.trim(),
+      createdAt: t.createdAt,
+    );
+    final user = _accounts.values.where((a) => a.fullName == t.userName).firstOrNull;
+    if (user != null && (note ?? '').trim().isNotEmpty) {
+      _notify(user.id, 'support', 'Respuesta de soporte', note!.trim());
+    }
+    _log('ticket.${status.key}', 'support_tickets', '$ticketId', {'note': ?note});
+  }
+
+  @override
+  Future<List<AdminUser>> adminUsers(String query) async {
+    await _latency(200);
+    _admin();
+    final q = query.trim().toLowerCase();
+    final list = [
+      for (final a in _accounts.values)
+        if (a.password.isNotEmpty || a.id.startsWith('demo-') || _pros.containsKey(a.id))
+          if (q.isEmpty ||
+              a.fullName.toLowerCase().contains(q) ||
+              a.email.toLowerCase().contains(q) ||
+              (a.phone ?? '').contains(q))
+            AdminUser(
+              id: a.id,
+              fullName: a.fullName,
+              email: a.email,
+              phone: a.phone,
+              cityName: a.cityId == null ? null : _cityName(a.cityId!),
+              roles: {...a.roles},
+              professionalStatus: _pros[a.id]?.status,
+              suspendedAt: a.suspendedAt,
+              suspensionReason: a.suspensionReason,
+              reportsAgainst: _reports.where((r) => r.reportedId == a.id).length,
+            ),
+    ]..sort((a, b) => (b.isSuspended ? 1 : 0).compareTo(a.isSuspended ? 1 : 0));
+    return list.take(50).toList();
+  }
+
+  @override
+  Future<void> setSuspension(String userId, {required bool suspend, String? reason}) async {
+    await _latency();
+    final admin = _admin();
+    final a = _account(userId);
+    if (a == null) throw AppError.from('HMY_NOT_FOUND');
+    if (a.id == admin.id || a.roles.contains(AppRole.admin)) throw AppError.from('HMY_FORBIDDEN');
+    if (suspend && (reason ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    a
+      ..suspendedAt = suspend ? (a.suspendedAt ?? DateTime.now()) : null
+      ..suspensionReason = suspend ? reason!.trim() : null;
+    if (suspend) a.activeRole = AppRole.customer;
+    final p = _pros[userId];
+    if (p != null && suspend && p.status == VerificationStatus.approved) {
+      await reviewApplication(userId, VerificationStatus.suspended, note: reason);
+    } else if (p != null && !suspend && p.status == VerificationStatus.suspended) {
+      await reviewApplication(userId, VerificationStatus.approved, note: 'Suspensión levantada');
+    }
+    _notify(
+      userId,
+      'account',
+      suspend ? 'Tu cuenta fue suspendida' : 'Tu cuenta está activa otra vez',
+      suspend
+          ? 'Motivo: ${reason!.trim()}. Si crees que es un error, escríbenos desde Ayuda.'
+          : 'Ya puedes volver a usar HandiMan ¡Ya!.',
+    );
+    _log(suspend ? 'account.suspend' : 'account.reactivate', 'profiles', userId, {'reason': ?reason});
+    _changes.add(null);
+  }
+
+  @override
+  Future<List<CommissionRule>> commissionRules() async {
+    await _latency(150);
+    return List.of(_rules);
+  }
+
+  @override
+  Future<void> saveCommissionRule(CommissionRule r) async {
+    await _latency();
+    _admin();
+    if (r.name.trim().length < 3) throw AppError.from('HMY_NAME_REQUIRED');
+    if (r.ratePercent == null && r.fixedFee == null) throw AppError.from('HMY_COMMISSION_REQUIRED');
+    final saved = CommissionRule(
+      id: r.id ?? _seq++,
+      name: r.name.trim(),
+      categoryId: r.categoryId,
+      cityId: r.cityId,
+      ratePercent: r.ratePercent,
+      fixedFee: r.fixedFee,
+      reserveAmount: r.reserveAmount,
+      minBalance: r.minBalance,
+      captureAt: r.captureAt,
+      isActive: r.isActive,
+    );
+    final i = _rules.indexWhere((x) => x.id == r.id);
+    if (r.id != null && i < 0) throw AppError.from('HMY_NOT_FOUND');
+    if (i < 0) {
+      _rules.add(saved);
+    } else {
+      _rules[i] = saved;
+    }
+    _log(i < 0 ? 'commission_rules.insert' : 'commission_rules.update', 'commission_rules', '${saved.id}');
+  }
+
+  @override
+  Future<List<CatalogItem>> adminCategories() async {
+    await _latency(150);
+    _admin();
+    return [
+      for (final c in DemoData.categories)
+        CatalogItem(id: c.id, name: c.name, subtitle: c.description, isActive: !_inactiveCategories.contains(c.id)),
+    ];
+  }
+
+  @override
+  Future<void> setCategoryActive(int id, bool active) async {
+    await _latency();
+    _admin();
+    active ? _inactiveCategories.remove(id) : _inactiveCategories.add(id);
+    _log('service_categories.update', 'service_categories', '$id', {'is_active': active});
+  }
+
+  @override
+  Future<List<CatalogItem>> adminCities() async {
+    await _latency(150);
+    _admin();
+    return [
+      for (final c in DemoData.cities) CatalogItem(id: c.id, name: c.name, isActive: !_inactiveCities.contains(c.id)),
+    ];
+  }
+
+  @override
+  Future<void> setCityActive(int id, bool active) async {
+    await _latency();
+    _admin();
+    active ? _inactiveCities.remove(id) : _inactiveCities.add(id);
+    _log('cities.update', 'cities', '$id', {'is_active': active});
+  }
+
+  @override
+  Future<List<CatalogItem>> adminPromotions() async {
+    await _latency(150);
+    _admin();
+    return [
+      for (final p in _promos)
+        CatalogItem(id: p.promo.id, name: p.promo.title, subtitle: p.promo.subtitle, isActive: p.active),
+    ];
+  }
+
+  @override
+  Future<void> setPromotionActive(int id, bool active) async {
+    await _latency();
+    _admin();
+    final i = _promos.indexWhere((p) => p.promo.id == id);
+    if (i < 0) throw AppError.from('HMY_NOT_FOUND');
+    _promos[i] = (promo: _promos[i].promo, active: active);
+    _log('promotions.update', 'promotions', '$id', {'is_active': active});
+  }
+
+  @override
+  Future<void> createPromotion({required String title, String? subtitle, int? cityId}) async {
+    await _latency();
+    _admin();
+    if (title.trim().length < 3) throw AppError.from('HMY_NAME_REQUIRED');
+    final promo = Promotion(
+      id: _seq++,
+      title: title.trim(),
+      subtitle: (subtitle ?? '').trim().isEmpty ? null : subtitle!.trim(),
+      ctaLabel: '¡Encuéntrala Ya!',
+      ctaRoute: '/buscar',
+    );
+    _promos.add((promo: promo, active: true));
+    _log('promotions.insert', 'promotions', '${promo.id}', {'title': promo.title});
+  }
+
+  @override
+  Future<List<AuditEntry>> auditLog() async {
+    await _latency(150);
+    _admin();
+    return List.of(_audit);
+  }
 }
 
 class _Account {
@@ -1331,6 +2066,19 @@ class _Account {
   bool deletionRequested = false;
   AppRole activeRole = AppRole.customer;
   final Set<AppRole> roles = {AppRole.customer};
+  DateTime? suspendedAt;
+  String? suspensionReason;
+  final Set<String> blocked = {};
+}
+
+class _Doc {
+  _Doc(this.id, this.type, [this.bytes]);
+
+  final int id;
+  final String type;
+  final Uint8List? bytes;
+  DocumentStatus status = DocumentStatus.pending;
+  String? note;
 }
 
 class _Pro {
@@ -1367,6 +2115,10 @@ class _Pro {
   VerificationStatus status;
   int documentCount = 0;
   final List<Review> realReviews = [];
+  final List<_Doc> docs = [];
+  DateTime? submittedAt;
+  String? reviewNote;
+  final List<({VerificationStatus status, String? note, DateTime at})> history = [];
 }
 
 class _Booking {
@@ -1399,6 +2151,10 @@ class _Booking {
   bool captured = false;
   String? conversationId;
   final List<BookingPhoto> photos = [];
+  String? disputeReason;
+  String? disputeOpenedBy;
+  DateTime? disputeAt;
+  String? disputeResolution;
 
   Set<String> get offers => _offers;
   set offers(Set<String> v) {

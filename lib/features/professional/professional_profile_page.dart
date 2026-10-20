@@ -10,6 +10,7 @@ import '../../data/models/booking.dart';
 import '../../data/models/professional.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
+import '../common/safety_menu.dart';
 
 class ProfessionalProfilePage extends ConsumerWidget {
   const ProfessionalProfilePage({super.key, required this.id});
@@ -20,7 +21,10 @@ class ProfessionalProfilePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(professionalDetailProvider(id));
     return Scaffold(
-      appBar: AppBar(title: const Text('Perfil del profesional')),
+      appBar: AppBar(
+        title: const Text('Perfil del profesional'),
+        actions: [if (detail.value case final d?) SafetyMenuButton(userId: id, name: d.summary.displayName)],
+      ),
       body: detail.when(
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(professionalDetailProvider(id))),
@@ -288,7 +292,9 @@ class _BottomActions extends ConsumerWidget {
           border: Border(top: BorderSide(color: HyColors.border)),
         ),
         padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.sm, HySpacing.page, HySpacing.sm),
+        // heightFactor: 1 para que la barra no ocupe toda la pantalla (tapaba la barra superior).
         child: Center(
+          heightFactor: 1,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: HySizes.maxContentWidth),
             child: Row(

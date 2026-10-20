@@ -5,6 +5,12 @@ import 'package:go_router/go_router.dart';
 import 'data/models/booking.dart';
 import 'data/models/user.dart';
 import 'data/providers.dart';
+import 'features/admin/admin_applications_page.dart';
+import 'features/admin/admin_cases_pages.dart';
+import 'features/admin/admin_catalog_audit_pages.dart';
+import 'features/admin/admin_home_page.dart';
+import 'features/admin/admin_money_pages.dart';
+import 'features/admin/admin_users_page.dart';
 import 'features/auth/access_page.dart';
 import 'features/auth/forgot_password_page.dart';
 import 'features/auth/login_page.dart';
@@ -62,6 +68,18 @@ abstract final class Routes {
   static const support = '/ayuda';
   static const serviceArea = '/zona-de-trabajo';
 
+  static const admin = '/admin';
+  static const adminApplications = '/admin/postulaciones';
+  static const adminTopups = '/admin/recargas';
+  static const adminReports = '/admin/reportes';
+  static const adminDisputes = '/admin/disputas';
+  static const adminTickets = '/admin/soporte';
+  static const adminUsers = '/admin/usuarios';
+  static const adminCommissions = '/admin/comisiones';
+  static const adminCatalog = '/admin/catalogo';
+  static const adminAudit = '/admin/auditoria';
+  static String adminApplication(String id) => '/admin/postulaciones/$id';
+
   static String professional(String id) => '/profesional/$id';
   static String requestPro(String id, BookingMode mode) => '/profesional/$id/solicitar?modo=${mode.key}';
   static String category(int id) => '/buscar?categoria=$id';
@@ -106,7 +124,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       return loc == Routes.splash ? null : Routes.splash;
     }
 
-    final homeForRole = account.isProfessionalMode ? Routes.proHome : Routes.home;
+    final homeForRole = account.isAdmin
+        ? Routes.admin
+        : account.isProfessionalMode
+        ? Routes.proHome
+        : Routes.home;
+    // La pantalla se oculta a quien no es admin; igual el servidor rechaza sus acciones.
+    if (loc.startsWith(Routes.admin) && !account.isAdmin) return Routes.home;
     final atEntry = loc == Routes.splash || loc == Routes.verify || Routes.publicRoutes.contains(loc);
     if (atEntry) {
       final wantsPro = ref.read(entryIntentProvider) == AppRole.professional;
@@ -230,6 +254,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.wallet, builder: (_, _) => const WalletPage()),
       GoRoute(path: Routes.support, builder: (_, _) => const SupportPage()),
       GoRoute(path: Routes.serviceArea, builder: (_, _) => const ServiceAreaPage()),
+
+      // Administración
+      GoRoute(path: Routes.admin, builder: (_, _) => const AdminHomePage()),
+      GoRoute(path: Routes.adminApplications, builder: (_, _) => const AdminApplicationsPage()),
+      GoRoute(
+        path: '/admin/postulaciones/:id',
+        builder: (_, s) => AdminApplicationDetailPage(professionalId: s.pathParameters['id']!),
+      ),
+      GoRoute(path: Routes.adminTopups, builder: (_, _) => const AdminTopupsPage()),
+      GoRoute(path: Routes.adminReports, builder: (_, _) => const AdminReportsPage()),
+      GoRoute(path: Routes.adminDisputes, builder: (_, _) => const AdminDisputesPage()),
+      GoRoute(path: Routes.adminTickets, builder: (_, _) => const AdminTicketsPage()),
+      GoRoute(path: Routes.adminUsers, builder: (_, _) => const AdminUsersPage()),
+      GoRoute(path: Routes.adminCommissions, builder: (_, _) => const AdminCommissionsPage()),
+      GoRoute(path: Routes.adminCatalog, builder: (_, _) => const AdminCatalogPage()),
+      GoRoute(path: Routes.adminAudit, builder: (_, _) => const AdminAuditPage()),
     ],
   );
 });

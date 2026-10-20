@@ -12,6 +12,7 @@ import '../../data/models/booking.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/photo_picker.dart';
+import '../common/safety_menu.dart';
 
 /// Detalle de una solicitud. Muestra el estado en tiempo real y solo las
 /// acciones que el servidor permite en ese estado para quien la mira.
@@ -24,7 +25,16 @@ class BookingDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(bookingDetailProvider(id));
     return Scaffold(
-      appBar: AppBar(title: Text(detail.value == null ? 'Solicitud' : 'Solicitud ${detail.value!.code}')),
+      appBar: AppBar(
+        title: Text(detail.value == null ? 'Solicitud' : 'Solicitud ${detail.value!.code}'),
+        actions: [
+          if (detail.value case final b?)
+            if (b.viewerIsCustomer && b.professional != null)
+              SafetyMenuButton(userId: b.professional!.id, name: b.professional!.displayName, bookingId: b.id)
+            else if (!b.viewerIsCustomer)
+              SafetyMenuButton(userId: b.customerId, name: b.customerFirstName, bookingId: b.id),
+        ],
+      ),
       body: detail.when(
         skipLoadingOnReload: true,
         loading: () => const LoadingView(),
@@ -621,7 +631,9 @@ class _ActionsState extends ConsumerState<_Actions> {
           border: Border(top: BorderSide(color: HyColors.border)),
         ),
         padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.sm, HySpacing.page, HySpacing.sm),
+        // heightFactor: 1 para que la barra no ocupe toda la pantalla.
         child: Center(
+          heightFactor: 1,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: HySizes.maxContentWidth),
             child: AbsorbPointer(

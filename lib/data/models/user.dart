@@ -50,6 +50,9 @@ class UserProfile {
     this.professionalStatus = VerificationStatus.notStarted,
     this.onboardingCompleted = false,
     this.deletionRequested = false,
+    this.suspensionReason,
+    this.isSuspended = false,
+    this.blockedIds = const {},
   });
 
   final String id;
@@ -62,6 +65,11 @@ class UserProfile {
   final VerificationStatus professionalStatus;
   final bool onboardingCompleted;
   final bool deletionRequested;
+  final bool isSuspended;
+  final String? suspensionReason;
+
+  /// Personas que este usuario bloqueó.
+  final Set<String> blockedIds;
 
   bool get isApprovedProfessional =>
       roles.contains(AppRole.professional) && professionalStatus == VerificationStatus.approved;
@@ -77,6 +85,7 @@ class UserProfile {
     VerificationStatus? professionalStatus,
     bool? onboardingCompleted,
     bool? deletionRequested,
+    Set<String>? blockedIds,
   }) => UserProfile(
     id: id,
     email: email,
@@ -88,6 +97,9 @@ class UserProfile {
     professionalStatus: professionalStatus ?? this.professionalStatus,
     onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
     deletionRequested: deletionRequested ?? this.deletionRequested,
+    isSuspended: isSuspended,
+    suspensionReason: suspensionReason,
+    blockedIds: blockedIds ?? this.blockedIds,
   );
 }
 

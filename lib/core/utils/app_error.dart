@@ -73,5 +73,12 @@ class AppError implements Exception {
     'HMY_NO_APPLICATION': 'Primero completa tu postulación como profesional.',
     'HMY_TOO_MANY_PHOTOS': 'Puedes subir hasta 5 fotos.',
     'HMY_INVALID_PATH': 'No pudimos guardar el archivo. Vuelve a intentar.',
+    'HMY_ACCOUNT_SUSPENDED': 'Tu cuenta está suspendida. Escríbenos desde Ayuda si crees que es un error.',
+    'HMY_BLOCKED': 'No puedes contactar a esta persona.',
+    'HMY_RATE_LIMITED': 'Hiciste muchas solicitudes seguidas. Espera un rato y vuelve a intentar.',
+    'HMY_COMMISSION_REQUIRED': 'Escribe un porcentaje o un cargo fijo.',
+    'HMY_NAME_REQUIRED': 'Escribe un nombre.',
+    'HMY_ALREADY_REVIEWED': 'Esto ya fue revisado. Actualiza la pantalla.',
+    'HMY_INVALID_STATUS': 'Esta acción ya no está disponible. Actualiza la pantalla.',
   };
 }

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
+import '../../data/providers.dart';
 
 const _faq = <(String, String)>[
   (
@@ -57,6 +60,17 @@ class SupportPage extends StatelessWidget {
                   icon: Icons.support_agent_outlined,
                   text: 'Si tu problema es con una solicitud, ábrela y toca "Reportar un problema". Así tenemos todos los datos del trabajo.',
                 ),
+                const SizedBox(height: HySpacing.sm),
+                SecondaryButton(
+                  label: 'Escribir al equipo',
+                  icon: Icons.mail_outline,
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (_) => const _ContactSheet(),
+                  ),
+                ),
                 const SectionHeader(title: 'Preguntas frecuentes'),
                 for (final (q, a) in _faq)
                   Card(
@@ -75,4 +89,75 @@ class SupportPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ContactSheet extends ConsumerStatefulWidget {
+  const _ContactSheet();
+
+  @override
+  ConsumerState<_ContactSheet> createState() => _ContactSheetState();
+}
+
+class _ContactSheetState extends ConsumerState<_ContactSheet> {
+  final _form = GlobalKey<FormState>();
+  final _subject = TextEditingController();
+  final _body = TextEditingController();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _subject.dispose();
+    _body.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    if (!_form.currentState!.validate()) return;
+    setState(() => _sending = true);
+    final ok = await runGuarded(
+      context,
+      () => ref.read(backendProvider).contactSupport(subject: _subject.text, body: _body.text),
+      success: 'Recibimos tu mensaje. Te responderemos por la app.',
+    );
+    if (!mounted) return;
+    setState(() => _sending = false);
+    if (ok) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(
+      HySpacing.page,
+      0,
+      HySpacing.page,
+      MediaQuery.viewInsetsOf(context).bottom + HySpacing.lg,
+    ),
+    child: Form(
+      key: _form,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Escribir al equipo', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: HySpacing.md),
+          TextFormField(
+            controller: _subject,
+            maxLength: 120,
+            decoration: const InputDecoration(labelText: 'Asunto'),
+            validator: (v) => (v ?? '').trim().length < 3 ? 'Escribe el asunto' : null,
+          ),
+          TextFormField(
+            controller: _body,
+            maxLines: 5,
+            minLines: 3,
+            maxLength: 3000,
+            decoration: const InputDecoration(labelText: 'Tu mensaje'),
+            validator: (v) => (v ?? '').trim().length < 5 ? 'Cuéntanos un poco más' : null,
+          ),
+          const SizedBox(height: HySpacing.sm),
+          PrimaryButton(label: 'Enviar', loading: _sending, onPressed: _send),
+        ],
+      ),
+    ),
+  );
 }
