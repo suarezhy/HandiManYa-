@@ -44,21 +44,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Verificar que es el proyecto nuevo
-        run: |
-          set -euo pipefail
-          if [ -z "${DB_URL}" ]; then
-            echo "::error::Falta el secreto SUPABASE_DB_URL en Settings > Secrets and variables > Actions."
-            exit 1
-          fi
-          case "${DB_URL}" in
-            *fbzlhyrcshkajebgrxja*|*ozsuzlkxspqfdzvvxrag*)
-              echo "::error::Esta es una base del proyecto anterior de FlutterFlow. No se toca."
-              exit 1 ;;
-          esac
-          case "${DB_URL}" in
-            *"${EXPECTED_REF}"*) echo "Proyecto correcto: ${EXPECTED_REF}" ;;
-            *) echo "::error::La conexión no es del proyecto handimanya-flutter-dev (${EXPECTED_REF})."; exit 1 ;;
-          esac
+        run: supabase/scripts/check_target.sh
 
       - name: Instalar cliente de PostgreSQL
         run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
@@ -68,6 +54,8 @@ jobs:
           set -euo pipefail
           psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -At <<'SQL'
           set default_transaction_read_only = on;
+          select 'Sesión de solo lectura: ' || current_setting('default_transaction_read_only');
+          select 'Base: ' || current_database() || ' · usuario: ' || current_user;
           select 'Versión: ' || version();
           select 'Tablas en public: ' || count(*) from information_schema.tables
             where table_schema = 'public' and table_type = 'BASE TABLE';

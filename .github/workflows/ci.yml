@@ -49,6 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: supabase/tests/run_local.sh
+      - run: supabase/tests/check_target_test.sh
 
   demo:
     name: Publicar demo web (GitHub Pages)
