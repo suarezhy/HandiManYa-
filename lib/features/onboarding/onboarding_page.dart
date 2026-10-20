@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -112,7 +114,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const SizedBox(height: HySpacing.md),
-                              _Picture(slide: s, height: (box.maxHeight * 0.55).clamp(220, 440)),
+                              _Picture(slide: s, height: (box.maxHeight * 0.6).clamp(220, 620)),
                               const SizedBox(height: HySpacing.xl),
                               Semantics(header: true, child: Text(s.title, style: text.headlineMedium)),
                               const SizedBox(height: HySpacing.sm),
@@ -178,12 +180,28 @@ class _Picture extends StatelessWidget {
           Positioned.fill(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(HyRadii.xl),
-              child: Image.asset(
-                slide.image,
-                fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
-                semanticLabel: 'Ilustración: ${slide.title}',
-                errorBuilder: (_, _, _) => Container(color: HyColors.primarySoft),
+              // La foto completa, sin recortar ni agrandar; detrás, la misma
+              // foto desenfocada rellena el espacio que sobra.
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                    child: Image.asset(
+                      slide.image,
+                      fit: BoxFit.cover,
+                      excludeFromSemantics: true,
+                      errorBuilder: (_, _, _) => Container(color: HyColors.primarySoft),
+                    ),
+                  ),
+                  ColoredBox(color: HyColors.navy.withValues(alpha: 0.15)),
+                  Image.asset(
+                    slide.image,
+                    fit: BoxFit.contain,
+                    semanticLabel: 'Ilustración: ${slide.title}',
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+                ],
               ),
             ),
           ),
