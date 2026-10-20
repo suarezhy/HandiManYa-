@@ -120,6 +120,13 @@ jobs:
       - name: Crear la cuenta temporal
         run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -v pw="${E2E_PASSWORD}" -f supabase/e2e/didit/setup.sql
 
+      - name: Qué responde cada función (sin credenciales)
+        run: |
+          for f in identity-check didit-webhook; do
+            out=$(curl -s -m 20 -w " [HTTP %{http_code}]" -X POST "https://${EXPECTED_REF}.supabase.co/functions/v1/$f" -H 'Content-Type: application/json' -d '{}')
+            echo "$f -> ${out}"
+          done
+
       - name: Prueba del sandbox contra las funciones desplegadas
         env:
           E2E_URL: https://yldqopeldibwgbwmdnzy.supabase.co

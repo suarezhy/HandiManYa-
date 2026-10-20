@@ -83,11 +83,13 @@ test('didit-webhook: sin firma o con firma falsa, se rechaza', async () => {
   const none = await call('didit-webhook', { body });
   assert.notEqual(none.json?.error, 'HMY_IDENTITY_OFF', 'falta DIDIT_WEBHOOK_SECRET en los secretos de la función');
   assert.equal(none.status, 401, JSON.stringify(none.json));
+  assert.equal(none.json?.error, 'HMY_BAD_SIGNATURE', 'la respuesta debe venir de nuestra función');
   const fake = await call('didit-webhook', {
     body,
     headers: { 'X-Signature-V2': 'ab'.repeat(32), 'X-Timestamp': String(Math.floor(Date.now() / 1000)) },
   });
   assert.equal(fake.status, 401, JSON.stringify(fake.json));
+  assert.equal(fake.json?.error, 'HMY_BAD_SIGNATURE');
   const get = await call('didit-webhook', { method: 'GET' });
   assert.equal(get.status, 405);
 });
