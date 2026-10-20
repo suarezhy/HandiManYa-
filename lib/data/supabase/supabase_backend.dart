@@ -405,6 +405,47 @@ class SupabaseBackend
   );
 
   @override
+  Future<bool> shareTripLocation(String bookingId, GeoPoint point, {int? accuracyM}) async =>
+      await _db.rpc(
+        'share_trip_location',
+        params: {
+          'p_booking': bookingId,
+          'p_latitude': point.latitude,
+          'p_longitude': point.longitude,
+          'p_accuracy_m': accuracyM,
+        },
+      ) ==
+      true;
+
+  @override
+  Future<void> stopTripLocation(String bookingId) => _db.rpc('stop_trip_location', params: {'p_booking': bookingId});
+
+  @override
+  Future<TripLocation> tripLocation(String bookingId) async => TripLocation.fromMap(
+    Map<String, dynamic>.from(await _db.rpc('trip_location', params: {'p_booking': bookingId}) as Map),
+  );
+
+  @override
+  Future<String> createTripShare(String bookingId, {String? contactName}) async {
+    final r = await _db.rpc('create_trip_share', params: {'p_booking': bookingId, 'p_contact_name': contactName});
+    return (r as Map)['token'] as String;
+  }
+
+  @override
+  Future<List<TripShare>> tripShares(String bookingId) async {
+    final r = await _db.rpc('my_trip_shares', params: {'p_booking': bookingId}) as List;
+    return [for (final m in r) TripShare.fromMap(Map<String, dynamic>.from(m as Map))];
+  }
+
+  @override
+  Future<void> revokeTripShare(int shareId) => _db.rpc('revoke_trip_share', params: {'p_share': shareId});
+
+  @override
+  Future<SharedTrip> sharedTrip(String token) async => SharedTrip.fromMap(
+    Map<String, dynamic>.from(await _db.rpc('trip_share_view', params: {'p_token': token}) as Map),
+  );
+
+  @override
   Future<void> respondQuote(String bookingId, {required bool accept}) =>
       _db.rpc('respond_quote', params: {'p_booking': bookingId, 'p_accept': accept});
 

@@ -555,3 +555,100 @@ class ArrivalCheck {
     attemptsLeft: (m['attempts_left'] as num?)?.toInt(),
   );
 }
+
+/// Ubicación en vivo del profesional mientras va en camino. Solo el último punto.
+class TripLocation {
+  const TripLocation({
+    required this.live,
+    this.latitude,
+    this.longitude,
+    this.updatedAt,
+    this.stale = false,
+    this.distanceKm,
+    this.etaMinutes,
+  });
+
+  /// El pedido está en camino y la llegada todavía no se verificó.
+  final bool live;
+  final double? latitude;
+  final double? longitude;
+  final DateTime? updatedAt;
+
+  /// Hace más de 2 minutos que no llega una posición (mala señal, app cerrada).
+  final bool stale;
+  final double? distanceKm;
+  final int? etaMinutes;
+
+  bool get hasPoint => latitude != null && longitude != null;
+
+  factory TripLocation.fromMap(Map<String, dynamic> m) => TripLocation(
+    live: m['live'] == true,
+    latitude: (m['latitude'] as num?)?.toDouble(),
+    longitude: (m['longitude'] as num?)?.toDouble(),
+    updatedAt: _dt(m['updated_at']),
+    stale: m['stale'] == true,
+    distanceKm: (m['distance_km'] as num?)?.toDouble(),
+    etaMinutes: (m['eta_minutes'] as num?)?.toInt(),
+  );
+}
+
+/// Enlace de viaje compartido con un contacto de confianza.
+class TripShare {
+  const TripShare({
+    required this.id,
+    this.contactName,
+    required this.createdAt,
+    required this.expiresAt,
+    this.viewedAt,
+  });
+
+  final int id;
+  final String? contactName;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final DateTime? viewedAt;
+
+  factory TripShare.fromMap(Map<String, dynamic> m) => TripShare(
+    id: (m['id'] as num).toInt(),
+    contactName: m['contact_name'] as String?,
+    createdAt: DateTime.parse(m['created_at'] as String),
+    expiresAt: DateTime.parse(m['expires_at'] as String),
+    viewedAt: _dt(m['last_viewed_at']),
+  );
+}
+
+/// Lo que ve el contacto de confianza con el enlace. Nunca la dirección ni teléfonos.
+class SharedTrip {
+  const SharedTrip({
+    required this.code,
+    required this.status,
+    required this.customerFirstName,
+    required this.professionalName,
+    required this.professionalVerified,
+    required this.category,
+    this.arrivalVerifiedAt,
+    this.trip,
+  });
+
+  final String code;
+  final BookingStatus status;
+  final String customerFirstName;
+  final String professionalName;
+  final bool professionalVerified;
+  final String category;
+  final DateTime? arrivalVerifiedAt;
+  final TripLocation? trip;
+
+  factory SharedTrip.fromMap(Map<String, dynamic> m) => SharedTrip(
+    code: m['code'] as String,
+    status: BookingStatus.parse(m['status'] as String?),
+    customerFirstName: (m['customer_first_name'] as String?) ?? '',
+    professionalName: (m['professional_name'] as String?) ?? '',
+    professionalVerified: m['professional_verified'] == true,
+    category: (m['category'] as String?) ?? '',
+    arrivalVerifiedAt: _dt(m['arrival_verified_at']),
+    trip: m['trip'] == null
+        ? null
+        : TripLocation.fromMap({...Map<String, dynamic>.from(m['trip'] as Map), 'live': true}),
+  );
+}

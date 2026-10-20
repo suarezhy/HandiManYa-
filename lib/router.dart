@@ -17,6 +17,7 @@ import 'features/admin/admin_money_pages.dart';
 import 'features/admin/admin_users_page.dart';
 import 'features/admin/ai_control_center_page.dart';
 import 'features/booking/booking_detail_page.dart';
+import 'features/booking/live_trip.dart';
 import 'features/booking/my_requests_page.dart';
 import 'features/booking/choose_professional_page.dart';
 import 'features/booking/request_flow_page.dart';
@@ -94,6 +95,9 @@ abstract final class Routes {
   static String booking(String id) => '/solicitud/$id';
   static String chat(String id) => '/chat/$id';
 
+  /// Viaje compartido: página pública que abre el contacto de confianza.
+  static String sharedTrip(String token) => '/viaje/$token';
+
   static const publicRoutes = {onboarding, access, recover};
 }
 
@@ -112,6 +116,8 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   String? redirect(BuildContext context, GoRouterState state) {
     final loc = state.matchedLocation;
+    // El contacto de confianza abre el enlace sin cuenta ni bienvenida.
+    if (loc.startsWith('/viaje/')) return null;
     final onboardingSeen = ref.read(onboardingSeenProvider);
     final authAsync = ref.read(authUserProvider);
     final user = authAsync.value;
@@ -160,6 +166,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: redirect,
     routes: [
       GoRoute(path: Routes.splash, builder: (_, _) => const SplashPage()),
+      GoRoute(
+        path: '/viaje/:token',
+        builder: (_, s) => TripSharePage(token: s.pathParameters['token']!),
+      ),
       GoRoute(path: Routes.onboarding, builder: (_, _) => const OnboardingPage()),
       GoRoute(path: Routes.access, builder: (_, _) => const PhoneAuthPage()),
       GoRoute(path: Routes.recover, builder: (_, _) => const RecoverAccountPage()),

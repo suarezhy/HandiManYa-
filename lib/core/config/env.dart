@@ -16,5 +16,10 @@ abstract final class Env {
   static const supportEmail = String.fromEnvironment('SUPPORT_EMAIL', defaultValue: 'soporte@handimanya.bo');
   static const supportWhatsapp = String.fromEnvironment('SUPPORT_WHATSAPP');
 
+  /// Página pública del viaje compartido (la versión web de la app), sin la
+  /// barra final; el enlace queda como `<url>/viaje/<código>`. Vacía: todavía
+  /// no está publicada y la app no ofrece enviar el enlace.
+  static const tripShareUrl = String.fromEnvironment('TRIP_SHARE_URL');
+
   static bool get hasBackend => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 }

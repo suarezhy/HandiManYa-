@@ -789,6 +789,7 @@ class DemoBackend
   void _move(_Booking b, BookingStatus to, {String? note, required String actorId}) {
     // Al salir de "en camino" (cancelación, disputa), el código deja de servir.
     if (b.status == BookingStatus.onTheWay) b.pinVerifier = null;
+    if (to != BookingStatus.onTheWay) _trips.remove(b.id);
     b.status = to;
     b.events.add(BookingEvent(status: to, note: note, at: DateTime.now()));
     if (to == BookingStatus.confirmed) {
@@ -1262,6 +1263,138 @@ class DemoBackend
     return const ArrivalCheck(ArrivalCheckResult.verified);
   }
 
+  final _trips = <String, ({GeoPoint point, DateTime at})>{};
+  final _shares = <String, List<({int id, String token, String? contact, DateTime created, DateTime expires})>>{};
+  final _revokedShares = <int>{};
+
+  bool _tripLive(_Booking b) => b.status == BookingStatus.onTheWay && b.arrivalVerifiedAt == null;
+
+  @override
+  Future<bool> shareTripLocation(String bookingId, GeoPoint point, {int? accuracyM}) async {
+    await _latency(100);
+    final b = _get(bookingId);
+    if (b.professionalId != _me.id) throw AppError.from('HMY_FORBIDDEN');
+    if (!_tripLive(b)) throw AppError.from('HMY_TRIP_NOT_ACTIVE');
+    if (point.latitude < -23.5 || point.latitude > -9 || point.longitude < -70 || point.longitude > -57) {
+      throw AppError.from('HMY_INVALID_LOCATION');
+    }
+    final last = _trips[b.id];
+    if (last != null && DateTime.now().difference(last.at) < const Duration(seconds: 5)) return false;
+    _trips[b.id] = (point: point, at: DateTime.now());
+    _changes.add(null);
+    return true;
+  }
+
+  @override
+  Future<void> stopTripLocation(String bookingId) async {
+    await _latency(100);
+    final b = _get(bookingId);
+    if (b.professionalId != _me.id) throw AppError.from('HMY_FORBIDDEN');
+    _trips.remove(b.id);
+    _changes.add(null);
+  }
+
+  TripLocation? _tripOf(_Booking b) {
+    final t = _trips[b.id];
+    if (!_tripLive(b) || t == null) return null;
+    return TripLocation(
+      live: true,
+      latitude: t.point.latitude,
+      longitude: t.point.longitude,
+      updatedAt: t.at,
+      stale: DateTime.now().difference(t.at) > const Duration(minutes: 2),
+    );
+  }
+
+  @override
+  Future<TripLocation> tripLocation(String bookingId) async {
+    await _latency(100);
+    final b = _get(bookingId);
+    if (b.customerId != _me.id && !_me.roles.contains(AppRole.admin)) throw AppError.from('HMY_FORBIDDEN');
+    final t = _tripOf(b);
+    if (t == null) return TripLocation(live: _tripLive(b));
+    final lat = b.draft.latitude;
+    final lng = b.draft.longitude;
+    final km = lat == null || lng == null ? null : distanceKm(t.latitude!, t.longitude!, lat, lng);
+    return TripLocation(
+      live: true,
+      latitude: t.latitude,
+      longitude: t.longitude,
+      updatedAt: t.updatedAt,
+      stale: t.stale,
+      distanceKm: km == null ? null : (km * 10).round() / 10,
+      etaMinutes: km == null ? null : max(1, (km / 20 * 60).ceil()),
+    );
+  }
+
+  @override
+  Future<String> createTripShare(String bookingId, {String? contactName}) async {
+    await _latency();
+    final b = _get(bookingId);
+    if (b.customerId != _me.id) throw AppError.from('HMY_FORBIDDEN');
+    if (!b.status.isActive) throw AppError.from('HMY_INVALID_TRANSITION');
+    final list = _shares[b.id] ??= [];
+    final active = list.where((x) => !_revokedShares.contains(x.id) && x.expires.isAfter(DateTime.now()));
+    if (active.length >= 3) throw AppError.from('HMY_TOO_MANY_SHARES');
+    final token = List.generate(
+      32,
+      (_) => 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[_pinRandom.nextInt(56)],
+    ).join();
+    final name = contactName?.trim();
+    list.add((
+      id: _seq++,
+      token: token,
+      contact: name == null || name.isEmpty ? null : name,
+      created: DateTime.now(),
+      expires: DateTime.now().add(const Duration(hours: 12)),
+    ));
+    return token;
+  }
+
+  @override
+  Future<List<TripShare>> tripShares(String bookingId) async {
+    await _latency(100);
+    final b = _get(bookingId);
+    if (b.customerId != _me.id) return const [];
+    return [
+      for (final x in (_shares[b.id] ?? const []).reversed)
+        if (!_revokedShares.contains(x.id) && x.expires.isAfter(DateTime.now()) && !b.status.isClosed)
+          TripShare(id: x.id, contactName: x.contact, createdAt: x.created, expiresAt: x.expires),
+    ];
+  }
+
+  @override
+  Future<void> revokeTripShare(int shareId) async {
+    await _latency(100);
+    final mine = _shares.entries.any((e) => _get(e.key).customerId == _me.id && e.value.any((x) => x.id == shareId));
+    if (!mine || _revokedShares.contains(shareId)) throw AppError.from('HMY_NOT_FOUND');
+    _revokedShares.add(shareId);
+  }
+
+  @override
+  Future<SharedTrip> sharedTrip(String token) async {
+    await _latency();
+    for (final e in _shares.entries) {
+      for (final x in e.value) {
+        if (x.token != token) continue;
+        final b = _get(e.key);
+        if (_revokedShares.contains(x.id) || !x.expires.isAfter(DateTime.now()) || b.status.isClosed) break;
+        final customer = _accounts.values.firstWhere((a) => a.id == b.customerId);
+        return SharedTrip(
+          code: b.code,
+          status: b.status,
+          customerFirstName: customer.fullName.split(' ').first,
+          professionalName: _pros[b.professionalId]?.displayName ?? '',
+          professionalVerified: true,
+          category: _catName(b.draft.categoryId),
+          arrivalVerifiedAt: b.arrivalVerifiedAt,
+          trip: _tripOf(b),
+        );
+      }
+    }
+    throw AppError.from('HMY_SHARE_NOT_FOUND');
+  }
+
   /// Solo pruebas: hace como si el último código se hubiera generado hace [ago].
   @visibleForTesting
   void debugAgeArrivalPin(String bookingId, Duration ago) {
@@ -1273,6 +1406,7 @@ class DemoBackend
 
   void _verifyArrival(_Booking b, {required String method}) {
     final start = b.draft.scheduledStart;
+    _trips.remove(b.id);
     b
       ..pinVerifier = null
       ..arrivedAt ??= DateTime.now()

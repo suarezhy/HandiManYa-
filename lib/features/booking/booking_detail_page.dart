@@ -14,6 +14,7 @@ import '../../router.dart';
 import '../common/photo_picker.dart';
 import '../common/safety_menu.dart';
 import 'arrival_pin.dart';
+import 'live_trip.dart';
 
 /// Detalle de una solicitud. Muestra el estado en tiempo real y solo las
 /// acciones que el servidor permite en ese estado para quien la mira.
@@ -70,6 +71,7 @@ class _Content extends StatelessWidget {
         _StatusHeader(b: b, hint: hint),
         const SizedBox(height: HySpacing.md),
         ArrivalCard(b: b),
+        _LiveTrip(b: b),
 
         if (b.viewerIsCustomer && b.professional != null) ...[
           AppCard(
@@ -297,6 +299,23 @@ class _Content extends StatelessWidget {
   }
 }
 
+/// Ubicación en vivo mientras el profesional va en camino y la llegada no se verificó.
+class _LiveTrip extends ConsumerWidget {
+  const _LiveTrip({required this.b});
+
+  final BookingDetail b;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (b.status != BookingStatus.onTheWay) return const SizedBox.shrink();
+    final arrival = ref.watch(bookingArrivalProvider(b.id)).value;
+    if (arrival == null || arrival.verified) return const SizedBox.shrink();
+    return b.viewerIsCustomer
+        ? CustomerTripCard(key: ValueKey('trip-${b.id}'), bookingId: b.id)
+        : ProTripSharer(key: ValueKey('share-${b.id}'), bookingId: b.id);
+  }
+}
+
 class _StatusHeader extends ConsumerWidget {
   const _StatusHeader({required this.b, required this.hint});
 
@@ -501,6 +520,16 @@ class _ActionsState extends ConsumerState<_Actions> {
     Future<void> ackPayment() =>
         _run(() => api.acknowledgePayment(b.id, b.paymentMethod ?? PaymentMethod.cash), success: 'Pago registrado');
 
+    if (b.viewerIsCustomer && {BookingStatus.confirmed, BookingStatus.onTheWay, BookingStatus.inProgress}.contains(s)) {
+      secondary.add(
+        SecondaryButton(
+          key: const Key('share-trip'),
+          label: 'Compartir mi viaje',
+          icon: Icons.share_outlined,
+          onPressed: () => showShareTripSheet(context, b),
+        ),
+      );
+    }
     if (b.viewerIsCustomer) {
       switch (s) {
         case BookingStatus.requested || BookingStatus.awaitingResponse:

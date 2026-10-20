@@ -116,6 +116,23 @@ abstract interface class BookingRepository {
 
   /// Estado de la llegada (nunca el código).
   Future<BookingArrival> arrival(String bookingId);
+
+  // Ubicación en vivo (solo "en camino" y hasta verificar la llegada).
+  /// El profesional manda su posición; false si llegó muy seguido y se ignoró.
+  Future<bool> shareTripLocation(String bookingId, GeoPoint point, {int? accuracyM});
+  Future<void> stopTripLocation(String bookingId);
+
+  /// Para el cliente: dónde va el profesional, distancia y tiempo estimado.
+  Future<TripLocation> tripLocation(String bookingId);
+
+  // Viaje compartido con un contacto de confianza.
+  /// Devuelve el código del enlace (se muestra una sola vez).
+  Future<String> createTripShare(String bookingId, {String? contactName});
+  Future<List<TripShare>> tripShares(String bookingId);
+  Future<void> revokeTripShare(int shareId);
+
+  /// Lo que ve el contacto con el enlace, sin cuenta.
+  Future<SharedTrip> sharedTrip(String token);
 }
 
 abstract interface class MessagingRepository {
