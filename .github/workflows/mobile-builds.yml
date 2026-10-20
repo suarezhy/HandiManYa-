@@ -1,0 +1,117 @@
+name: Builds para tiendas (Android y iPhone)
+
+# Compila la app para Google Play y App Store. NUNCA publica ni sube nada a las
+# tiendas: los archivos quedan como artefactos de esta ejecución y la subida
+# se hace a mano, solo con la aprobación del dueño del proyecto.
+# Se activa al subir la rama builds/movil o a mano desde Actions.
+#
+# Secretos opcionales (si faltan, el build sale sin firmar y sirve solo como prueba):
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+
+on:
+  push:
+    branches: [builds/movil]
+  workflow_dispatch:
+    inputs:
+      entorno:
+        description: 'Proyecto Supabase (archivo config/supabase-<entorno>.json)'
+        required: true
+        default: dev
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.7
+  ENTORNO: ${{ inputs.entorno || 'dev' }}
+
+jobs:
+  android:
+    name: Android (App Bundle para Google Play)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Exigir configuración real (nunca el modo demostración)
+        run: |
+          f="config/supabase-${ENTORNO}.json"
+          test -f "$f" || { echo "::error::Falta $f"; exit 1; }
+          jq -e '.SUPABASE_URL != "" and .SUPABASE_ANON_KEY != ""' "$f" >/dev/null
+      - name: Preparar la firma (si hay secretos)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+            echo "Firma de publicación: sí"
+          else
+            echo "::warning::Sin llave de firma: el App Bundle sale sin firmar y Google Play no lo acepta."
+          fi
+      - run: flutter pub get
+      - name: Compilar App Bundle
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          flutter build appbundle --release --dart-define-from-file="config/supabase-${ENTORNO}.json" \
+            --build-number="${GITHUB_RUN_NUMBER}" --obfuscate --split-debug-info=build/symbols/android
+      - name: Comprobar firma
+        run: |
+          aab=build/app/outputs/bundle/release/app-release.aab
+          if jarsigner -verify "$aab" >/dev/null 2>&1; then echo "App Bundle firmado."; else echo "App Bundle SIN firmar."; fi
+      - name: Compilar APK para probar en teléfonos
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build apk --release --dart-define-from-file="config/supabase-${ENTORNO}.json" --build-number="${GITHUB_RUN_NUMBER}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ env.ENTORNO }}-${{ github.run_number }}
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            build/app/outputs/flutter-apk/app-release.apk
+            build/symbols/android
+          retention-days: 30
+
+  ios:
+    name: iPhone (compilación para App Store)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Exigir configuración real (nunca el modo demostración)
+        run: |
+          f="config/supabase-${ENTORNO}.json"
+          test -f "$f" || { echo "::error::Falta $f"; exit 1; }
+          jq -e '.SUPABASE_URL != "" and .SUPABASE_ANON_KEY != ""' "$f" >/dev/null
+      - run: flutter pub get
+      - name: Compilar para iPhone (sin firmar)
+        # La firma necesita la cuenta de Apple Developer; se agrega cuando exista.
+        run: |
+          flutter build ios --release --no-codesign --dart-define-from-file="config/supabase-${ENTORNO}.json" \
+            --build-number="${GITHUB_RUN_NUMBER}"
+      - name: Revisar Info.plist y manifiestos de privacidad
+        run: |
+          app=build/ios/iphoneos/Runner.app
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$app/Info.plist"
+          echo "Manifiestos de privacidad incluidos:"
+          find "$app" -name 'PrivacyInfo.xcprivacy' | sed "s|$app/||"
