@@ -184,6 +184,12 @@ async function deleteSession(env: Env, fetchFn: Fetch, sessionId: string): Promi
 }
 
 /** Guarda el resultado y, si es final, borra la sesión en Didit. */
+/** Espera entre intentos cuando la sesión aún no está guardada (las pruebas la bajan a 0). */
+export let retryDelayMs = 1500;
+export function setRetryDelayForTests(ms: number) {
+  retryDelayMs = ms;
+}
+
 async function applyDecision(
   env: Env,
   fetchFn: Fetch,
@@ -193,14 +199,22 @@ async function applyDecision(
   eventId: string | null,
   sandbox: boolean,
 ): Promise<boolean> {
-  const saved = await rpc(env, fetchFn, 'hmy_identity_decision', {
+  const args = {
     p_session_id: sessionId,
     p_status: status,
     p_details: reduceDecision(decision),
     p_event_id: eventId,
     p_sandbox: sandbox,
-  });
-  if (!saved.ok) return false;
+  };
+  let saved = await rpc(env, fetchFn, 'hmy_identity_decision', args);
+  // Didit avisa "Not Started" apenas crea la sesión, a veces antes de que
+  // identity-check alcance a guardarla. Se espera un poco; si sigue sin
+  // aparecer, 500 para que Didit reintente.
+  for (let i = 0; i < 3 && saved.ok && (saved.data as { reason?: string } | null)?.reason === 'unknown_session'; i++) {
+    await new Promise((r) => setTimeout(r, retryDelayMs));
+    saved = await rpc(env, fetchFn, 'hmy_identity_decision', args);
+  }
+  if (!saved.ok || (saved.data as { reason?: string } | null)?.reason === 'unknown_session') return false;
   if (FINAL.has(status) && (await deleteSession(env, fetchFn, sessionId))) {
     await rpc(env, fetchFn, 'hmy_identity_deleted', { p_session_id: sessionId });
   }

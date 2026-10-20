@@ -8,11 +8,13 @@ import {
   handleWebhook,
   hmacHex,
   LIVE_ENABLED,
+  setRetryDelayForTests,
   reduceDecision,
   verifyDiditSignature,
   type Env,
 } from './didit.ts';
 
+setRetryDelayForTests(0);
 const secret = 'secreto-de-prueba-solo-para-tests';
 const base: Env = {
   SUPABASE_URL: 'https://x.supabase.co',
@@ -219,6 +221,27 @@ test('aviso de Didit: una firma falsa no pasa aunque traiga las dos cabeceras', 
   });
   assert.equal((await handleWebhook(req, base, fn)).status, 401);
   assert.equal(calls.length, 0);
+});
+
+test('aviso de Didit: si llega antes de que la sesión esté guardada, espera y reintenta', async () => {
+  let n = 0;
+  const { fn, calls } = fakeFetch({});
+  const wrapped = async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/rpc/hmy_identity_decision')) {
+      calls.push({ url, method: 'POST', body: String(init?.body ?? ''), headers: {} });
+      n++;
+      return new Response(JSON.stringify(n < 3 ? { updated: false, reason: 'unknown_session' } : { updated: true }));
+    }
+    return fn(url, init);
+  };
+  const r = await handleWebhook(await webhook(event({ status: 'Not Started', decision: null })), base, wrapped);
+  assert.equal(r.status, 200);
+  assert.equal(n, 3);
+  const never = async (url: string, init?: RequestInit) =>
+    url.endsWith('/rpc/hmy_identity_decision')
+      ? new Response(JSON.stringify({ updated: false, reason: 'unknown_session' }))
+      : fn(url, init);
+  assert.equal((await handleWebhook(await webhook(event({ event_id: 'ev-2' })), base, never)).status, 500, 'Didit reintenta');
 });
 
 test('aviso de Didit: guarda lo mínimo y borra la sesión en Didit', async () => {
