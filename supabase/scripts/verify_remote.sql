@@ -9,8 +9,8 @@ select set_config('hmy.versions', :'versions', false);
 do $$
 declare
   v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','arrival_pin_attempts','booking_addresses','booking_arrivals','booking_events','booking_offers','booking_photos',
-    'booking_transitions','bookings','cities','commission_rules','daily_reports','consent_records','conversation_reads','conversations',
-    'departments','disputes','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
+    'booking_transitions','bookings','cities','commission_rules','daily_reports','consent_records','conversation_reads','conversations','cost_usage','cost_vendors',
+    'departments','disputes','identity_checks','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
     'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
     'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets'];
@@ -25,7 +25,9 @@ declare
     'run_marketplace_monitors','generate_daily_report','run_daily_report_if_due','admin_ai_overview','admin_decide_ai_item','admin_set_setting',
     'complete_signup','hmy_sync_auth_phone','hmy_otp_gate','hmy_otp_result',
     'mark_arrived','verify_arrival_pin','admin_verify_arrival','booking_arrival','hmy_arrival_gate','hmy_arrival_pin',
-    'share_trip_location','stop_trip_location','trip_location','create_trip_share','my_trip_shares','revoke_trip_share','trip_share_view','hmy_trip_cleanup'];
+    'share_trip_location','stop_trip_location','trip_location','create_trip_share','my_trip_shares','revoke_trip_share','trip_share_view','hmy_trip_cleanup',
+    'hmy_cost_gate','hmy_cost_month','admin_cost_dashboard','admin_set_vendor','run_cost_monitors',
+    'hmy_identity_begin','hmy_identity_session','hmy_identity_decision','hmy_identity_pending','my_identity_check','hmy_identity_guard','run_rule_agents','admin_run_rule_agents'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -122,7 +124,12 @@ begin
     (exists (select 1 from pg_trigger where tgname = 'bookings_arrival_gate' and tgrelid = 'public.bookings'::regclass), 'llegada: sin llegada verificada no se empieza el trabajo'),
     (not has_table_privilege('authenticated', 'public.booking_arrivals', 'SELECT') and not has_table_privilege('anon', 'public.booking_arrivals', 'SELECT'), 'llegada: nadie lee los códigos guardados'),
     (not has_table_privilege('authenticated', 'public.trip_locations', 'SELECT') and not has_table_privilege('anon', 'public.trip_shares', 'SELECT'), 'viaje: la ubicación y los enlaces solo se leen por las funciones'),
-    (exists (select 1 from pg_trigger where tgname = 'bookings_trip_cleanup'), 'viaje: la ubicación se borra al salir de "en camino"')
+    (exists (select 1 from pg_trigger where tgname = 'bookings_trip_cleanup'), 'viaje: la ubicación se borra al salir de "en camino"'),
+    (not has_function_privilege('authenticated', 'public.hmy_cost_gate(text, numeric, boolean, text)', 'EXECUTE') and not has_function_privilege('anon', 'public.hmy_cost_gate(text, numeric, boolean, text)', 'EXECUTE'), 'costos: solo el servidor usa la compuerta de gasto'),
+    (not has_table_privilege('authenticated', 'public.cost_vendors', 'UPDATE') and not has_table_privilege('authenticated', 'public.cost_usage', 'INSERT'), 'costos: la app no cambia proveedores ni registra uso directamente'),
+    ((select count(*) from public.cost_vendors where status = 'paid' and not paid_authorized) = 0, 'costos: ningún proveedor cobra sin autorización'),
+    (not has_table_privilege('authenticated', 'public.identity_checks', 'INSERT') and not has_function_privilege('authenticated', 'public.hmy_identity_decision(text, text, jsonb, text, boolean)', 'EXECUTE'), 'identidad: solo el servidor guarda resultados de Didit'),
+    (exists (select 1 from pg_trigger where tgname = 'professional_profiles_identity_guard'), 'identidad: aprobar puede exigir una verificación real (nunca del sandbox)')
   ) as v(ok, what) loop
     raise notice '%  %', case when r.ok then 'ok -' else 'FALLA -' end, r.what;
     if not r.ok then v_failed := v_failed + 1; end if;

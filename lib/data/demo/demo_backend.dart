@@ -9,6 +9,7 @@ import '../models/admin.dart';
 import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
+import '../models/costs.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
@@ -1974,6 +1975,60 @@ class DemoBackend
     p.location = ServiceLocation(latitude: latitude, longitude: longitude, radiusKm: radiusKm);
   }
 
+  @override
+  Future<IdentityCheck> identityCheck() async {
+    await _latency(100);
+    return _pros[_me.id]?.identity.lastOrNull ?? IdentityCheck.none;
+  }
+
+  /// En la demo no hay Didit: se crea una verificación de prueba (sandbox), que
+  /// nunca cuenta como real. El resultado lo pone [debugIdentityResult].
+  @override
+  Future<({String url, bool sandbox})> startIdentityCheck() async {
+    await _latency();
+    final p = _pros[_me.id];
+    if (p == null) throw AppError.from('HMY_NO_APPLICATION');
+    if (!{
+      VerificationStatus.draft,
+      VerificationStatus.submitted,
+      VerificationStatus.underReview,
+      VerificationStatus.reverificationRequired,
+    }.contains(p.status)) {
+      throw AppError.from('HMY_INVALID_STATUS');
+    }
+    final last = p.identity.lastOrNull;
+    if (last?.status == IdentityStatus.approved && p.status != VerificationStatus.reverificationRequired) {
+      throw AppError.from('HMY_IDENTITY_ALREADY_APPROVED');
+    }
+    final didit = _vendors['didit_kyc']!;
+    if (didit.status == VendorStatus.off) throw AppError.from('HMY_IDENTITY_PAUSED');
+    if (last == null || !{IdentityStatus.created, IdentityStatus.inProgress}.contains(last.status)) {
+      didit.sandboxUsed++;
+      p.identity.add(IdentityCheck(id: _seq++, status: IdentityStatus.created, createdAt: DateTime.now()));
+    }
+    return (url: 'https://verify.didit.me/demo', sandbox: true);
+  }
+
+  /// Solo pruebas: lo que respondería el sandbox de Didit.
+  @visibleForTesting
+  void debugIdentityResult(String professionalId, IdentityStatus status, {double? faceMatch, bool sandbox = true}) {
+    final p = _pros[professionalId]!;
+    final last = p.identity.isEmpty ? null : p.identity.removeLast();
+    p.identity.add(
+      IdentityCheck(
+        id: last?.id ?? _seq++,
+        status: status,
+        sandbox: sandbox,
+        documentType: 'Identity Card',
+        livenessScore: status == IdentityStatus.approved ? 95 : null,
+        faceMatchScore: faceMatch,
+        createdAt: last?.createdAt ?? DateTime.now(),
+        decidedAt: DateTime.now(),
+        vendorDeleted: status == IdentityStatus.approved || status == IdentityStatus.declined,
+      ),
+    );
+  }
+
   // ================================================================= Seguridad
   _Account? _account(String id) => _accounts.values.where((a) => a.id == id).firstOrNull;
 
@@ -2290,6 +2345,8 @@ class DemoBackend
           AdminDocument(id: d.id, docType: d.type, status: d.status, bytes: d.bytes, reviewNote: d.note),
       ],
       history: p.history.reversed.toList(),
+      identityChecks: p.identity.reversed.toList(),
+      identityCheckRequired: _identityRequired,
     );
   }
 
@@ -2302,6 +2359,13 @@ class DemoBackend
     final needsReason =
         decision == VerificationStatus.rejected || decision == VerificationStatus.reverificationRequired;
     if (needsReason && (note ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    if (decision == VerificationStatus.approved &&
+        p.status != VerificationStatus.approved &&
+        p.status != VerificationStatus.suspended &&
+        _identityRequired &&
+        !p.identity.any((c) => !c.sandbox && c.status == IdentityStatus.approved)) {
+      throw AppError.from('HMY_IDENTITY_CHECK_REQUIRED');
+    }
     p
       ..status = decision
       ..reviewNote = note
@@ -2806,6 +2870,196 @@ class DemoBackend
     _admin();
     return List.of(_audit);
   }
+
+  // ========================================================= Costos operativos
+  bool _identityRequired = false;
+
+  final Map<String, _Vendor> _vendors = {
+    for (final v in [
+      _Vendor(
+        'supabase',
+        'Supabase (base de datos, cuentas y archivos)',
+        'infraestructura',
+        'mes',
+        'mensual',
+        0,
+        0,
+        25,
+        VendorStatus.free,
+        notes: 'Hoy en el plan Free (USD 0). El plan Pro cuesta USD 25 al mes.',
+      ),
+      _Vendor(
+        'didit_kyc',
+        'Didit: identidad (carnet, prueba de vida y rostro)',
+        'identidad',
+        'verificación',
+        'uso',
+        30,
+        0.33,
+        0,
+        VendorStatus.sandbox,
+        sandbox: true,
+        notes: 'Sandbox gratis. Real: desde el 1/11/2026, USD 10 de crédito al mes (unas 30 verificaciones).',
+      ),
+      _Vendor('didit_segip', 'Didit: consulta al SEGIP', 'identidad', 'consulta', 'uso', 0, 0.20, 0, VendorStatus.off),
+      _Vendor(
+        'veriff',
+        'Veriff (respaldo, sin integrar)',
+        'identidad',
+        'verificación',
+        'uso',
+        0,
+        0.80,
+        49,
+        VendorStatus.off,
+      ),
+      _Vendor(
+        'whatsapp_otp',
+        'WhatsApp: códigos de acceso (Meta)',
+        'mensajes',
+        'mensaje',
+        'uso',
+        0,
+        0.0113,
+        0,
+        VendorStatus.off,
+      ),
+      _Vendor(
+        'sms_otp',
+        'SMS: códigos de acceso (Twilio)',
+        'mensajes',
+        'mensaje',
+        'uso',
+        0,
+        0.2215,
+        0,
+        VendorStatus.off,
+      ),
+      _Vendor('push', 'Notificaciones push (Firebase y Apple)', 'mensajes', 'aviso', 'uso', 0, 0, 0, VendorStatus.off),
+      _Vendor('ai_model', 'Modelo de IA', 'ia', 'USD', 'uso', 0, 1, 0, VendorStatus.off),
+      _Vendor('apple_dev', 'Apple Developer Program', 'tiendas', 'año', 'anual', 0, 0, 99, VendorStatus.off),
+      _Vendor('google_play', 'Google Play (registro)', 'tiendas', 'pago único', 'unico', 0, 0, 25, VendorStatus.off),
+      _Vendor('trip_page', 'Página pública del viaje compartido', 'web', 'mes', 'mensual', 0, 0, 0, VendorStatus.off),
+    ])
+      v.key: v,
+  };
+
+  @override
+  Future<CostDashboard> costDashboard() async {
+    await _latency(150);
+    _admin();
+    final now = DateTime.now().toUtc();
+    final start = DateTime.utc(now.year, now.month);
+    final days = DateTime.utc(now.year, now.month + 1).difference(start).inDays.toDouble();
+    final elapsed = max(now.difference(start).inMinutes / 1440, 1.0);
+    final vendors = <CostVendor>[];
+    final alerts = <({String vendor, CostLevel level, String message})>[];
+    var projectedTotal = 0.0;
+    for (final v in _vendors.values) {
+      final projectedUnits = (v.used / elapsed * days * 10).roundToDouble() / 10;
+      var projected = v.status == VendorStatus.paid && v.price > 0
+          ? min(max(projectedUnits - v.freeUnits, 0) * v.price, v.cap)
+          : 0.0;
+      if (v.status == VendorStatus.paid) {
+        projected += v.billing == 'mensual' ? v.fixed : (v.billing == 'anual' ? v.fixed / 12 : 0);
+      }
+      final level = v.blocked > 0
+          ? CostLevel.blocked
+          : v.freeUnits > 0 && v.used >= v.freeUnits * 0.8
+          ? CostLevel.nearFreeLimit
+          : CostLevel.ok;
+      if (level == CostLevel.blocked) {
+        alerts.add((
+          vendor: v.key,
+          level: level,
+          message: '${v.name}: se frenaron ${v.blocked} usos este mes. No se cobró nada de más.',
+        ));
+      } else if (level == CostLevel.nearFreeLimit) {
+        alerts.add((
+          vendor: v.key,
+          level: level,
+          message: '${v.name}: se usó ${v.used.toStringAsFixed(0)} de ${v.freeUnits} gratis este mes.',
+        ));
+      }
+      projectedTotal += projected;
+      vendors.add(
+        CostVendor(
+          key: v.key,
+          name: v.name,
+          category: v.category,
+          unit: v.unit,
+          billing: v.billing,
+          status: v.status,
+          freeUnits: v.freeUnits,
+          usedUnits: v.used,
+          sandboxUnits: v.sandboxUsed,
+          freeUsedPercent: v.freeUnits > 0 ? min(100, (100 * v.used / v.freeUnits).round()) : null,
+          unitPriceUsd: v.price,
+          fixedUsd: v.fixed,
+          costSoFarUsd: v.spent,
+          projectedUnits: projectedUnits,
+          projectedUsd: projected,
+          monthlyCapUsd: v.cap,
+          blocked: v.blocked,
+          level: level,
+          notes: v.notes,
+        ),
+      );
+    }
+    return CostDashboard(
+      month: '${now.year}-${now.month.toString().padLeft(2, '0')}',
+      daysElapsed: elapsed,
+      daysInMonth: days,
+      costSoFarUsd: _vendors.values.fold(0, (a, v) => a + v.spent),
+      projectedUsd: projectedTotal,
+      vendors: vendors,
+      alerts: alerts,
+      history: [
+        for (var i = 0; i < 6; i++)
+          (
+            month:
+                '${DateTime.utc(now.year, now.month - i).year}-${DateTime.utc(now.year, now.month - i).month.toString().padLeft(2, '0')}',
+            costUsd: i == 0 ? _vendors.values.fold(0.0, (a, v) => a + v.spent) : 0.0,
+          ),
+      ],
+    );
+  }
+
+  @override
+  Future<void> setVendor(String key, VendorStatus status, {double monthlyCapUsd = 0, String? authMethod}) async {
+    await _latency();
+    _admin();
+    final v = _vendors[key];
+    if (v == null) throw AppError.from('HMY_NOT_FOUND');
+    if (monthlyCapUsd < 0 || monthlyCapUsd > 10000) throw AppError.from('HMY_INVALID_SETTING');
+    if (status == VendorStatus.paid && monthlyCapUsd == 0 && v.billing == 'uso') {
+      throw AppError.from('HMY_CAP_REQUIRED');
+    }
+    if (status == VendorStatus.sandbox && !v.sandbox) throw AppError.from('HMY_NO_SANDBOX');
+    if (status.index > v.status.index || (status == VendorStatus.paid && monthlyCapUsd > v.cap)) {
+      _requireConfirmation(authMethod ?? '');
+    }
+    _log('costs.vendor', 'cost_vendors', key, {'from': v.status.key, 'to': status.key, 'cap_usd': monthlyCapUsd});
+    v
+      ..status = status
+      ..cap = status == VendorStatus.paid ? monthlyCapUsd : 0;
+  }
+
+  @override
+  Future<int> runCostMonitors() async {
+    await _latency(100);
+    _admin();
+    return 0;
+  }
+
+  @override
+  Future<void> setIdentityCheckRequired(bool required, {String? authMethod}) async {
+    await _latency();
+    _admin();
+    if (!required) _requireConfirmation(authMethod ?? '');
+    _identityRequired = required;
+    _log('settings.identity_check', 'app_settings', 'identity_check', {'required': required});
+  }
 }
 
 class _Account {
@@ -2888,6 +3142,41 @@ class _Pro {
   DateTime? submittedAt;
   String? reviewNote;
   final List<({VerificationStatus status, String? note, DateTime at})> history = [];
+  final List<IdentityCheck> identity = [];
+}
+
+/// Proveedor medido, con el mismo plan gratis y precio que la migración 0016.
+class _Vendor {
+  _Vendor(
+    this.key,
+    this.name,
+    this.category,
+    this.unit,
+    this.billing,
+    this.freeUnits,
+    this.price,
+    this.fixed,
+    this.status, {
+    this.sandbox = false,
+    this.notes,
+  });
+
+  final String key;
+  final String name;
+  final String category;
+  final String unit;
+  final String billing;
+  final int freeUnits;
+  final double price;
+  final double fixed;
+  final bool sandbox;
+  final String? notes;
+  VendorStatus status;
+  double cap = 0;
+  double used = 0;
+  double sandboxUsed = 0;
+  double spent = 0;
+  int blocked = 0;
 }
 
 class _Booking {

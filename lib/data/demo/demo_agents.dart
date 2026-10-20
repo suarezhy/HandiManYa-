@@ -26,10 +26,12 @@ const demoAgents = <AiAgent>[
     key: 'background',
     number: 3,
     name: 'Antecedentes y documentos (Bolivia)',
-    purpose: 'Lee REJAP, antecedentes policiales y certificados; revisa datos, fechas y códigos. Si no hay verificación oficial, queda "sin verificar" para revisión humana.',
+    purpose:
+        'Documentos vencidos o por vencer y profesionales aprobados sin carnet aceptado. Los antecedentes se revisan '
+        'aparte de la verificación de identidad.',
     phase: 'A',
-    status: AgentStatus.needsSetup,
-    needs: 'Clave del modelo de IA en Supabase y revisión legal de requisitos.',
+    status: AgentStatus.rules,
+    needs: 'La lectura de certificados (REJAP, antecedentes) la hace una persona; leerlos solo necesitaría IA pagada.',
     addedByClaude: false,
   ),
   AiAgent(
@@ -57,10 +59,10 @@ const demoAgents = <AiAgent>[
     key: 'pro_assistant',
     number: 6,
     name: 'Asistente para profesionales',
-    purpose: 'Ayuda con el perfil, descripciones, cotizaciones y documentos faltantes, sin inventar credenciales ni precios.',
+    purpose: 'Avisa al profesional qué le falta para postular (oficio, carnet). No inventa credenciales ni precios.',
     phase: 'B',
-    status: AgentStatus.planned,
-    needs: 'Clave del modelo de IA en Supabase.',
+    status: AgentStatus.rules,
+    needs: 'Redactar textos necesitaría IA pagada.',
     addedByClaude: false,
   ),
   AiAgent(
@@ -158,11 +160,11 @@ const demoAgents = <AiAgent>[
     key: 'punctuality',
     number: 16,
     name: 'Puntualidad',
-    purpose: 'Recordatorios del servidor, "Voy en camino", tiempo estimado y puntaje 0–100 con apelación.',
+    purpose:
+        'Atrasos repetidos según la llegada verificada con código (más de 15 minutos, 3 veces en 30 días). Solo avisa; '
+        'no castiga.',
     phase: 'B',
-    status: AgentStatus.planned,
-    needs: 'Notificaciones push.',
-    addedByClaude: false,
+    status: AgentStatus.rules,
   ),
   AiAgent(
     key: 'daily_report',
@@ -239,11 +241,11 @@ const demoAgents = <AiAgent>[
     number: 24,
     name: 'Seguridad en el servicio',
     purpose:
-        'Revisa quejas y reportes de seguridad durante un trabajo, el viaje compartido con un contacto de confianza '
-        'y la llegada verificada; pasa los casos graves al equipo de inmediato.',
+        'Vigila trabajos "en camino" por horas sin llegada verificada, llegadas verificadas por el equipo y reportes '
+        'de seguridad; pasa los casos graves al equipo.',
     phase: 'A',
-    status: AgentStatus.planned,
-    needs: 'Notificaciones push.',
+    status: AgentStatus.rules,
+    needs: 'Notificaciones push para avisar al instante.',
     addedByClaude: true,
   ),
   AiAgent(

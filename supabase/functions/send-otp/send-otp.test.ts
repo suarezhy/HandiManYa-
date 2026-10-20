@@ -105,3 +105,11 @@ test('código mal formado: no se envía', async () => {
   assert.equal(r.status, 400);
   assert.equal(calls.length, 0);
 });
+
+test('sin autorización de gasto, no envía nada y lo dice', async () => {
+  const { fn, calls } = fakeFetch({ allowed: false, reason: 'budget', channel: 'whatsapp', phone: '+59171234567' });
+  const r = await handleHook(await hookRequest(payload), base, fn, now);
+  assert.equal(r.status, 503);
+  assert.match(JSON.stringify(r.body), /HMY_OTP_BUDGET:whatsapp/);
+  assert.equal(calls.some((c) => c.url.includes('graph.facebook.com') || c.url.includes('twilio')), false);
+});

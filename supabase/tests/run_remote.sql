@@ -22,5 +22,8 @@ end $$;
 \ir 80_phone_auth_tests.sql
 \ir 90_arrival_pin_tests.sql
 \ir 91_live_trip_tests.sql
+\ir 92_operating_costs_tests.sql
+\ir 93_identity_checks_tests.sql
+\ir 94_rule_agents_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'

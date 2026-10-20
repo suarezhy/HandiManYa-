@@ -8,9 +8,11 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/admin.dart';
 import '../../data/models/booking.dart';
+import '../../data/models/costs.dart';
 import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
+import '../security/confirm_identity.dart';
 import 'admin_common.dart';
 
 StatusTone _tone(VerificationStatus s) => switch (s) {
@@ -205,6 +207,7 @@ class AdminApplicationDetailPage extends ConsumerWidget {
                   ],
                 ),
               ),
+              _IdentitySection(detail: d, onChanged: () => _refresh(ref)),
               SectionHeader(title: 'Documentos (${d.documents.length})'),
               if (d.documents.isEmpty)
                 const InfoBanner(
@@ -302,6 +305,102 @@ class AdminApplicationDetailPage extends ConsumerWidget {
               ],
             ],
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Verificación de identidad (Didit): una señal para quien revisa. El
+/// resultado no aprueba ni rechaza a nadie, y una prueba del sandbox nunca
+/// cuenta como verificación real. Los antecedentes van aparte, en Documentos.
+class _IdentitySection extends ConsumerWidget {
+  const _IdentitySection({required this.detail, required this.onChanged});
+
+  final AdminApplicationDetail detail;
+  final VoidCallback onChanged;
+
+  static StatusTone _tone(IdentityStatus s) => switch (s) {
+    IdentityStatus.approved => StatusTone.success,
+    IdentityStatus.declined || IdentityStatus.failed => StatusTone.danger,
+    IdentityStatus.inReview => StatusTone.warning,
+    _ => StatusTone.neutral,
+  };
+
+  Future<void> _setRequired(BuildContext context, WidgetRef ref, bool required) async {
+    String? method;
+    if (!required) {
+      final c = await confirmIdentity(
+        context,
+        operation: 'Dejar de exigir la verificación de identidad real para aprobar',
+        submitLabel: 'Confirmar',
+      );
+      if (c == null) return;
+      method = c.serverMethod;
+    }
+    if (!context.mounted) return;
+    final ok = await runGuarded(
+      context,
+      () => ref.read(backendProvider).setIdentityCheckRequired(required, authMethod: method),
+      success: required ? 'Desde ahora, aprobar exige una verificación real.' : 'Ya no se exige.',
+    );
+    if (ok) onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final checks = detail.identityChecks;
+    return Column(
+      key: const Key('identity-section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(title: 'Verificación de identidad'),
+        if (checks.isEmpty)
+          const InfoBanner(
+            icon: Icons.badge_outlined,
+            tone: StatusTone.warning,
+            text: 'Sin verificación de identidad. Revisa el carnet y la selfie a mano antes de decidir.',
+          ),
+        for (final c in checks)
+          Padding(
+            padding: const EdgeInsets.only(bottom: HySpacing.xs),
+            child: AppCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: HySpacing.xs,
+                    runSpacing: 4,
+                    children: [
+                      ToneChip(c.status.label, _tone(c.status)),
+                      if (c.sandbox) const ToneChip('Prueba (no cuenta)', StatusTone.info),
+                    ],
+                  ),
+                  if (c.documentType != null) InfoLine(Icons.badge_outlined, 'Documento: ${c.documentType}'),
+                  if (c.livenessScore != null)
+                    InfoLine(
+                      Icons.face_retouching_natural,
+                      'Prueba de vida: ${c.livenessScore!.toStringAsFixed(0)}/100',
+                    ),
+                  if (c.faceMatchScore != null)
+                    InfoLine(
+                      Icons.compare_outlined,
+                      'Parecido con el carnet: ${c.faceMatchScore!.toStringAsFixed(0)}%',
+                    ),
+                  if (c.warnings.isNotEmpty) InfoLine(Icons.warning_amber_rounded, 'Avisos: ${c.warnings.join(', ')}'),
+                  if (c.createdAt != null) InfoLine(Icons.schedule, Fmt.dateTime(c.createdAt!.toLocal())),
+                  if (c.vendorDeleted) const InfoLine(Icons.delete_outline, 'Datos ya borrados en Didit'),
+                ],
+              ),
+            ),
+          ),
+        SwitchListTile(
+          key: const Key('identity-required'),
+          contentPadding: EdgeInsets.zero,
+          value: detail.identityCheckRequired,
+          title: const Text('Exigir verificación real para aprobar'),
+          subtitle: const Text('Vale para todas las postulaciones. Las pruebas del sandbox no cuentan.'),
+          onChanged: (v) => _setRequired(context, ref, v),
         ),
       ],
     );

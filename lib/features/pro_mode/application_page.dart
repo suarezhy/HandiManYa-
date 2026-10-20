@@ -14,6 +14,7 @@ import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import '../legal/legal_texts.dart';
+import 'identity_check_card.dart';
 
 /// Postulación para ser profesional: datos, zonas, documentos y envío.
 class ApplicationPage extends ConsumerWidget {
@@ -67,6 +68,8 @@ class _StatusView extends ConsumerWidget {
                 )
               : SecondaryButton(label: 'Volver al inicio', expand: false, onPressed: () => context.go(Routes.home)),
         ),
+        if (app.status == VerificationStatus.submitted || app.status == VerificationStatus.underReview)
+          const PageBody(child: IdentityCheckCard()),
       ],
     );
   }

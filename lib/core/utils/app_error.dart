@@ -57,7 +57,7 @@ class AppError implements Exception {
     if (soon != null) {
       return AppError('Espera ${soon.group(1)} segundos para pedir otro código.', code: 'HMY_OTP_TOO_SOON');
     }
-    final off = RegExp(r'HMY_OTP_(CHANNEL_OFF|SEND_FAILED):(whatsapp|sms)').firstMatch(raw);
+    final off = RegExp(r'HMY_OTP_(CHANNEL_OFF|SEND_FAILED|BUDGET):(whatsapp|sms)').firstMatch(raw);
     final pinSoon = RegExp(r'HMY_ARRIVAL_PIN_TOO_SOON:(\d+)').firstMatch(raw);
     if (pinSoon != null) {
       return AppError(
@@ -67,17 +67,29 @@ class AppError implements Exception {
     }
     if (off != null) {
       final (name, other) = off.group(2) == 'whatsapp' ? ('WhatsApp', 'SMS') : ('SMS', 'WhatsApp');
-      return AppError(
-        off.group(1) == 'CHANNEL_OFF'
-            ? 'Todavía no enviamos códigos por $name. Prueba por $other.'
-            : 'No pudimos enviar el código por $name. Vuelve a intentar o prueba por $other.',
-        code: 'HMY_OTP_${off.group(1)}',
-      );
+      return AppError(switch (off.group(1)) {
+        'CHANNEL_OFF' => 'Todavía no enviamos códigos por $name. Prueba por $other.',
+        'BUDGET' =>
+          'Por ahora no podemos enviar códigos por $name. Entra con tu correo y contraseña o intenta más tarde.',
+        _ => 'No pudimos enviar el código por $name. Vuelve a intentar o prueba por $other.',
+      }, code: 'HMY_OTP_${off.group(1)}');
     }
     return null;
   }
 
   static const _codes = {
+    'HMY_IDENTITY_PAUSED':
+        'La verificación de identidad está en pausa por ahora. Tu postulación sigue en revisión; te avisaremos.',
+    'HMY_IDENTITY_OFF': 'La verificación de identidad todavía no está disponible. Tu postulación sigue en revisión.',
+    'HMY_IDENTITY_SEND_FAILED': 'No pudimos abrir la verificación de identidad. Vuelve a intentar en unos minutos.',
+    'HMY_IDENTITY_UNAVAILABLE': 'No pudimos abrir la verificación de identidad. Vuelve a intentar en unos minutos.',
+    'HMY_IDENTITY_ALREADY_APPROVED': 'Tu identidad ya está verificada.',
+    'HMY_IDENTITY_ATTEMPT_LIMIT':
+        'Ya hiciste 3 intentos este mes. Escríbenos a soporte y una persona revisará tu caso.',
+    'HMY_IDENTITY_CHECK_REQUIRED':
+        'Para aprobar, primero tiene que haber una verificación de identidad real aprobada (las de prueba no cuentan).',
+    'HMY_CAP_REQUIRED': 'Para autorizar un gasto, fija un tope mensual mayor que cero.',
+    'HMY_NO_SANDBOX': 'Este proveedor no tiene modo de prueba.',
     'HMY_ARRIVAL_NOT_VERIFIED': 'Primero el cliente tiene que verificar tu llegada con el código.',
     'HMY_ARRIVAL_NO_PIN': 'Todavía no hay un código vigente. Pídele al profesional que toque "He llegado".',
     'HMY_ARRIVAL_PIN_LIMIT':

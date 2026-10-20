@@ -1,3 +1,5 @@
+import 'costs.dart';
+
 import 'dart:typed_data';
 
 import 'booking.dart';
@@ -116,6 +118,8 @@ class AdminApplicationDetail {
     this.categories = const [],
     this.documents = const [],
     this.history = const [],
+    this.identityChecks = const [],
+    this.identityCheckRequired = false,
   });
 
   final AdminApplication summary;
@@ -126,6 +130,13 @@ class AdminApplicationDetail {
   final List<String> categories;
   final List<AdminDocument> documents;
   final List<({VerificationStatus status, String? note, DateTime at})> history;
+
+  /// Verificaciones de identidad (Didit), la más reciente primero. Son una
+  /// señal para quien revisa: no aprueban ni rechazan a nadie.
+  final List<IdentityCheck> identityChecks;
+
+  /// Si aprobar exige una verificación real aprobada (nunca una de prueba).
+  final bool identityCheckRequired;
 }
 
 class AdminTopup {

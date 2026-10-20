@@ -7,6 +7,7 @@ import '../models/admin.dart';
 import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
+import '../models/costs.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
@@ -698,6 +699,17 @@ class SupabaseBackend
   Future<void> setServiceLocation({required double latitude, required double longitude, required int radiusKm}) => _db
       .rpc('set_service_location', params: {'p_latitude': latitude, 'p_longitude': longitude, 'p_radius_km': radiusKm});
 
+  @override
+  Future<IdentityCheck> identityCheck() async =>
+      IdentityCheck.fromMap(Map<String, dynamic>.from(await _db.rpc('my_identity_check') as Map));
+
+  @override
+  Future<({String url, bool sandbox})> startIdentityCheck() async {
+    final res = await _db.functions.invoke('identity-check');
+    final m = Map<String, dynamic>.from(res.data as Map);
+    return (url: m['verification_url'] as String, sandbox: m['sandbox'] as bool? ?? true);
+  }
+
   // ---------------------------------------------------------------- Seguridad
   @override
   Future<void> reportUser({required String userId, required ReportReason reason, String? details, String? bookingId}) =>
@@ -770,6 +782,8 @@ class SupabaseBackend
             at: DateTime.parse(e['created_at'] as String),
           ),
       ],
+      identityChecks: _rows(m['identity_checks']).map(IdentityCheck.fromMap).toList(),
+      identityCheckRequired: m['identity_check_required'] as bool? ?? false,
     );
   }
 
@@ -955,6 +969,29 @@ class SupabaseBackend
   @override
   Future<List<AuditEntry>> auditLog() async =>
       _rows(await _db.rpc('admin_audit_entries', params: {'p_limit': 200})).map(AuditEntry.fromMap).toList();
+
+  @override
+  Future<CostDashboard> costDashboard() async =>
+      CostDashboard.fromMap(Map<String, dynamic>.from(await _db.rpc('admin_cost_dashboard') as Map));
+
+  @override
+  Future<void> setVendor(String key, VendorStatus status, {double monthlyCapUsd = 0, String? authMethod}) => _db.rpc(
+    'admin_set_vendor',
+    params: {'p_key': key, 'p_status': status.key, 'p_monthly_cap_usd': monthlyCapUsd, 'p_auth_method': authMethod},
+  );
+
+  @override
+  Future<int> runCostMonitors() async => ((await _db.rpc('admin_run_cost_monitors')) as num).toInt();
+
+  @override
+  Future<void> setIdentityCheckRequired(bool required, {String? authMethod}) => _db.rpc(
+    'admin_set_setting',
+    params: {
+      'p_key': 'identity_check',
+      'p_value': {'required': required},
+      'p_auth_method': authMethod,
+    },
+  );
 
   // ------------------------------------------------------- Centro de Control IA
   @override

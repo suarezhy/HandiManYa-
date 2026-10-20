@@ -89,6 +89,8 @@ export async function handleHook(req: Request, env: Env, fetchFn: Fetch, nowSeco
   if (!g.allowed) {
     if (g.reason === 'too_soon') return error(429, `HMY_OTP_TOO_SOON:${g.retry_after ?? 60}`);
     if (g.reason === 'invalid_phone') return error(400, 'HMY_INVALID_PHONE');
+    // Sin autorización de gasto (o tope del mes alcanzado): no se envía ni se cobra.
+    if (g.reason === 'budget') return error(503, `HMY_OTP_BUDGET:${g.channel === 'sms' ? 'sms' : 'whatsapp'}`);
     return error(429, 'HMY_OTP_LIMIT');
   }
 

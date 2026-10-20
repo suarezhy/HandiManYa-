@@ -11,6 +11,7 @@ import 'features/auth/recover_account_page.dart';
 import 'features/admin/admin_applications_page.dart';
 import 'features/admin/admin_cases_pages.dart';
 import 'features/admin/admin_catalog_audit_pages.dart';
+import 'features/admin/admin_costs_page.dart';
 import 'features/admin/admin_services_pages.dart';
 import 'features/admin/admin_home_page.dart';
 import 'features/admin/admin_money_pages.dart';
@@ -81,6 +82,7 @@ abstract final class Routes {
   static const adminCatalog = '/admin/catalogo';
   static const adminAudit = '/admin/auditoria';
   static const adminAi = '/admin/centro-ia';
+  static const adminCosts = '/admin/costos';
   static String adminApplication(String id) => '/admin/postulaciones/$id';
   static String adminProblems(int categoryId) => '/admin/catalogo/$categoryId/opciones';
 
@@ -293,6 +295,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) => AdminProblemsPage(categoryId: int.parse(s.pathParameters['id']!)),
       ),
       GoRoute(path: Routes.adminAudit, builder: (_, _) => const AdminAuditPage()),
+      GoRoute(path: Routes.adminCosts, builder: (_, _) => const AdminCostsPage()),
     ],
   );
 });

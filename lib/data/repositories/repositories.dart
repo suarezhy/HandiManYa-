@@ -4,6 +4,7 @@ import '../models/admin.dart';
 import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
+import '../models/costs.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
@@ -194,6 +195,14 @@ abstract interface class ProRepository {
   /// Base y radio de trabajo del profesional (privados).
   Future<ServiceLocation?> serviceLocation();
   Future<void> setServiceLocation({required double latitude, required double longitude, required int radiusKm});
+
+  /// Estado de la última verificación de identidad del profesional.
+  Future<IdentityCheck> identityCheck();
+
+  /// Pide (o retoma) la verificación de identidad y devuelve el enlace de Didit.
+  /// Mientras Didit esté en modo de prueba, [sandbox] es true y el resultado no
+  /// cuenta como verificación real.
+  Future<({String url, bool sandbox})> startIdentityCheck();
 }
 
 /// Seguridad entre usuarios y consentimientos (para todos).
@@ -259,6 +268,18 @@ abstract interface class AdminRepository {
   Future<void> createPromotion({required String title, String? subtitle, int? cityId});
 
   Future<List<AuditEntry>> auditLog();
+
+  /// Costos del mes: uso de los planes gratis, cargos, proyección y alertas.
+  Future<CostDashboard> costDashboard();
+
+  /// Activa, autoriza o frena un proveedor. Más uso o más gasto exige
+  /// [authMethod] confirmado recién; frenar, no.
+  Future<void> setVendor(String key, VendorStatus status, {double monthlyCapUsd = 0, String? authMethod});
+  Future<int> runCostMonitors();
+
+  /// Exigir una verificación de identidad real para aprobar. Quitar la
+  /// exigencia pide [authMethod].
+  Future<void> setIdentityCheckRequired(bool required, {String? authMethod});
 }
 
 /// Centro de Control IA (solo administradores). Los agentes observan y

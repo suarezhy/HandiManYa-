@@ -88,6 +88,7 @@ class _Body extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tiles = [
       _Tile(Icons.hub_outlined, 'Centro de Control IA', 'Agentes, decisiones y reporte diario', null, Routes.adminAi),
+      _Tile(Icons.savings_outlined, 'Costos del mes', 'Planes gratis, cargos y alertas', null, Routes.adminCosts),
       _Tile(
         Icons.badge_outlined,
         'Postulaciones',

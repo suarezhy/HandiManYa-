@@ -125,6 +125,11 @@ select test.login('00000000-0000-0000-0000-000000000062');
 select test.expect_error($$select public.hmy_otp_gate('+59160000806', 'sms')$$, 'permission denied');
 select test.eq((select count(*)::int from public.otp_sends), 0, 'envío: un usuario no ve el registro de envíos');
 select test.logout();
+-- Sin autorización del dueño, ningún código pagado sale (migración 0016).
+select test.eq((public.hmy_otp_gate('59160000806', 'whatsapp') ->> 'reason'), 'budget',
+               'envío: WhatsApp apagado no envía (no se cobra sin autorización)');
+update public.cost_vendors set status = 'paid', paid_authorized = true, monthly_cap_usd = 5
+ where key in ('whatsapp_otp', 'sms_otp');
 do $$ begin
   perform test.eq((public.hmy_otp_gate('+15551234567', 'sms') ->> 'reason'), 'invalid_phone', 'envío: solo celulares de Bolivia');
   perform test.eq((public.hmy_otp_gate('59160000806', 'fax') ->> 'reason'), 'invalid_channel', 'envío: WhatsApp o SMS');

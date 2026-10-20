@@ -35,3 +35,43 @@ eligió la persona; la app lo guarda antes con `choose_code_channel`.
 
 `node --experimental-strip-types --test supabase/functions/send-otp/send-otp.test.ts`
 (corren también en CI; no llaman a ningún proveedor).
+
+## identity-check y didit-webhook — verificación de identidad (Didit)
+
+Decisión del dueño: **solo el sandbox gratis de Didit** hasta que autorice otra
+cosa. Ningún carnet real, nada pagado. La lógica está en `_shared/didit.ts`.
+
+- `identity-check` (con la sesión del profesional): crea o retoma una sesión de
+  Didit y devuelve el enlace. Antes pregunta a la base (`hmy_identity_begin`,
+  migración 0017): solo con postulación enviada, máximo 3 intentos reales al mes,
+  y la compuerta de costos (`hmy_cost_gate`, migración 0016). En sandbox nunca
+  se cobra; en real se frena al acabar el plan gratis si no hay autorización.
+  - `POST .../identity-check/sync` con la clave del servidor: consulta las sesiones
+    sin respuesta y borra en Didit las ya decididas (Didit reintenta los avisos
+    solo 2 veces). Se puede programar cada 15 minutos con pg_cron + pg_net.
+- `didit-webhook` (sin JWT): verifica `X-Signature-V2` (y `X-Timestamp`, 5 min),
+  guarda solo estado, puntajes y códigos de aviso (nunca nombre, fecha de
+  nacimiento, número de carnet ni imágenes) y, con una decisión final, borra la
+  sesión en Didit (así también sale del entrenamiento de sus modelos).
+- Un aviso del sandbox nunca puede marcar una verificación real (la base lo
+  rechaza), y una verificación del sandbox nunca cuenta para aprobar.
+- El resultado de Didit no aprueba a nadie: aprueba una persona del equipo.
+
+### Activar el sandbox (cuando el dueño lo apruebe)
+
+1. El dueño crea una cuenta en Didit y una aplicación en modo **sandbox**, con un
+   flujo (workflow) de carnet + prueba de vida + comparación facial. No hace
+   falta tarjeta.
+2. Desplegar: `supabase functions deploy identity-check --project-ref yldqopeldibwgbwmdnzy`
+   y `supabase functions deploy didit-webhook --no-verify-jwt --project-ref yldqopeldibwgbwmdnzy`.
+3. Secretos (Dashboard → Edge Functions → Secrets), nunca en el repositorio:
+   `DIDIT_API_KEY`, `DIDIT_WORKFLOW_ID`, `DIDIT_WEBHOOK_SECRET`, `DIDIT_SANDBOX=true`
+   (opcional `DIDIT_CALLBACK_URL`).
+4. En la consola de Didit, webhook → URL de `didit-webhook`.
+5. Probar con los escenarios del sandbox (`sandbox_scenario`, `/simulate/`): aprobado,
+   rechazado por documento vencido, revisión manual, abandono. No usar carnets reales.
+
+### Pruebas
+
+`node --experimental-strip-types --test supabase/functions/_shared/didit.test.ts`
+(corren también en CI; no llaman a Didit).
