@@ -13,7 +13,7 @@ declare
     'departments','disputes','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
     'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
-    'topup_methods','topup_requests','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets'];
+    'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets'];
   v_buckets jsonb := '{"avatars":true,"portfolio":true,"booking-photos":false,"chat-images":false,"payment-qr":false,"professional-documents":false,"topup-proofs":false}';
   v_functions text[] := array['handle_new_user','create_booking','create_ya_request','claim_ya_request','ya_eligible_professionals',
     'accept_booking','cancel_booking','confirm_completion','booking_detail','can_see_booking_address','set_booking_approx_point',
@@ -24,7 +24,8 @@ declare
     'hmy_require_confirmation','set_biometric_enabled',
     'run_marketplace_monitors','generate_daily_report','run_daily_report_if_due','admin_ai_overview','admin_decide_ai_item','admin_set_setting',
     'complete_signup','hmy_sync_auth_phone','hmy_otp_gate','hmy_otp_result',
-    'mark_arrived','verify_arrival_pin','admin_verify_arrival','booking_arrival','hmy_arrival_gate','hmy_arrival_pin'];
+    'mark_arrived','verify_arrival_pin','admin_verify_arrival','booking_arrival','hmy_arrival_gate','hmy_arrival_pin',
+    'share_trip_location','stop_trip_location','trip_location','create_trip_share','my_trip_shares','revoke_trip_share','trip_share_view','hmy_trip_cleanup'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -119,7 +120,9 @@ begin
     (exists (select 1 from pg_trigger where tgname = 'on_auth_user_phone' and tgrelid = 'auth.users'::regclass), 'celular: el número verificado pasa al perfil'),
     (not has_function_privilege('authenticated', 'public.hmy_otp_gate(text, text, uuid)', 'EXECUTE') and not has_function_privilege('anon', 'public.hmy_otp_gate(text, text, uuid)', 'EXECUTE'), 'códigos: los límites de envío solo los usa el servicio de envío'),
     (exists (select 1 from pg_trigger where tgname = 'bookings_arrival_gate' and tgrelid = 'public.bookings'::regclass), 'llegada: sin llegada verificada no se empieza el trabajo'),
-    (not has_table_privilege('authenticated', 'public.booking_arrivals', 'SELECT') and not has_table_privilege('anon', 'public.booking_arrivals', 'SELECT'), 'llegada: nadie lee los códigos guardados')
+    (not has_table_privilege('authenticated', 'public.booking_arrivals', 'SELECT') and not has_table_privilege('anon', 'public.booking_arrivals', 'SELECT'), 'llegada: nadie lee los códigos guardados'),
+    (not has_table_privilege('authenticated', 'public.trip_locations', 'SELECT') and not has_table_privilege('anon', 'public.trip_shares', 'SELECT'), 'viaje: la ubicación y los enlaces solo se leen por las funciones'),
+    (exists (select 1 from pg_trigger where tgname = 'bookings_trip_cleanup'), 'viaje: la ubicación se borra al salir de "en camino"')
   ) as v(ok, what) loop
     raise notice '%  %', case when r.ok then 'ok -' else 'FALLA -' end, r.what;
     if not r.ok then v_failed := v_failed + 1; end if;

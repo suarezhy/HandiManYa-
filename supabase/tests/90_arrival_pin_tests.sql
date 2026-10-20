@@ -215,6 +215,8 @@ select test.login('00000000-0000-0000-0000-0000000009c1');
 select test.expect_error(format('select public.verify_arrival_pin(%L, %L)', (select v from t_ar where k = 'b2'), '123456'),
                          'HMY_TOO_MANY_ATTEMPTS');
 select test.logout();
+-- Se limpian los intentos simulados para las pruebas siguientes.
+delete from public.arrival_pin_attempts where customer_id = '00000000-0000-0000-0000-0000000009c1' and not ok;
 
 \o
 \echo 'PRUEBAS DEL CÓDIGO DE LLEGADA PASARON'
