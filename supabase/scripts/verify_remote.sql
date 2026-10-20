@@ -10,7 +10,7 @@ do $$
 declare
   v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','booking_addresses','booking_events','booking_offers','booking_photos',
     'booking_transitions','bookings','cities','commission_rules','daily_reports','consent_records','conversation_reads','conversations',
-    'departments','disputes','messages','notifications','otp_sends','professional_availability','professional_documents',
+    'departments','disputes','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
     'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
     'topup_methods','topup_requests','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets'];
