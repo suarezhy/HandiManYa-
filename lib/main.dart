@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app.dart';
 import 'core/config/env.dart';
+import 'core/services/secure_session_storage.dart';
 import 'data/providers.dart';
 
 Future<void> main() async {
@@ -14,10 +15,15 @@ Future<void> main() async {
   // Pantallas pensadas para el teléfono en vertical (igual que en iPhone).
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await initializeDateFormatting('es');
-  if (Env.hasBackend) {
-    await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabaseAnonKey);
-  }
   final prefs = await SharedPreferences.getInstance();
+  if (Env.hasBackend) {
+    await Supabase.initialize(
+      url: Env.supabaseUrl,
+      publishableKey: Env.supabaseAnonKey,
+      // La sesión queda cifrada en el teléfono (llavero de iOS, Keystore de Android).
+      authOptions: secureAuthOptions(Env.supabaseUrl, prefs),
+    );
+  }
 
   runApp(
     ProviderScope(
