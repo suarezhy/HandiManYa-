@@ -27,7 +27,7 @@ declare
     'mark_arrived','verify_arrival_pin','admin_verify_arrival','booking_arrival','hmy_arrival_gate','hmy_arrival_pin',
     'share_trip_location','stop_trip_location','trip_location','create_trip_share','my_trip_shares','revoke_trip_share','trip_share_view','hmy_trip_cleanup',
     'hmy_cost_gate','hmy_cost_month','admin_cost_dashboard','admin_set_vendor','run_cost_monitors',
-    'hmy_identity_begin','hmy_identity_session','hmy_identity_decision','hmy_identity_pending','my_identity_check','hmy_identity_guard','run_rule_agents','admin_run_rule_agents'];
+    'hmy_identity_begin','hmy_identity_session','hmy_identity_attach','hmy_identity_session_free','hmy_identity_forget_link','hmy_identity_decision','hmy_identity_pending','my_identity_check','hmy_identity_guard','run_rule_agents','admin_run_rule_agents'];
   v_missing text;
   v_count int;
   v_failed int := 0;

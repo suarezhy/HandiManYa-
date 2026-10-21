@@ -24,7 +24,7 @@ export interface Result {
 const DIDIT = 'https://verification.didit.me';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Única dirección del enlace de Didit para el profesional, según
-// docs.didit.me/sessions-api/create-session ("https://verify.didit.me/{language}/session/{token}").
+// docs.didit.me/sessions-api/create-session (enlace verify.didit.me/{language}/session/{token}, siempre https).
 // No usamos dominio propio (white-label); si algún día se usa, se agrega aquí con revisión.
 const LINK_HOST = 'verify.didit.me';
 
@@ -242,25 +242,74 @@ async function applyDecision(
 // ---------------------------------------------------------------------------
 // identity-check: el profesional pide (o retoma) su verificación
 // ---------------------------------------------------------------------------
+type Gate = { allowed: boolean; reason?: string; resume?: boolean; id?: number; verification_url?: string };
+type DiditSession = {
+  session_id?: unknown;
+  url?: unknown;
+  verification_url?: unknown;
+  status?: unknown;
+  vendor_data?: unknown;
+  workflow_id?: unknown;
+};
+
+/**
+ * Borra en Didit una sesión que no quedó enlazada, solo si es claramente la que
+ * acabamos de crear: id UUID, Didit dice que es de este profesional y de este
+ * flujo, todavía "Not Started", y la base confirma que ningún otro intento la
+ * usa. Si algo no se puede confirmar, no se borra (Didit la devuelve otra vez
+ * al próximo intento del mismo profesional).
+ */
+async function discardUnlinked(
+  env: Env,
+  fetchFn: Fetch,
+  checkId: number | undefined,
+  sessionId: string,
+  session: DiditSession,
+  user: string,
+  workflowId: string,
+): Promise<'deleted' | 'kept' | 'delete_failed'> {
+  const fresh =
+    UUID.test(sessionId) &&
+    session.vendor_data === user &&
+    typeof session.workflow_id === 'string' &&
+    session.workflow_id.toLowerCase() === workflowId.toLowerCase() &&
+    session.status === 'Not Started';
+  if (!fresh) return 'kept';
+  const free = await rpc(env, fetchFn, 'hmy_identity_session_free', { p_check: checkId, p_session_id: sessionId });
+  if (!free.ok || free.data !== true) return 'kept';
+  return (await deleteSession(env, fetchFn, sessionId)) ? 'deleted' : 'delete_failed';
+}
+
 export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promise<Result> {
   const user = await currentUser(env, fetchFn, req.headers.get('authorization'));
   if (!user) return error(401, 'HMY_AUTH_REQUIRED');
   if (liveRequestedButLocked(env)) return error(503, 'HMY_IDENTITY_LIVE_LOCKED');
   const sandbox = isSandbox(env);
-  const gate = await rpc(env, fetchFn, 'hmy_identity_begin', { p_user: user, p_sandbox: sandbox });
-  if (!gate.ok) return error(500, 'HMY_IDENTITY_UNAVAILABLE');
-  const g = gate.data as { allowed: boolean; reason?: string; resume?: boolean; id?: number; verification_url?: string };
-  if (!g.allowed) {
-    const code = {
-      no_application: 'HMY_NO_APPLICATION',
-      invalid_status: 'HMY_INVALID_STATUS',
-      already_approved: 'HMY_IDENTITY_ALREADY_APPROVED',
-      attempt_limit: 'HMY_IDENTITY_ATTEMPT_LIMIT',
-    }[g.reason ?? ''];
-    // Plan gratis agotado, tope o proveedor apagado: no se cobra, se espera.
-    return error(code ? 400 : 503, code ?? 'HMY_IDENTITY_PAUSED');
+  let g: Gate | null = null;
+  // Dos vueltas como máximo: si el enlace guardado no es de Didit, se descarta y se pide uno nuevo.
+  for (let round = 0; round < 2; round++) {
+    const gate = await rpc(env, fetchFn, 'hmy_identity_begin', { p_user: user, p_sandbox: sandbox });
+    if (!gate.ok) return error(500, 'HMY_IDENTITY_UNAVAILABLE');
+    g = gate.data as Gate;
+    if (!g.allowed) {
+      const code = {
+        no_application: 'HMY_NO_APPLICATION',
+        invalid_status: 'HMY_INVALID_STATUS',
+        already_approved: 'HMY_IDENTITY_ALREADY_APPROVED',
+        attempt_limit: 'HMY_IDENTITY_ATTEMPT_LIMIT',
+      }[g.reason ?? ''];
+      // Plan gratis agotado, tope o proveedor apagado: no se cobra, se espera.
+      return error(code ? 400 : 503, code ?? 'HMY_IDENTITY_PAUSED');
+    }
+    if (!g.resume) break;
+    // Un enlace guardado se vuelve a revisar antes de entregarlo: nunca sale uno que no sea de Didit.
+    const saved = diditLink(g.verification_url);
+    if (saved) return { status: 200, body: { verification_url: saved, sandbox } };
+    console.error('HMY_IDENTITY_BAD_SAVED_LINK');
+    const forgot = await rpc(env, fetchFn, 'hmy_identity_forget_link', { p_check: g.id });
+    if (!forgot.ok || round === 1) return error(500, 'HMY_IDENTITY_UNAVAILABLE');
   }
-  if (g.resume && g.verification_url) return { status: 200, body: { verification_url: g.verification_url, sandbox } };
+  if (!g) return error(500, 'HMY_IDENTITY_UNAVAILABLE');
 
   const workflowId = (env.DIDIT_WORKFLOW_ID ?? '').trim();
   if (!env.DIDIT_API_KEY || !workflowId) {
@@ -276,7 +325,7 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
   // Didit responde 201 con { session_id, url, session_token, ... }: el enlace es "url".
   // Al registro de la función solo van un código propio y el código HTTP: nunca
   // el cuerpo de Didit, mensajes de error, claves, tokens ni datos de la persona.
-  let session: { session_id?: unknown; url?: unknown; verification_url?: unknown } = {};
+  let session: DiditSession = {};
   let diditStatus = 0;
   let failure = '';
   try {
@@ -308,25 +357,30 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
   // Cada campo se revisa por separado: un "url" malo no impide usar un verification_url bueno.
   const link = diditLink(session.url) ?? diditLink(session.verification_url);
   if (!sessionId || !link) {
-    if (!failure) failure = 'didit_missing_fields';
-    console.error(`HMY_IDENTITY_SEND_FAILED code=${failure} didit_status=${diditStatus}`);
+    if (!failure) failure = sessionId ? 'didit_bad_link' : 'didit_missing_fields';
+    // Hay sesión pero no un enlace válido: no sirve, se intenta borrar si es la nuestra.
+    const cleanup = sessionId && !link
+      ? await discardUnlinked(env, fetchFn, g.id, sessionId, session, user, workflowId)
+      : 'none';
+    console.error(`HMY_IDENTITY_SEND_FAILED code=${failure} didit_status=${diditStatus} cleanup=${cleanup}`);
     await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
     // Solo el código HTTP de Didit, para saber si es la clave (401/403) o el flujo (400/404).
     return { status: 502, body: { error: 'HMY_IDENTITY_SEND_FAILED', reason: failure, didit_status: diditStatus } };
   }
-  const saved = await rpc(env, fetchFn, 'hmy_identity_session', {
+  // Didit devuelve la misma sesión abierta si el profesional ya tenía una (mismo
+  // flujo y vendor_data). La base la enlaza al intento que ya la tenía en vez de
+  // fallar, y nunca acepta la sesión de otro profesional.
+  const saved = await rpc(env, fetchFn, 'hmy_identity_attach', {
     p_check: g.id,
     p_session_id: sessionId,
     p_url: link,
   });
-  if (!saved.ok) {
-    // Didit creó la sesión pero la base no la guardó: se borra en Didit para no
-    // dejarla huérfana y el intento queda como fallido. Si Didit no deja borrarla,
-    // queda sin usar (sin costo) y, como Didit devuelve la misma sesión abierta al
-    // pedirla de nuevo para el mismo profesional, el próximo intento la recupera.
-    const removed = await deleteSession(env, fetchFn, sessionId);
+  const attached = saved.data as { saved?: boolean; reason?: string } | null;
+  if (!saved.ok || attached?.saved !== true) {
+    const reason = saved.ok ? (attached?.reason ?? 'unknown') : 'db_error';
+    const cleanup = await discardUnlinked(env, fetchFn, g.id, sessionId, session, user, workflowId);
     await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
-    console.error(`HMY_IDENTITY_UNAVAILABLE code=session_not_saved didit_deleted=${removed}`);
+    console.error(`HMY_IDENTITY_UNAVAILABLE code=session_not_saved reason=${reason} cleanup=${cleanup}`);
     return error(500, 'HMY_IDENTITY_UNAVAILABLE');
   }
   return { status: 200, body: { verification_url: link, sandbox } };

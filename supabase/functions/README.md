@@ -49,6 +49,15 @@ cosa. Ningún carnet real, nada pagado. La lógica está en `_shared/didit.ts`.
   - `POST .../identity-check/sync` con la clave del servidor: consulta las sesiones
     sin respuesta y borra en Didit las ya decididas (Didit reintenta los avisos
     solo 2 veces). Se puede programar cada 15 minutos con pg_cron + pg_net.
+  - Sesiones repetidas (migración 0019, `hmy_identity_attach`): Didit devuelve la
+    misma sesión abierta si se pide otra para el mismo profesional y la misma
+    versión del flujo; la base la enlaza al intento que ya la tenía y nunca acepta
+    la de otro profesional. Un enlace guardado se revisa otra vez antes de
+    entregarlo. Una sesión sin enlace válido o que la base no guardó se borra en
+    Didit solo si es claramente la recién creada (UUID, mismo profesional y flujo,
+    "Not Started") y ningún otro intento la usa. Borrar necesita el permiso
+    `delete:sessions` en la clave de Didit.
+  - **Orden al desplegar:** primero la migración 0019, después `identity-check`.
 - `didit-webhook` (sin JWT): verifica `X-Signature-V2` (y `X-Timestamp`, 5 min),
   guarda solo estado, puntajes y códigos de aviso (nunca nombre, fecha de
   nacimiento, número de carnet ni imágenes) y, con una decisión final, borra la
