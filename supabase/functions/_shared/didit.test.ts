@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   canonicalJson,
+  diditLink,
   handleStart,
   handleSync,
   handleWebhook,
@@ -268,6 +269,85 @@ for (const [name, opts, reason, status] of [
     assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_failed')));
     assert.equal(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_session')), false);
     assert.equal(logs, `HMY_IDENTITY_SEND_FAILED code=${reason} didit_status=${status}`);
+    assert.doesNotMatch(logs + JSON.stringify(r!.body), sensitive);
+  });
+}
+
+test('enlace de Didit: solo https://verify.didit.me (lo que documenta Didit)', () => {
+  assert.equal(diditLink('https://verify.didit.me/en/session/Yk7pQ2vN8aBc'), 'https://verify.didit.me/en/session/Yk7pQ2vN8aBc');
+  assert.equal(diditLink('https://VERIFY.didit.me/session/abc'), 'https://verify.didit.me/session/abc');
+  for (const bad of [
+    'http://verify.didit.me/session/abc',
+    'https://verify.didit.me.evil.com/session/abc',
+    'https://evil.com/verify.didit.me/session/abc',
+    'https://verify-didit.me/session/abc',
+    'https://didit.me/session/abc',
+    'https://verification.didit.me/v3/session/',
+    'https://user:pw@verify.didit.me/session/abc',
+    'https://verify.didit.me:8443/session/abc',
+    'javascript:alert(1)',
+    'verify.didit.me/session/abc',
+    '',
+    42,
+    null,
+    'https://verify.didit.me/' + 'a'.repeat(3000),
+  ]) {
+    assert.equal(diditLink(bad), null, String(bad).slice(0, 60));
+  }
+});
+
+test('pedir la verificación: un enlace de otro dominio no se guarda ni se entrega', async () => {
+  const { fn, calls } = fakeFetch(begin, { diditBody: '{"session_id":"ses-1","url":"https://verify.didit.me.evil.com/session/x"}' });
+  let r: Awaited<ReturnType<typeof handleStart>> | undefined;
+  await captureLogs(async () => {
+    r = await handleStart(start(), base, fn);
+  });
+  assert.deepEqual(r!.body, { error: 'HMY_IDENTITY_SEND_FAILED', reason: 'didit_missing_fields', didit_status: 201 });
+  assert.equal(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_session')), false);
+});
+
+test('pedir la verificación: url y verification_url se revisan por separado', async () => {
+  const cases = [
+    ['{"session_id":"ses-1","url":"https://evil.com/x","verification_url":"https://verify.didit.me/session/ok1"}', 'https://verify.didit.me/session/ok1'],
+    ['{"session_id":"ses-1","url":12345,"verification_url":"https://verify.didit.me/session/ok2"}', 'https://verify.didit.me/session/ok2'],
+    ['{"session_id":"ses-1","url":"https://verify.didit.me/session/ok3","verification_url":"basura"}', 'https://verify.didit.me/session/ok3'],
+  ] as const;
+  for (const [diditBody, expected] of cases) {
+    const { fn, calls } = fakeFetch(begin, { diditBody });
+    const r = await handleStart(start(), base, fn);
+    assert.equal(r.status, 200, diditBody);
+    assert.equal((r.body as { verification_url: string }).verification_url, expected);
+    assert.equal(JSON.parse(calls.find((c) => c.url.endsWith('/rpc/hmy_identity_session'))!.body).p_url, expected);
+  }
+});
+
+for (const [name, deleteStatus, deleted] of [
+  ['y se borra en Didit', 200, true],
+  ['y Didit no deja borrarla (permiso)', 403, false],
+] as const) {
+  test(`pedir la verificación: Didit creó la sesión pero la base no la guardó ${name}`, async () => {
+    const { fn, calls } = fakeFetch(begin);
+    const failing = async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/rpc/hmy_identity_session')) {
+        calls.push({ url, method: 'POST', body: String(init?.body ?? ''), headers: {} });
+        return new Response('boom', { status: 500 });
+      }
+      if (init?.method === 'DELETE') {
+        calls.push({ url, method: 'DELETE', body: '', headers: Object.fromEntries(new Headers(init?.headers).entries()) });
+        return new Response('{"detail":"no permission didit-key"}', { status: deleteStatus });
+      }
+      return fn(url, init);
+    };
+    let r: Awaited<ReturnType<typeof handleStart>> | undefined;
+    const logs = await captureLogs(async () => {
+      r = await handleStart(start(), base, failing);
+    });
+    assert.equal(r!.status, 500);
+    assert.deepEqual(r!.body, { error: 'HMY_IDENTITY_UNAVAILABLE' }, 'no se entrega un enlace que la base no guardó');
+    const del = calls.find((c) => c.method === 'DELETE')!;
+    assert.equal(del.url, 'https://verification.didit.me/v3/session/ses-1/delete/');
+    assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_failed')), 'el intento queda como fallido');
+    assert.equal(logs, `HMY_IDENTITY_UNAVAILABLE code=session_not_saved didit_deleted=${deleted}`);
     assert.doesNotMatch(logs + JSON.stringify(r!.body), sensitive);
   });
 }

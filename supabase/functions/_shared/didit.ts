@@ -23,6 +23,23 @@ export interface Result {
 
 const DIDIT = 'https://verification.didit.me';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Única dirección del enlace de Didit para el profesional, según
+// docs.didit.me/sessions-api/create-session ("https://verify.didit.me/{language}/session/{token}").
+// No usamos dominio propio (white-label); si algún día se usa, se agrega aquí con revisión.
+const LINK_HOST = 'verify.didit.me';
+
+/** Un enlace de Didit válido: https, verify.didit.me, sin usuario, contraseña ni puerto. */
+export function diditLink(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 2048) return null;
+  let u: URL;
+  try {
+    u = new URL(value);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' || u.hostname !== LINK_HOST || u.username || u.password || u.port) return null;
+  return u.href;
+}
 const enc = new TextEncoder();
 
 const error = (status: number, code: string): Result => ({ status, body: { error: code } });
@@ -288,8 +305,8 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
     failure = 'didit_unreachable';
   }
   const sessionId = typeof session.session_id === 'string' && session.session_id ? session.session_id : null;
-  const rawLink = typeof session.url === 'string' ? session.url : session.verification_url;
-  const link = typeof rawLink === 'string' && /^https:\/\//.test(rawLink) ? rawLink : null;
+  // Cada campo se revisa por separado: un "url" malo no impide usar un verification_url bueno.
+  const link = diditLink(session.url) ?? diditLink(session.verification_url);
   if (!sessionId || !link) {
     if (!failure) failure = 'didit_missing_fields';
     console.error(`HMY_IDENTITY_SEND_FAILED code=${failure} didit_status=${diditStatus}`);
@@ -302,7 +319,16 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
     p_session_id: sessionId,
     p_url: link,
   });
-  if (!saved.ok) return error(500, 'HMY_IDENTITY_UNAVAILABLE');
+  if (!saved.ok) {
+    // Didit creó la sesión pero la base no la guardó: se borra en Didit para no
+    // dejarla huérfana y el intento queda como fallido. Si Didit no deja borrarla,
+    // queda sin usar (sin costo) y, como Didit devuelve la misma sesión abierta al
+    // pedirla de nuevo para el mismo profesional, el próximo intento la recupera.
+    const removed = await deleteSession(env, fetchFn, sessionId);
+    await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
+    console.error(`HMY_IDENTITY_UNAVAILABLE code=session_not_saved didit_deleted=${removed}`);
+    return error(500, 'HMY_IDENTITY_UNAVAILABLE');
+  }
   return { status: 200, body: { verification_url: link, sandbox } };
 }
 
