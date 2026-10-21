@@ -4,6 +4,9 @@ name: Builds para tiendas (Android y iPhone)
 # tiendas: los archivos quedan como artefactos de esta ejecución y la subida
 # se hace a mano, solo con la aprobación del dueño del proyecto.
 # Se activa al subir la rama builds/movil o a mano desde Actions.
+# La versión web de dev se publica en GitHub Pages bajo /dev/ para probar en
+# iPhone y iPad con Safari (aprobado por el dueño el 2026-10-21). Solo dev:
+# las otras configuraciones nunca se publican.
 #
 # Secretos opcionales (si faltan, el build sale sin firmar y sirve solo como prueba):
 #   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
@@ -95,6 +98,46 @@ jobs:
             build/app/outputs/flutter-apk/app-release.apk
             build/symbols/android
           retention-days: 30
+
+  web-dev:
+    name: Web de prueba (dev, para iPhone y iPad)
+    if: ${{ (inputs.entorno || 'dev') == 'dev' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Exigir configuración real (nunca el modo demostración)
+        run: jq -e '.SUPABASE_URL != "" and .SUPABASE_ANON_KEY != ""' config/supabase-dev.json >/dev/null
+      - run: flutter pub get
+      - name: Compilar web
+        run: |
+          flutter build web --release --no-web-resources-cdn --base-href /HandiManYa-/dev/ \
+            --dart-define-from-file=config/supabase-dev.json --build-number="${GITHUB_RUN_NUMBER}"
+          # Que los buscadores no la muestren.
+          sed -i 's|<head>|<head>\n  <meta name="robots" content="noindex, nofollow">|' build/web/index.html
+          grep -q 'noindex' build/web/index.html
+      - name: Publicar en gh-pages/dev (sin tocar la demo)
+        run: |
+          git clone -q --depth 1 --branch gh-pages \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" "$RUNNER_TEMP/pages"
+          cd "$RUNNER_TEMP/pages"
+          rm -rf dev && cp -r "$GITHUB_WORKSPACE/build/web" dev
+          touch .nojekyll
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Web de prueba (dev) ${GITHUB_SHA::7}, build ${GITHUB_RUN_NUMBER}" || { echo "Sin cambios"; exit 0; }
+          git push -q origin gh-pages
+          echo "Publicada en https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/dev/" >> "$GITHUB_STEP_SUMMARY"
 
   ios:
     name: iPhone (compilación para App Store)
