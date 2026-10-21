@@ -59,6 +59,13 @@ void main() {
     await backend.updateProgress(id, BookingStatus.workFinished, finalAmount: 150);
 
     await asCustomer();
+    // El cliente pagó directo al profesional y dice cómo: por QR, aunque pidió efectivo.
+    await backend.acknowledgePayment(id, PaymentMethod.qr);
+    final paid = await backend.detail(id);
+    expect(paid.customerPaidAck, isTrue);
+    expect(paid.paymentMethod, PaymentMethod.qr);
+    final customerWallet = await backend.wallet();
+    expect(customerWallet.available + customerWallet.reserved, 0, reason: 'el cliente no tiene saldo ni comisión');
     await backend.confirmCompletion(id);
     expect((await backend.detail(id)).status, BookingStatus.completed);
     await backend.submitReview(id, 5, '¡Excelente!');

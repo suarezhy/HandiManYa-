@@ -25,7 +25,7 @@ class WalletPage extends ConsumerWidget {
     final pending = topups.where((t) => t.status == TopupStatus.pending).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Billetera')),
+      appBar: AppBar(title: const Text('Mi billetera')),
       body: RefreshIndicator(
         color: HyColors.primary,
         onRefresh: () async {
@@ -61,7 +61,7 @@ class WalletPage extends ConsumerWidget {
                     const SectionHeader(title: 'Recargas en revisión'),
                     for (final t in pending) _TopupTile(topup: t),
                   ],
-                  const SectionHeader(title: 'Movimientos'),
+                  const SectionHeader(title: 'Historial de movimientos'),
                   ledger.when(
                     loading: () => const LoadingView(),
                     error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(ledgerProvider)),
@@ -112,7 +112,7 @@ class _BalanceCard extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Saldo disponible', style: TextStyle(color: Colors.white70, fontSize: 16)),
+        const Text('Saldo disponible (Bs)', style: TextStyle(color: Colors.white70, fontSize: 16)),
         const SizedBox(height: 4),
         Text(
           Fmt.bs(wallet.available),

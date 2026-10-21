@@ -85,8 +85,8 @@ class ProfilePage extends ConsumerWidget {
                 if (account.isProfessionalMode)
                   _Tile(
                     icon: Icons.account_balance_wallet_outlined,
-                    title: 'Billetera',
-                    subtitle: 'Saldo, recargas y movimientos',
+                    title: 'Mi billetera',
+                    subtitle: 'Saldo para comisiones, recargas y movimientos',
                     onTap: () => context.push(Routes.wallet),
                   ),
                 if (account.isApprovedProfessional)

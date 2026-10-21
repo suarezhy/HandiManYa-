@@ -15,6 +15,7 @@ import 'package:handimanya/features/auth/phone_auth_page.dart';
 import 'package:handimanya/features/booking/booking_detail_page.dart';
 import 'package:handimanya/features/booking/live_trip.dart';
 import 'package:handimanya/features/legal/legal_texts.dart';
+import 'package:handimanya/features/pro_mode/wallet_page.dart';
 import 'package:handimanya/features/profile/profile_page.dart';
 import 'package:handimanya/features/safety/emergency_numbers.dart';
 import 'package:handimanya/router.dart';
@@ -359,6 +360,31 @@ void main() {
       await tester.ensureVisible(find.text('Eliminación de cuenta solicitada'));
       final button = tester.widget<TextButton>(find.widgetWithText(TextButton, 'Eliminación de cuenta solicitada'));
       expect(button.onPressed, isNull, reason: 'no se puede pedir dos veces');
+    });
+  });
+
+  group('Billetera solo para profesionales', () {
+    testWidgets('el cliente no ve billetera y no puede abrirla por la dirección', (tester) async {
+      await _openProfile(tester);
+      expect(find.text('Mi billetera'), findsNothing);
+      _router(tester).go(Routes.wallet);
+      await tester.pumpAndSettle();
+      expect(find.byType(WalletPage), findsNothing, reason: 'vuelve al inicio');
+    });
+
+    testWidgets('el profesional ve Mi billetera con saldo, recarga e historial', (tester) async {
+      await _openProfile(tester, phone: DemoBackend.professionalPhone);
+      await _tap(tester, find.text('Mi billetera'));
+      expect(find.byType(WalletPage), findsOneWidget);
+      expect(find.text('Saldo disponible (Bs)'), findsOneWidget);
+      expect(find.text('Recargar saldo'), findsWidgets);
+      await tester.scrollUntilVisible(
+        find.text('Historial de movimientos'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Historial de movimientos'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 

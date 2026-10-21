@@ -1076,7 +1076,7 @@ class DemoBackend
       quoteAmount: b.quoteAmount,
       quoteNote: b.quoteNote,
       finalAmount: b.finalAmount,
-      paymentMethod: b.draft.paymentMethod,
+      paymentMethod: b.paidWith ?? b.draft.paymentMethod,
       customerPaidAck: b.customerPaid,
       professionalPaidAck: b.professionalPaid,
       createdAt: b.createdAt,
@@ -1535,6 +1535,8 @@ class DemoBackend
     _requireStatus(b, {BookingStatus.workFinished, BookingStatus.completed});
     if (b.customerId == _me.id) {
       b.customerPaid = true;
+      // El cliente dice cómo pagó; el servidor hace lo mismo.
+      b.paidWith = method;
     } else if (b.professionalId == _me.id) {
       b.professionalPaid = true;
     } else {
@@ -3206,6 +3208,7 @@ class _Booking {
   double? finalAmount;
   bool customerPaid = false;
   bool professionalPaid = false;
+  PaymentMethod? paidWith;
   bool hasReview = false;
   double reserved = 0;
   bool captured = false;

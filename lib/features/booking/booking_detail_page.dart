@@ -522,6 +522,12 @@ class _ActionsState extends ConsumerState<_Actions> {
     Future<void> ackPayment() =>
         _run(() => api.acknowledgePayment(b.id, b.paymentMethod ?? PaymentMethod.cash), success: 'Pago registrado');
 
+    // El cliente dice cómo pagó (efectivo o QR, directo al profesional).
+    Future<void> customerPaid() async {
+      final method = await showPaymentMethodSheet(context, initial: b.paymentMethod ?? PaymentMethod.cash);
+      if (method != null) await _run(() => api.acknowledgePayment(b.id, method), success: 'Pago registrado');
+    }
+
     if (b.viewerIsCustomer && {BookingStatus.confirmed, BookingStatus.onTheWay, BookingStatus.inProgress}.contains(s)) {
       secondary.add(
         SecondaryButton(
@@ -585,7 +591,7 @@ class _ActionsState extends ConsumerState<_Actions> {
               },
             ),
           );
-          if (!b.customerPaidAck) secondary.add(SecondaryButton(label: 'Ya pagué', onPressed: ackPayment));
+          if (!b.customerPaidAck) secondary.add(SecondaryButton(label: 'Ya pagué', onPressed: customerPaid));
           secondary.add(SecondaryButton(label: 'Reportar problema', onPressed: dispute));
         case BookingStatus.completed:
           if (!b.hasReview) {
@@ -602,7 +608,7 @@ class _ActionsState extends ConsumerState<_Actions> {
               ),
             );
           }
-          if (!b.customerPaidAck) secondary.add(SecondaryButton(label: 'Ya pagué', onPressed: ackPayment));
+          if (!b.customerPaidAck) secondary.add(SecondaryButton(label: 'Ya pagué', onPressed: customerPaid));
           addChat();
         case BookingStatus.disputed:
           addChat();
@@ -764,6 +770,46 @@ class _ActionsState extends ConsumerState<_Actions> {
 }
 
 /// Devuelve (estrellas, comentario).
+/// Cómo pagó el cliente al profesional. HandiMan ¡Ya! no recibe ese pago.
+Future<PaymentMethod?> showPaymentMethodSheet(BuildContext context, {required PaymentMethod initial}) =>
+    showModalBottomSheet<PaymentMethod>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, HySpacing.md),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('¿Cómo pagaste?', style: Theme.of(c).textTheme.titleLarge),
+              const SizedBox(height: HySpacing.xxs),
+              const Text(
+                'Pagaste directo al profesional. HandiMan ¡Ya! no recibe ni cobra este pago.',
+                style: TextStyle(color: HyColors.textSecondary),
+              ),
+              const SizedBox(height: HySpacing.sm),
+              for (final m in PaymentMethod.values)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: HySpacing.xs),
+                  child: ListTile(
+                    key: Key('paid-${m.key}'),
+                    minTileHeight: HySizes.touch + 8,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(HyRadii.md),
+                      side: BorderSide(color: m == initial ? HyColors.primary : HyColors.border, width: 1.5),
+                    ),
+                    leading: Icon(m.icon, color: HyColors.primaryDark),
+                    title: Text(m.label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                    onTap: () => Navigator.pop(c, m),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+
 Future<(int, String?)?> showReviewSheet(BuildContext context) {
   var rating = 0;
   final comment = TextEditingController();

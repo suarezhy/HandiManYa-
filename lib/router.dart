@@ -158,6 +158,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       return homeForRole;
     }
     if (loc.startsWith('/pro/') && !account.isProfessionalMode) return Routes.home;
+    // La billetera es solo de profesionales (el servidor tampoco muestra saldo a otros).
+    if (loc == Routes.wallet && !account.isApprovedProfessional) return Routes.home;
     if (!loc.startsWith('/pro/') && account.isProfessionalMode && _customerTabs.contains(loc)) {
       return homeForRole;
     }
