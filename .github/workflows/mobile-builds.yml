@@ -76,6 +76,17 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build apk --release --dart-define-from-file="config/supabase-${ENTORNO}.json" --build-number="${GITHUB_RUN_NUMBER}"
+      # Para instalar en un teléfono de prueba: firmado con la llave de depuración
+      # (Android no instala un APK sin firmar). Nunca se sube a Google Play.
+      - name: Compilar APK de prueba (instalable, solo para probar)
+        run: |
+          flutter build apk --debug --dart-define-from-file="config/supabase-${ENTORNO}.json" --build-number="${GITHUB_RUN_NUMBER}"
+          cp build/app/outputs/flutter-apk/app-debug.apk "build/app/outputs/flutter-apk/handimanya-prueba-${ENTORNO}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-prueba-${{ env.ENTORNO }}-${{ github.run_number }}
+          path: build/app/outputs/flutter-apk/handimanya-prueba-${{ env.ENTORNO }}.apk
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: android-${{ env.ENTORNO }}-${{ github.run_number }}
