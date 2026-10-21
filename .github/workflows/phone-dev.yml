@@ -1,0 +1,88 @@
+name: Ingreso por celular (handimanya-flutter-dev)
+
+# Prueba el ingreso por celular contra el proyecto de DESARROLLO usando solo un
+# número de prueba de Supabase (código fijo). No hay proveedor de WhatsApp o
+# SMS conectado: nadie recibe un mensaje y nada se cobra.
+#
+# Solo se activa al subir la rama supabase/phone-dev.
+# Secretos: SUPABASE_DB_URL, SUPABASE_ANON_KEY, E2E_TEST_PHONE (+5917xxxxxxx,
+# el número de prueba cargado en Supabase) y E2E_TEST_OTP (su código fijo).
+
+on:
+  push:
+    branches: [supabase/phone-dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev-db
+  cancel-in-progress: false
+
+jobs:
+  phone:
+    name: Ingreso por celular con número de prueba
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      E2E_TEST_PHONE: ${{ secrets.E2E_TEST_PHONE }}
+      E2E_TEST_OTP: ${{ secrets.E2E_TEST_OTP }}
+      EXPECTED_REF: yldqopeldibwgbwmdnzy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar que es el proyecto nuevo
+        run: supabase/scripts/check_target.sh
+
+      - name: Revisar los secretos (solo si existen, nunca su valor)
+        run: |
+          missing=0
+          for v in ANON_KEY E2E_TEST_PHONE E2E_TEST_OTP; do
+            if [ -z "${!v}" ]; then echo "::error::Falta el secreto de ${v}"; missing=1; fi
+          done
+          exit $missing
+
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
+
+      - name: Nada pagado para los códigos
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          select key || ': ' || status from public.cost_vendors where key in ('whatsapp_otp', 'sms_otp') order by key;
+          do $$ begin
+            if exists (select 1 from public.cost_vendors where key in ('whatsapp_otp', 'sms_otp') and (status = 'paid' or paid_authorized)) then
+              raise exception 'HMY: hay un proveedor de códigos pagado activo';
+            end if;
+          end $$;
+          SQL
+
+      - name: Borrar restos de una corrida anterior
+        run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -v phone="${E2E_TEST_PHONE}" -f supabase/e2e/phone/cleanup.sql
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Prueba del ingreso por celular
+        env:
+          E2E_URL: https://yldqopeldibwgbwmdnzy.supabase.co
+          E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: node --test --test-reporter=spec supabase/e2e/phone/phone.test.mjs
+
+      - name: Borrar la cuenta del número de prueba
+        if: always()
+        run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -v phone="${E2E_TEST_PHONE}" -f supabase/e2e/phone/cleanup.sql
+
+      - name: Confirmar que no se envió nada con un proveedor
+        if: always()
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          select 'Envíos entregados por un proveedor en la última hora: ' || count(*) from public.otp_sends
+          where delivered and created_at > now() - interval '1 hour';
+          do $$ begin
+            if exists (select 1 from public.otp_sends where delivered and created_at > now() - interval '1 hour') then
+              raise exception 'HMY: un proveedor entregó un mensaje';
+            end if;
+          end $$;
+          SQL

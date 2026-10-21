@@ -16,7 +16,7 @@ export interface HookResult {
 
 const enc = new TextEncoder();
 
-function b64decode(s: string): Uint8Array {
+function b64decode(s: string): Uint8Array<ArrayBuffer> {
   const bin = atob(s);
   return Uint8Array.from(bin, (c) => c.charCodeAt(0));
 }
