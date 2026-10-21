@@ -44,6 +44,16 @@ android {
     }
 
     signingConfigs {
+        // APK de prueba de GitHub Actions: siempre la misma llave de depuración,
+        // así cada versión se instala encima de la anterior.
+        System.getenv("HMY_DEBUG_KEYSTORE")?.takeIf { it.isNotBlank() }?.let { path ->
+            getByName("debug") {
+                storeFile = file(path)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
         if (releaseStoreFile != null) {
             create("release") {
                 storeFile = file(releaseStoreFile)

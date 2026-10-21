@@ -105,6 +105,7 @@ jobs:
       # (Android no instala un APK sin firmar). Nunca se sube a Google Play.
       - name: Compilar APK de prueba (instalable, solo para probar)
         run: |
+          export HMY_DEBUG_KEYSTORE="$HOME/.android/debug.keystore"
           flutter build apk --debug --dart-define-from-file="config/supabase-${ENTORNO}.json" --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
           cp build/app/outputs/flutter-apk/app-debug.apk "build/app/outputs/flutter-apk/handimanya-prueba-${ENTORNO}.apk"
       - name: Comprobar las fotos de bienvenida dentro del APK
