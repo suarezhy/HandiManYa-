@@ -78,6 +78,8 @@ class AppError implements Exception {
   }
 
   static const _codes = {
+    'HMY_NO_PROFESSIONALS_AVAILABLE': 'No hay profesionales disponibles ahora para este servicio en tu zona. Prueba en otra zona o programa para después.',
+    'HMY_ALREADY_TAKEN': 'Otro profesional ya tomó este pedido.',
     'HMY_IDENTITY_PAUSED':
         'La verificación de identidad está en pausa por ahora. Tu postulación sigue en revisión; te avisaremos.',
     'HMY_IDENTITY_OFF': 'La verificación de identidad todavía no está disponible. Tu postulación sigue en revisión.',

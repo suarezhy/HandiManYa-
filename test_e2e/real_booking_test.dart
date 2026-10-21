@@ -7,7 +7,9 @@
 // (supabase/e2e/cleanup.sql). Sin E2E_URL, E2E_ANON_KEY y E2E_PASSWORD se salta.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/core/utils/app_error.dart';
+import 'package:handimanya/data/models/admin.dart';
 import 'package:handimanya/data/models/booking.dart';
+import 'package:handimanya/data/models/geo.dart';
 import 'package:handimanya/data/models/user.dart';
 import 'package:handimanya/data/supabase/supabase_backend.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -45,7 +47,7 @@ void main() {
   final configured = _url.isNotEmpty && _key.isNotEmpty && _pw.isNotEmpty;
 
   test(
-    'reserva real: postulación, aprobación, recarga, pedido, trabajo, pago, reseña y privacidad',
+    'reserva real: postulación, aprobación, recarga, pedido, viaje en vivo, trabajo, pago, reseña, ¡Ya! con GPS, reportes y privacidad',
     () async {
       final customer = await _step('el cliente entra', () => _signIn('e2e-cliente@test.bo'));
       final pro = await _step('el profesional entra', () => _signIn('e2e-pro@test.bo'));
@@ -175,6 +177,41 @@ void main() {
         expect((await pro.conversations()).map((c) => c.id), contains(conv.id));
       });
       await _step('en camino', () => pro.updateProgress(bookingId, BookingStatus.onTheWay));
+
+      // Viaje en vivo: solo el profesional manda su posición, y solo mientras va en camino.
+      await _step('el cliente no puede mandar la posición del profesional', () async {
+        await expectLater(
+          customer.shareTripLocation(bookingId, const GeoPoint(-17.785, -63.182)),
+          _code('HMY_FORBIDDEN'),
+        );
+      });
+      await _step('una posición fuera de Bolivia se rechaza', () async {
+        await expectLater(pro.shareTripLocation(bookingId, const GeoPoint(40.4, -3.7)), _code('HMY_INVALID_LOCATION'));
+      });
+      await _step('el profesional comparte su posición y el cliente la ve en vivo', () async {
+        expect(await pro.shareTripLocation(bookingId, const GeoPoint(-17.785, -63.182), accuracyM: 15), isTrue);
+        expect(
+          await pro.shareTripLocation(bookingId, const GeoPoint(-17.786, -63.182)),
+          isFalse,
+          reason: 'una segunda posición en menos de 5 segundos se ignora',
+        );
+        final t = await customer.tripLocation(bookingId);
+        expect(t.live, isTrue);
+        expect(t.latitude, closeTo(-17.785, 0.001));
+      });
+      await _step('el profesional no ve el viaje como cliente', () async {
+        await expectLater(pro.tripLocation(bookingId), _code('HMY_FORBIDDEN'));
+      });
+      await _step('un contacto de confianza sigue el viaje con el enlace, sin cuenta', () async {
+        final token = await customer.createTripShare(bookingId, contactName: 'Contacto E2E');
+        final anon = SupabaseBackend(
+          SupabaseClient(_url, _key, authOptions: const AuthClientOptions(autoRefreshToken: false)),
+        );
+        final shared = await anon.sharedTrip(token);
+        expect(shared.status, BookingStatus.onTheWay);
+        expect(shared.trip?.live, isTrue);
+        await expectLater(anon.sharedTrip('codigo-que-no-existe'), _code('HMY_SHARE_NOT_FOUND'));
+      });
       // Código de llegada (migración 0014). Mientras no esté aplicada en dev, se avisa y se sigue.
       ArrivalPin? pin;
       try {
@@ -194,6 +231,9 @@ void main() {
         await _step('el cliente verifica la llegada con el código', () async {
           expect((await customer.verifyArrivalPin(bookingId, pin!.pin)).result, ArrivalCheckResult.verified);
           expect((await pro.arrival(bookingId)).verified, isTrue);
+        });
+        await _step('al verificar la llegada se deja de compartir la posición', () async {
+          expect((await customer.tripLocation(bookingId)).live, isFalse);
         });
       }
       await _step('en progreso y trabajo terminado', () async {
@@ -230,9 +270,98 @@ void main() {
         expect((await customer.detail(id)).status, BookingStatus.cancelled);
       });
 
+      // ¡Ya! con GPS: el pedido llega solo a quien está dentro de su radio.
+      await _step('el profesional fija su base y un radio de 3 km', () async {
+        await expectLater(
+          pro.setServiceLocation(latitude: 40.4, longitude: -3.7, radiusKm: 3),
+          _code('HMY_INVALID_LOCATION'),
+        );
+        await pro.setServiceLocation(latitude: -17.78, longitude: -63.18, radiusKm: 3);
+      });
+      await _step('¡Ya! cuenta al profesional cerca y no lejos', () async {
+        final near = await customer.countYaAvailable(
+          categoryId: category,
+          cityId: city,
+          latitude: -17.79,
+          longitude: -63.18,
+        );
+        final far = await customer.countYaAvailable(
+          categoryId: category,
+          cityId: city,
+          latitude: -17.95,
+          longitude: -63.18,
+        );
+        expect(near, greaterThanOrEqualTo(1));
+        expect(near, greaterThan(far));
+      });
+      await _step('un pedido ¡Ya! lejos de todos se rechaza', () async {
+        await expectLater(
+          customer.create(
+            BookingDraft(
+              categoryId: category,
+              cityId: city,
+              mode: BookingMode.now,
+              description: 'Prueba E2E: ¡Ya! fuera del radio',
+              address: 'Calle Lejana 1',
+              paymentMethod: PaymentMethod.cash,
+              latitude: -21.5,
+              longitude: -64.7,
+            ),
+          ),
+          _code('HMY_NO_PROFESSIONALS_AVAILABLE'),
+        );
+      });
+      final yaId = await _step('el cliente pide ¡Ya! cerca del profesional', () {
+        return customer.create(
+          BookingDraft(
+            categoryId: category,
+            cityId: city,
+            mode: BookingMode.now,
+            description: 'Prueba E2E: ¡Ya! se cortó la luz',
+            address: 'Calle Prueba 456',
+            paymentMethod: PaymentMethod.cash,
+            latitude: -17.7912,
+            longitude: -63.1801,
+          ),
+        );
+      });
+      await _step('al profesional le llega la oferta con distancia y sin dirección', () async {
+        final offer = (await pro.myBookings(asProfessional: true)).firstWhere((b) => b.id == yaId);
+        expect(offer.isOffer, isTrue);
+        expect(offer.distanceKm, isNotNull);
+        expect(offer.distanceKm!, lessThan(3));
+        expect((await pro.detail(yaId)).address, isNull);
+      });
+      await _step('el profesional toma el ¡Ya! y recién ve la dirección', () async {
+        await pro.accept(yaId, isOffer: true);
+        final d = await pro.detail(yaId);
+        expect(d.status, BookingStatus.confirmed);
+        expect(d.address?.line, 'Calle Prueba 456');
+      });
+      await _step('el ¡Ya! tomado no se puede tomar otra vez', () async {
+        await expectLater(pro.accept(yaId, isOffer: true), _code('HMY_ALREADY_TAKEN'));
+      });
+
+      // Reportes: el cliente reporta y solo el equipo los ve y resuelve.
+      await _step('el cliente cancela el ¡Ya! y reporta al profesional', () async {
+        await customer.cancel(yaId, 'Prueba E2E: no llegó');
+        await customer.reportUser(userId: _proId, reason: ReportReason.noShow, details: 'Prueba E2E', bookingId: yaId);
+      });
+      await _step('un cliente no ve los reportes del equipo', () async {
+        await expectLater(customer.adminReports(), _code('HMY_FORBIDDEN'));
+      });
+      await _step('el equipo ve el reporte y lo resuelve', () async {
+        final report = (await admin.adminReports()).firstWhere((r) => r.bookingId == yaId);
+        expect(report.reportedId, _proId);
+        expect(report.reason, ReportReason.noShow);
+        await admin.reviewReport(report.id, CaseStatus.resolved, resolution: 'Prueba E2E revisada');
+        final resolved = await admin.adminReports(status: 'resolved');
+        expect(resolved.firstWhere((r) => r.id == report.id).status, CaseStatus.resolved);
+      });
+
       await _step('el profesional deja de estar disponible', () => pro.setAvailability(false));
     },
     skip: configured ? false : 'Falta E2E_URL, E2E_ANON_KEY o E2E_PASSWORD',
-    timeout: const Timeout(Duration(minutes: 4)),
+    timeout: const Timeout(Duration(minutes: 6)),
   );
 }
