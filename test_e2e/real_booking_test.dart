@@ -56,7 +56,9 @@ void main() {
       final city = cities.first.id;
       final categories = await _step('categorías desde la base', customer.categories);
       expect(categories, isNotEmpty);
-      final category = categories.first.id;
+      // Un servicio que no exige documento extra; la cerrajería y similares se prueban aparte.
+      final category = categories.firstWhere((c) => c.requiredDoc == null && c.allowsYa).id;
+      final sensitive = categories.where((c) => c.requiredDoc != null).firstOrNull;
 
       for (final (name, api) in [
         ('Cliente Prueba E2E', customer),
@@ -78,7 +80,7 @@ void main() {
           primaryCategoryId: category,
           cityId: city,
           bio: 'Profesional de prueba automática',
-          categoryIds: {category},
+          categoryIds: {category, ?sensitive?.id},
           zoneIds: const {},
         );
         await pro.submitApplication();
@@ -116,6 +118,24 @@ void main() {
         await pro.setActiveRole(AppRole.professional);
         await pro.setAvailability(true);
       });
+
+      if (sensitive != null) {
+        await _step('sin su documento aceptado, nadie le pide un servicio sensible (${sensitive.slug})', () async {
+          await expectLater(
+            customer.create(
+              BookingDraft(
+                categoryId: sensitive.id,
+                cityId: city,
+                mode: BookingMode.now,
+                professionalId: _proId,
+                description: 'Prueba E2E: servicio que exige documento',
+                address: 'Calle Prueba 123',
+              ),
+            ),
+            _code('HMY_PRO_NOT_CLEARED'),
+          );
+        });
+      }
 
       // Pedido directo: la dirección exacta solo se ve después de aceptar.
       final bookingId = await _step('el cliente pide al profesional', () {
