@@ -26,7 +26,10 @@ const base: Env = {
 };
 
 /** Simula Supabase y Didit; guarda cada llamada. */
-function fakeFetch(rpcs: Record<string, unknown>, opts: { user?: string | null; didit?: number } = {}) {
+function fakeFetch(
+  rpcs: Record<string, unknown>,
+  opts: { user?: string | null; didit?: number; diditBody?: string; diditThrows?: boolean } = {},
+) {
   const calls: { url: string; method: string; body: string; headers: Record<string, string> }[] = [];
   const fn = async (url: string, init?: RequestInit) => {
     calls.push({
@@ -41,10 +44,21 @@ function fakeFetch(rpcs: Record<string, unknown>, opts: { user?: string | null; 
     const rpc = url.match(/\/rpc\/(\w+)$/)?.[1];
     if (rpc) return new Response(JSON.stringify(rpcs[rpc] ?? null), { status: 200 });
     if (url.endsWith('/v3/session/')) {
-      // Como responde Didit (docs.didit.me/sessions-api/create-session): el enlace va en "url".
-      return new Response(JSON.stringify({ session_id: 'ses-1', session_token: 'tok', url: 'https://verify.didit.me/s/abc', status: 'Not Started' }), {
-        status: opts.didit ?? 201,
-      });
+      if (opts.diditThrows) throw new TypeError('connect ECONNREFUSED didit-key token=SECRETO');
+      // Como responde Didit (docs.didit.me/sessions-api/create-session): 201 y el enlace en "url".
+      const body =
+        opts.diditBody ??
+        JSON.stringify({
+          session_id: 'ses-1',
+          session_kind: 'user',
+          session_number: 1024,
+          session_token: 'tok12345abcd',
+          url: 'https://verify.didit.me/session/tok12345abcd',
+          status: 'Not Started',
+          workflow_id: '1b2c3d4e-0000-4000-8000-00000000abcd',
+          vendor_data: 'pro-1',
+        });
+      return new Response(body, { status: opts.didit ?? 201 });
     }
     if (url.includes('/decision/')) {
       return new Response(JSON.stringify({ status: 'Approved', face_matches: [{ score: 91 }] }));
@@ -129,7 +143,7 @@ test('pedir la verificación: sandbox por defecto, solo el id interno va a Didit
   const { fn, calls } = fakeFetch({ hmy_identity_begin: { allowed: true, resume: false, id: 9 } });
   const r = await handleStart(start(), base, fn);
   assert.equal(r.status, 200);
-  assert.deepEqual(r.body, { verification_url: 'https://verify.didit.me/s/abc', sandbox: true });
+  assert.deepEqual(r.body, { verification_url: 'https://verify.didit.me/session/tok12345abcd', sandbox: true });
   const begin = calls.find((c) => c.url.endsWith('/rpc/hmy_identity_begin'))!;
   assert.deepEqual(JSON.parse(begin.body), { p_user: 'pro-1', p_sandbox: true });
   const create = calls.find((c) => c.url.endsWith('/v3/session/'))!;
@@ -190,13 +204,73 @@ test('pedir la verificación: un id de flujo que no es UUID no llega a Didit', a
   assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_failed')));
 });
 
-test('pedir la verificación: si Didit falla, no se simula éxito', async () => {
-  const { fn, calls } = fakeFetch({ hmy_identity_begin: { allowed: true, resume: false, id: 9 } }, { didit: 500 });
-  const r = await handleStart(start(), base, fn);
-  assert.equal(r.status, 502);
-  assert.deepEqual(r.body, { error: 'HMY_IDENTITY_SEND_FAILED', didit_status: 500 });
-  assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_failed')));
+/** Captura console.error mientras corre fn. */
+async function captureLogs(fn: () => Promise<unknown>): Promise<string> {
+  const lines: string[] = [];
+  const original = console.error;
+  console.error = (...a: unknown[]) => lines.push(a.map(String).join(' '));
+  try {
+    await fn();
+  } finally {
+    console.error = original;
+  }
+  return lines.join('\n');
+}
+
+const begin = { hmy_identity_begin: { allowed: true, resume: false, id: 9 } };
+const sensitive = /didit-key|pro-1|tok12345abcd|SECRETO|ECONNREFUSED|Marta|1234567|1b2c3d4e|detail|permission/i;
+
+test('pedir la verificación: 201 de Didit guarda session_id y url de la respuesta', async () => {
+  const { fn, calls } = fakeFetch(begin);
+  const logs = await captureLogs(() => handleStart(start(), base, fn));
+  const saved = JSON.parse(calls.find((c) => c.url.endsWith('/rpc/hmy_identity_session'))!.body);
+  assert.deepEqual(saved, { p_check: 9, p_session_id: 'ses-1', p_url: 'https://verify.didit.me/session/tok12345abcd' });
+  assert.equal(logs, '', 'si todo sale bien no se registra nada');
 });
+
+test('pedir la verificación: sin DIDIT_WORKFLOW_ID (o vacío) no se llama a Didit', async () => {
+  for (const wf of [undefined, '', '   ']) {
+    const { fn, calls } = fakeFetch(begin);
+    const r = await handleStart(start(), { ...base, DIDIT_WORKFLOW_ID: wf }, fn);
+    assert.deepEqual(r.body, { error: 'HMY_IDENTITY_OFF' });
+    assert.equal(calls.some((c) => c.url.includes('didit.me')), false);
+    assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_failed')));
+  }
+});
+
+test('pedir la verificación: el UUID se acepta con espacios alrededor y se envía limpio', async () => {
+  const { fn, calls } = fakeFetch(begin);
+  const r = await handleStart(start(), { ...base, DIDIT_WORKFLOW_ID: '  1b2c3d4e-0000-4000-8000-00000000abcd\n' }, fn);
+  assert.equal(r.status, 200);
+  assert.equal(JSON.parse(calls.find((c) => c.url.endsWith('/v3/session/'))!.body).workflow_id, '1b2c3d4e-0000-4000-8000-00000000abcd');
+});
+
+for (const [name, opts, reason, status] of [
+  ['HTTP 400 (flujo inválido)', { didit: 400, diditBody: '{"workflow_id": "Invalid workflow_id."}' }, 'didit_http_error', 400],
+  ['HTTP 401 (clave)', { didit: 401, diditBody: '{"detail": "Invalid API key didit-key"}' }, 'didit_http_error', 401],
+  ['HTTP 403 (permiso)', { didit: 403, diditBody: '{"detail": "You do not have permission to perform this action."}' }, 'didit_http_error', 403],
+  ['HTTP 429 (límite)', { didit: 429, diditBody: '{"detail": "rate limit"}' }, 'didit_http_error', 429],
+  ['HTTP 500', { didit: 500, diditBody: 'Internal error for pro-1 Marta 1234567' }, 'didit_http_error', 500],
+  ['red caída', { diditThrows: true }, 'didit_unreachable', 0],
+  ['201 sin url', { diditBody: '{"session_id":"ses-1","session_token":"tok12345abcd"}' }, 'didit_missing_fields', 201],
+  ['201 sin session_id', { diditBody: '{"url":"https://verify.didit.me/session/tok12345abcd"}' }, 'didit_missing_fields', 201],
+  ['201 con url que no es https', { diditBody: '{"session_id":"ses-1","url":"javascript:alert(1)"}' }, 'didit_missing_fields', 201],
+  ['201 con JSON roto', { diditBody: '{no es json tok12345abcd' }, 'didit_bad_json', 201],
+] as const) {
+  test(`pedir la verificación: ${name} → falla clara, sin simular éxito y sin datos en el registro`, async () => {
+    const { fn, calls } = fakeFetch(begin, opts);
+    let r: Awaited<ReturnType<typeof handleStart>> | undefined;
+    const logs = await captureLogs(async () => {
+      r = await handleStart(start(), base, fn);
+    });
+    assert.equal(r!.status, 502);
+    assert.deepEqual(r!.body, { error: 'HMY_IDENTITY_SEND_FAILED', reason, didit_status: status });
+    assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_failed')));
+    assert.equal(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_session')), false);
+    assert.equal(logs, `HMY_IDENTITY_SEND_FAILED code=${reason} didit_status=${status}`);
+    assert.doesNotMatch(logs + JSON.stringify(r!.body), sensitive);
+  });
+}
 
 test('aviso de Didit: sin firma válida, se rechaza', async () => {
   const { fn, calls } = fakeFetch({});

@@ -22,6 +22,7 @@ export interface Result {
 }
 
 const DIDIT = 'https://verification.didit.me';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const enc = new TextEncoder();
 
 const error = (status: number, code: string): Result => ({ status, body: { error: code } });
@@ -244,50 +245,61 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
   }
   if (g.resume && g.verification_url) return { status: 200, body: { verification_url: g.verification_url, sandbox } };
 
-  if (!env.DIDIT_API_KEY || !env.DIDIT_WORKFLOW_ID) {
+  const workflowId = (env.DIDIT_WORKFLOW_ID ?? '').trim();
+  if (!env.DIDIT_API_KEY || !workflowId) {
     await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
     return error(503, 'HMY_IDENTITY_OFF');
   }
   // El id de un flujo de Didit es un UUID (Console > Workflows). Un nombre o un
   // texto copiado de más se detecta aquí, sin llamar a Didit.
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(env.DIDIT_WORKFLOW_ID.trim())) {
+  if (!UUID.test(workflowId)) {
     await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
     return error(503, 'HMY_IDENTITY_BAD_WORKFLOW_ID');
   }
   // Didit responde 201 con { session_id, url, session_token, ... }: el enlace es "url".
-  let session: { session_id?: string; url?: string; verification_url?: string } = {};
+  // Al registro de la función solo van un código propio y el código HTTP: nunca
+  // el cuerpo de Didit, mensajes de error, claves, tokens ni datos de la persona.
+  let session: { session_id?: unknown; url?: unknown; verification_url?: unknown } = {};
   let diditStatus = 0;
+  let failure = '';
   try {
     const res = await fetchFn(`${DIDIT}/v3/session/`, {
       method: 'POST',
       headers: { 'x-api-key': env.DIDIT_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        workflow_id: env.DIDIT_WORKFLOW_ID.trim(),
+        workflow_id: workflowId,
         // Solo el id interno; nunca el nombre ni el carnet.
         vendor_data: user,
         ...(env.DIDIT_CALLBACK_URL ? { callback: env.DIDIT_CALLBACK_URL } : {}),
       }),
     });
     diditStatus = res.status;
-    if (res.ok) session = await res.json();
-    // Para el registro de la función (Supabase > Edge Functions > Logs): el
-    // motivo que da Didit. No lleva datos de la persona, solo el id interno.
-    else console.error(`Didit rechazó crear la sesión (${res.status}): ${(await res.text()).slice(0, 300)}`);
-  } catch (e) {
-    console.error(`No se pudo llamar a Didit: ${e}`);
-  }
-  const link = session.url ?? session.verification_url;
-  if (!session.session_id || !link) {
-    if (diditStatus >= 200 && diditStatus < 300) {
-      console.error(`Didit creó la sesión pero la respuesta no trae session_id o url (campos: ${Object.keys(session).join(', ')})`);
+    if (!res.ok) {
+      failure = 'didit_http_error';
+    } else {
+      try {
+        const body = await res.json();
+        if (body && typeof body === 'object') session = body;
+      } catch {
+        failure = 'didit_bad_json';
+      }
     }
+  } catch {
+    failure = 'didit_unreachable';
+  }
+  const sessionId = typeof session.session_id === 'string' && session.session_id ? session.session_id : null;
+  const rawLink = typeof session.url === 'string' ? session.url : session.verification_url;
+  const link = typeof rawLink === 'string' && /^https:\/\//.test(rawLink) ? rawLink : null;
+  if (!sessionId || !link) {
+    if (!failure) failure = 'didit_missing_fields';
+    console.error(`HMY_IDENTITY_SEND_FAILED code=${failure} didit_status=${diditStatus}`);
     await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
     // Solo el código HTTP de Didit, para saber si es la clave (401/403) o el flujo (400/404).
-    return { status: 502, body: { error: 'HMY_IDENTITY_SEND_FAILED', didit_status: diditStatus } };
+    return { status: 502, body: { error: 'HMY_IDENTITY_SEND_FAILED', reason: failure, didit_status: diditStatus } };
   }
   const saved = await rpc(env, fetchFn, 'hmy_identity_session', {
     p_check: g.id,
-    p_session_id: session.session_id,
+    p_session_id: sessionId,
     p_url: link,
   });
   if (!saved.ok) return error(500, 'HMY_IDENTITY_UNAVAILABLE');
