@@ -13,3 +13,5 @@ One line per confirmed mistake: what went wrong, the rule now, and the test that
 - **Diagnose secrets by name before changing code.** `SUPABASE_ANNON_KEY` (typo) looked like an empty `SUPABASE_ANON_KEY`. Workflows print only whether a secret is set and its length, never the value.
 - **CI host checks scan comments too.** A `https://` link in a comment would have failed the "only Didit and the database" check. Write hosts in comments without the scheme.
 - **Node's type stripping doesn't type-check.** `send-otp` passed its Node tests but failed `deno check` on a `Uint8Array` type. Bundled Edge Functions now always go through `deno check` before they're handed over for deploy.
+- **Check the exact Edge Function name before testing a deploy.** Dev had `identity-check` and `Identity-check`; the new code went to the unused one. A failure reply without `reason`/`didit_status` means the old identity-check answered.
+- **Sessions orphaned by old code come back.** Didit reuses an open session for the same `vendor_data`, so its "Not Started" webhook may never arrive again. The first sandbox run after a fix can miss that check; the next run starts clean.
