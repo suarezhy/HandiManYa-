@@ -21,6 +21,7 @@ const _relatedGroups = [
   {'belleza', 'manicure'},
   {'ninera', 'mascotas'},
   {'clases', 'eventos'},
+  {'asesoria-legal', 'notario'},
 ];
 
 /// Los servicios relacionados con el principal, en el orden de la app.
@@ -152,12 +153,11 @@ class _ServiceSelectorSheetState extends State<ServiceSelectorSheet> {
     title: Text(c.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
     subtitle: c.requiredDoc == null
         ? null
-        : Text(
-            c.requiredDoc == 'certificado'
-                ? 'Pide título o matrícula y revisión del equipo'
-                : 'Pide antecedentes y revisión del equipo',
-            style: const TextStyle(color: HyColors.textSecondary),
-          ),
+        : Text(switch (c.requiredDoc) {
+            'certificado' => 'Pide título o matrícula y revisión del equipo',
+            'nombramiento_notarial' => 'Pide la resolución de nombramiento (DIRNOPLU) y revisión del equipo',
+            _ => 'Pide antecedentes y revisión del equipo',
+          }, style: const TextStyle(color: HyColors.textSecondary)),
     onChanged: (v) => setState(() => v == true ? _picked.add(c.id) : _picked.remove(c.id)),
   );
 }

@@ -103,6 +103,7 @@ class AdminDocument {
     'ci_anverso' => 'Carnet de identidad (frente)',
     'ci_reverso' => 'Carnet de identidad (reverso)',
     'certificado' => 'Certificado o título',
+    'nombramiento_notarial' => 'Resolución de nombramiento de notario',
     'antecedentes' => 'Certificado de antecedentes',
     _ => 'Otro documento',
   };

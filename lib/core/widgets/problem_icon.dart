@@ -111,6 +111,7 @@ IconData problemIcon(String name) => switch (name) {
   'window' => Icons.window,
   'work' => Icons.work,
   'yard' => Icons.yard,
+  'outdoor_grill' => Icons.outdoor_grill,
   'other' => Icons.edit_note_rounded,
   _ => Icons.handyman,
 };
@@ -188,6 +189,7 @@ const problemIconNames = [
   'music_note',
   'no_meeting_room',
   'oil_barrel',
+  'outdoor_grill',
   'palette',
   'park',
   'pets',

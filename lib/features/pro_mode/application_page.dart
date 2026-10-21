@@ -408,9 +408,11 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                     ),
                     const SizedBox(height: HySpacing.xs),
                     SecondaryButton(
-                      label: c.requiredDoc == 'certificado'
-                          ? 'Subir título o matrícula'
-                          : 'Subir certificado de antecedentes',
+                      label: switch (c.requiredDoc) {
+                        'certificado' => 'Subir título o matrícula',
+                        'nombramiento_notarial' => 'Subir resolución de nombramiento',
+                        _ => 'Subir certificado de antecedentes',
+                      },
                       icon: Icons.upload_file,
                       onPressed: _uploading ? null : () => _pickDocument(c.requiredDoc!),
                     ),

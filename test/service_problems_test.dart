@@ -192,6 +192,7 @@ const expectedProblems = {
     'Organización de fiestas',
     'Limpieza después del evento',
     'Montaje de mesas y sillas',
+    'Churrasquero (parrillero)',
     'Atención de invitados',
     'Otro servicio',
   ],
@@ -204,6 +205,13 @@ const expectedProblems = {
     'Asuntos comerciales',
     'Documentos legales',
     'Otra consulta',
+  ],
+  'notario': [
+    'Poderes',
+    'Reconocimiento de firmas',
+    'Copias legalizadas',
+    'Minutas y escrituras',
+    'Otro trámite notarial',
   ],
 };
 
@@ -263,8 +271,8 @@ int _problemId(int categoryId, String name) =>
 
 void main() {
   group('catálogo de problemas', () {
-    test('las 18 categorías tienen exactamente las opciones pedidas, en orden', () {
-      expect(DemoData.categories, hasLength(18));
+    test('las 19 categorías tienen exactamente las opciones pedidas, en orden', () {
+      expect(DemoData.categories, hasLength(19));
       for (final c in DemoData.categories) {
         final names = [
           for (final p
@@ -279,13 +287,17 @@ void main() {
       }
     });
 
-    test('la migración 0010 siembra las mismas opciones que la app de demostración', () {
+    test('las migraciones siembran las mismas opciones que la app de demostración', () {
       final sql = File('supabase/migrations/20261020001000_service_problems.sql').readAsStringSync();
+      // Churrasquero y Notario (0033) se agregan con otro formato.
+      final added = File('supabase/migrations/20261021003300_catalog_churrasquero_notario.sql').readAsStringSync();
       for (final c in DemoData.categories) {
         for (final p in DemoData.problems.where((p) => p.categoryId == c.id)) {
           final other = p.isOther ? 'true' : 'false';
           expect(
-            sql.contains("('${c.slug}', '${p.name}', '${p.icon}', $other, ${p.sortOrder})"),
+            sql.contains("('${c.slug}', '${p.name}', '${p.icon}', $other, ${p.sortOrder})") ||
+                added.contains("'${p.name}', '${p.icon}', $other, ${p.sortOrder}") ||
+                added.contains("'${p.name}', sort_order = ${p.sortOrder}"),
             isTrue,
             reason: '${c.name}: ${p.name}',
           );
@@ -306,7 +318,7 @@ void main() {
         expect(bySlug[slug]!.safetyNote, isNotEmpty, reason: slug);
         expect(bySlug[slug]!.proNote, isNotEmpty, reason: slug);
       }
-      expect(DemoData.categories.where((c) => c.isSensitive), hasLength(4));
+      expect(DemoData.categories.where((c) => c.isSensitive), hasLength(5));
     });
   });
 

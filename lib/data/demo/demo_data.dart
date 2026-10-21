@@ -143,7 +143,7 @@ abstract final class DemoData {
       slug: 'eventos',
       name: 'Eventos',
       icon: 'celebration',
-      description: 'Meseros, decoración y ayuda para fiestas',
+      description: 'Meseros, churrasqueros, decoración y ayuda para fiestas',
     ),
     ServiceCategory(
       id: 18,
@@ -155,6 +155,17 @@ abstract final class DemoData {
       allowsYa: false,
       safetyNote: 'Elige a quien te asesore y pídele su número de matrícula de abogado. La app solo los pone en contacto: los honorarios y el trabajo los acuerdas directamente con el profesional.',
       proNote: 'Para dar asesoría legal necesitas subir tu matrícula o credencial de abogado (Registro Público de la Abogacía) y que el equipo la acepte.',
+    ),
+    ServiceCategory(
+      id: 19,
+      slug: 'notario',
+      name: 'Notario de fe pública',
+      icon: 'history_edu',
+      description: 'Poderes, firmas y documentos con un notario nombrado',
+      requiredDoc: 'nombramiento_notarial',
+      allowsYa: false,
+      safetyNote: 'Pide ver la resolución de nombramiento del notario y su número de notaría. El arancel lo fija la Dirección del Notariado Plurinacional (DIRNOPLU): pide el detalle antes de firmar. La app solo los pone en contacto.',
+      proNote: 'Para ofrecer servicios de notario necesitas subir tu resolución de nombramiento de la DIRNOPLU (vigente y con tu notaría y territorio) y que el equipo la acepte. Cobra según el arancel oficial.',
     ),
   ];
 
@@ -321,6 +332,12 @@ abstract final class DemoData {
     ServiceProblem(id: 141, categoryId: 18, name: 'Asuntos comerciales', icon: 'storefront', sortOrder: 60),
     ServiceProblem(id: 142, categoryId: 18, name: 'Documentos legales', icon: 'gavel', sortOrder: 70),
     ServiceProblem(id: 143, categoryId: 18, name: 'Otra consulta', icon: 'other', sortOrder: 80, isOther: true),
+    ServiceProblem(id: 144, categoryId: 17, name: 'Churrasquero (parrillero)', icon: 'outdoor_grill', sortOrder: 65),
+    ServiceProblem(id: 145, categoryId: 19, name: 'Poderes', icon: 'assignment', sortOrder: 10),
+    ServiceProblem(id: 146, categoryId: 19, name: 'Reconocimiento de firmas', icon: 'description', sortOrder: 20),
+    ServiceProblem(id: 147, categoryId: 19, name: 'Copias legalizadas', icon: 'description', sortOrder: 30),
+    ServiceProblem(id: 148, categoryId: 19, name: 'Minutas y escrituras', icon: 'gavel', sortOrder: 40),
+    ServiceProblem(id: 149, categoryId: 19, name: 'Otro trámite notarial', icon: 'other', sortOrder: 50, isOther: true),
   ];
 
   static const promotions = [

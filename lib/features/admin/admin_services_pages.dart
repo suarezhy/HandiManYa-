@@ -39,6 +39,7 @@ const _categoryIconNames = [
   'school',
   'celebration',
   'gavel',
+  'history_edu',
   'build',
 ];
 
@@ -46,6 +47,7 @@ const _docLabels = {
   null: 'No pide documento extra',
   'antecedentes': 'Antecedentes (FELCC)',
   'certificado': 'Título o matrícula',
+  'nombramiento_notarial': 'Nombramiento de notario (DIRNOPLU)',
 };
 
 /// Quita tildes y espacios para armar el identificador de una categoría nueva.

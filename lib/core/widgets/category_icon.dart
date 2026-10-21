@@ -24,6 +24,7 @@ IconData categoryIcon(String name) => switch (name) {
   'school' => Icons.school,
   'celebration' => Icons.celebration,
   'gavel' => Icons.gavel,
+  'history_edu' => Icons.history_edu,
   'more' => Icons.more_horiz_rounded,
   _ => Icons.handyman,
 };
@@ -34,7 +35,11 @@ IconData categoryIcon(String name) => switch (name) {
   'electrical_services' || 'key' => (const Color(0xFFB37400), const Color(0xFFFFF5DC)),
   'yard' || 'format_paint' || 'pets' => (HyColors.greenDark, HyColors.greenSoft),
   'directions_car' || 'construction' || 'carpenter' => (HyColors.primaryDark, HyColors.primarySoft),
-  'cleaning_services' || 'content_cut' || 'spa' || 'gavel' => (const Color(0xFF6B3FA0), const Color(0xFFF2ECFA)),
+  'cleaning_services' ||
+  'content_cut' ||
+  'spa' ||
+  'gavel' ||
+  'history_edu' => (const Color(0xFF6B3FA0), const Color(0xFFF2ECFA)),
   _ => (HyColors.navy, HyColors.surfaceMuted),
 };
 

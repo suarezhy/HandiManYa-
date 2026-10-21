@@ -24,7 +24,7 @@ const priorityCategoryKeys = [
 const _groupKeys = [
   ['carpinteria', 'mecanica'],
   ['belleza', 'manicure', 'ninera', 'mascotas'],
-  ['clases', 'eventos', 'asesoria-legal'],
+  ['clases', 'eventos', 'asesoria-legal', 'notario'],
 ];
 
 /// Nombres alternativos que también identifican a un servicio prioritario.
