@@ -56,6 +56,21 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: android-debug-keystore-v1
+      # Gradle crea la llave de depuración en otra carpeta del runner, así que
+      # el caché no la encontraba. Se crea aquí la primera vez (los valores
+      # estándar de Android para depuración) y luego se reutiliza.
+      - name: Crear la llave de depuración si falta
+        run: |
+          ks="$HOME/.android/debug.keystore"
+          if [ ! -f "$ks" ]; then
+            mkdir -p "$HOME/.android"
+            keytool -genkeypair -v -keystore "$ks" -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null
+            echo "Llave de depuración nueva."
+          else
+            echo "Llave de depuración reutilizada."
+          fi
+          keytool -list -v -keystore "$ks" -storepass android | grep -m1 "SHA256:" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Preparar la firma (si hay secretos)
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -104,6 +119,14 @@ jobs:
           done
           [ "$(for i in 1 2 3 4; do sha256sum "assets/images/onboarding_$i.jpg" | cut -c1-64; done | sort -u | wc -l)" = 4 ] \
             || { echo "::error::Hay fotos de bienvenida repetidas"; exit 1; }
+      - name: El APK de prueba usa la llave de depuración guardada
+        run: |
+          apk="build/app/outputs/flutter-apk/handimanya-prueba-${ENTORNO}.apk"
+          signer=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          firma=$("$signer" verify --print-certs "$apk" | grep -m1 "SHA-256 digest" | awk '{print $NF}' | tr 'a-f' 'A-F')
+          llave=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android | grep -m1 "SHA256:" | awk '{print $2}' | tr -d ':')
+          echo "Firma del APK: $firma" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$firma" = "$llave" ] || { echo "::error::El APK no está firmado con la llave de depuración guardada"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: android-prueba-${{ env.ENTORNO }}-${{ github.run_number }}
