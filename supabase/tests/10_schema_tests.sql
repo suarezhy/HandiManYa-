@@ -76,8 +76,11 @@ insert into public.user_roles (user_id, role) values ('00000000-0000-0000-0000-0
 
 -- 1. Registro
 do $$ begin
-  perform test.eq((select count(*)::int from public.profiles), 5, 'cada cuenta nueva tiene perfil');
-  perform test.eq((select count(*)::int from public.user_roles where role = 'customer'), 5, 'cada cuenta nueva es cliente');
+  -- Solo las cuentas de prueba: en dev también hay cuentas reales de las pruebas en celulares.
+  perform test.eq((select count(*)::int from public.profiles p join auth.users u on u.id = p.id
+                   where u.email like '%@test.bo'), 5, 'cada cuenta nueva tiene perfil');
+  perform test.eq((select count(*)::int from public.user_roles r join auth.users u on u.id = r.user_id
+                   where r.role = 'customer' and u.email like '%@test.bo'), 5, 'cada cuenta nueva es cliente');
   perform test.eq((select phone from public.profiles where id = '00000000-0000-0000-0000-0000000000c1'), '+59171234567', 'guarda celular boliviano válido');
   perform test.eq((select phone from public.profiles where id = '00000000-0000-0000-0000-0000000000c2'), null::text, 'descarta celular inválido');
   perform test.eq((select terms_accepted_at is not null from public.profiles where id = '00000000-0000-0000-0000-0000000000c1'), true, 'registra aceptación de términos');
