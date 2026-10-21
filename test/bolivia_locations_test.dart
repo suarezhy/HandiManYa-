@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:handimanya/core/services/location_service.dart';
 import 'package:handimanya/core/utils/bolivia_geo.dart';
 import 'package:handimanya/data/demo/demo_data.dart';
 import 'package:handimanya/data/models/catalog.dart';
+import 'package:handimanya/data/models/geo.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:handimanya/features/common/city_picker.dart';
 
 const _all = DemoData.cities;
+
+class _Gps implements LocationService {
+  const _Gps(this.point);
+  final GeoPoint point;
+
+  @override
+  Future<GeoPoint> current() async => point;
+}
 
 City _bySlug(String slug) => _all.firstWhere((c) => c.slug == slug);
 
@@ -99,14 +109,22 @@ void main() {
   });
 
   group('buscador en pantalla', () {
-    Future<City?> open(WidgetTester tester, Size size, double scale) async {
+    Future<City?> open(
+      WidgetTester tester,
+      Size size,
+      double scale, {
+      GeoPoint gps = const GeoPoint(-17.78, -63.18),
+    }) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       City? picked;
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [citiesProvider.overrideWith((ref) async => _all)],
+          overrides: [
+            citiesProvider.overrideWith((ref) async => _all),
+            locationServiceProvider.overrideWithValue(_Gps(gps)),
+          ],
           child: MaterialApp(
             builder: (c, child) => MediaQuery(
               data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
@@ -138,7 +156,7 @@ void main() {
       ) async {
         await open(tester, size, scale);
         expect(tester.takeException(), isNull);
-        expect(find.byKey(const Key('city-dept-0')), findsOneWidget);
+        expect(find.byKey(const Key('city-gps')), findsOneWidget);
         await tester.enterText(find.byKey(const Key('city-search')), 'riberal');
         await tester.pumpAndSettle();
         final tile = find.byKey(const Key('city-riberalta-be'));
@@ -149,7 +167,17 @@ void main() {
       });
     }
 
-    testWidgets('filtrar por departamento y elegir devuelve el municipio', (tester) async {
+    testWidgets('sin escribir: solo ciudades principales, sin filtros por departamento', (tester) async {
+      await open(tester, const Size(390, 844), 1.0);
+      expect(find.byKey(const Key('city-dept-0')), findsNothing);
+      expect(find.byType(ChoiceChip), findsNothing);
+      expect(find.text('Ciudades principales'), findsOneWidget);
+      expect(find.byKey(const Key('city-santa-cruz')), findsOneWidget);
+      expect(find.byKey(const Key('city-el-alto')), findsOneWidget);
+      expect(find.byKey(const Key('city-uyuni-pt')), findsNothing, reason: 'la lista larga aparece solo al escribir');
+    });
+
+    testWidgets('elegir una sugerencia devuelve el municipio', (tester) async {
       City? picked;
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -169,15 +197,73 @@ void main() {
       );
       await tester.tap(find.text('abrir'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.byKey(const Key('city-dept-9')));
-      await tester.tap(find.byKey(const Key('city-dept-9')));
+      await tester.enterText(find.byKey(const Key('city-search')), 'cobi');
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('city-cobija')), findsOneWidget);
-      expect(find.byKey(const Key('city-santa-cruz')), findsNothing);
       await tester.tap(find.byKey(const Key('city-cobija')));
       await tester.pumpAndSettle();
       expect(picked?.name, 'Cobija');
       expect(find.byType(CityPickerSheet), findsNothing);
+    });
+
+    Future<void> openAndUseGps(WidgetTester tester, GeoPoint gps, {void Function(City?)? onPicked}) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            citiesProvider.overrideWith((ref) async => _all),
+            locationServiceProvider.overrideWithValue(_Gps(gps)),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (c) => TextButton(
+                  onPressed: () async {
+                    final city = await pickCity(c);
+                    onPicked?.call(city);
+                  },
+                  child: const Text('abrir'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('city-gps')));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('ubicación actual: sugiere el municipio y se confirma', (tester) async {
+      City? picked;
+      await openAndUseGps(tester, const GeoPoint(-20.4597, -66.8250), onPicked: (c) => picked = c); // Uyuni
+      expect(find.byKey(const Key('city-gps-result')), findsOneWidget);
+      expect(find.text('Uyuni'), findsWidgets);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('city-gps-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CityPickerSheet), findsNothing);
+      expect(picked?.slug, 'uyuni-pt');
+    });
+
+    testWidgets('ubicación actual: se puede corregir escribiendo otra ciudad', (tester) async {
+      await openAndUseGps(tester, const GeoPoint(-17.40, -66.16)); // Cochabamba
+      expect(find.byKey(const Key('city-gps-result')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('city-gps-change')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('city-gps-result')), findsNothing);
+      expect(find.byKey(const Key('city-gps')), findsOneWidget);
+      await tester.enterText(find.byKey(const Key('city-search')), 'quillacollo');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('city-quillacollo-cb')), findsOneWidget);
+    });
+
+    testWidgets('ubicación fuera de Bolivia: pide escribir la ciudad', (tester) async {
+      await openAndUseGps(tester, const GeoPoint(40.4168, -3.7038)); // Madrid
+      expect(find.byKey(const Key('city-gps-result')), findsNothing);
+      expect(find.byKey(const Key('city-gps-error')), findsOneWidget);
     });
 
     testWidgets('sin resultados muestra una ayuda', (tester) async {

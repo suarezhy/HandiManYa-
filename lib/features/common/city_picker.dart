@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../core/utils/app_error.dart';
+import '../../core/services/location_service.dart';
+import '../../core/utils/bolivia_geo.dart';
+import '../../core/widgets/buttons.dart';
 import '../../data/models/catalog.dart';
 import '../../data/providers.dart';
 
@@ -58,6 +62,24 @@ Future<void> showCityPicker(BuildContext context, WidgetRef ref) async {
   if (city != null) await ref.read(selectedCityProvider.notifier).select(city.id);
 }
 
+/// Ciudades que se sugieren antes de escribir: capitales y El Alto.
+const mainCitySlugs = [
+  'santa-cruz',
+  'la-paz',
+  'el-alto',
+  'cochabamba',
+  'sucre',
+  'oruro',
+  'potosi',
+  'tarija',
+  'trinidad',
+  'cobija',
+];
+
+/// Elegir municipio con dos caminos simples: escribir la ciudad (con
+/// sugerencias) o usar la ubicación actual y confirmarla. Busca en los 339
+/// municipios de Bolivia; si dos se llaman parecido, se distinguen por su
+/// provincia y departamento.
 class CityPickerSheet extends ConsumerStatefulWidget {
   const CityPickerSheet({super.key, this.selectedId, this.title = '¿Dónde estás?'});
 
@@ -70,18 +92,59 @@ class CityPickerSheet extends ConsumerStatefulWidget {
 
 class _CityPickerSheetState extends ConsumerState<CityPickerSheet> {
   final _query = TextEditingController();
-  int? _department;
+  final _focus = FocusNode();
+  bool _locating = false;
+  City? _gpsCity;
+  String? _gpsError;
 
   @override
   void dispose() {
     _query.dispose();
+    _focus.dispose();
     super.dispose();
+  }
+
+  Future<void> _useLocation(List<City> cities) async {
+    setState(() {
+      _locating = true;
+      _gpsError = null;
+      _gpsCity = null;
+    });
+    try {
+      final p = await ref.read(locationServiceProvider).current();
+      if (!mounted) return;
+      setState(() {
+        if (!isInBolivia(p.latitude, p.longitude)) {
+          _gpsError = 'Tu ubicación está fuera de Bolivia. Escribe tu ciudad.';
+        } else {
+          _gpsCity = nearestCity(cities, p.latitude, p.longitude);
+          if (_gpsCity == null) _gpsError = 'No pudimos reconocer tu ciudad. Escríbela.';
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => _gpsError = AppError.from(e).message);
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(citiesProvider);
-    final cities = filterCities(async.value ?? const [], query: _query.text, departmentId: _department);
+    final all = async.value ?? const <City>[];
+    final typed = _query.text.trim();
+    final List<City> shown;
+    if (typed.isEmpty) {
+      final bySlug = {for (final c in all) c.slug: c};
+      shown = [
+        for (final s in mainCitySlugs)
+          if (bySlug[s] != null) bySlug[s]!,
+      ];
+      final current = all.where((c) => c.id == widget.selectedId).firstOrNull;
+      if (current != null && !shown.contains(current)) shown.insert(0, current);
+    } else {
+      shown = filterCities(all, query: typed).take(40).toList();
+    }
     return FractionallySizedBox(
       heightFactor: 0.92,
       child: Padding(
@@ -93,21 +156,16 @@ class _CityPickerSheetState extends ConsumerState<CityPickerSheet> {
               padding: const EdgeInsets.symmetric(horizontal: HySpacing.page),
               child: Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(HySpacing.page, HySpacing.xxs, HySpacing.page, HySpacing.sm),
-              child: Text(
-                'Elige tu municipio. Estamos en los 9 departamentos de Bolivia.',
-                style: TextStyle(color: HyColors.textSecondary),
-              ),
-            ),
+            const SizedBox(height: HySpacing.sm),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: HySpacing.page),
               child: TextField(
                 key: const Key('city-search'),
                 controller: _query,
+                focusNode: _focus,
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
-                  hintText: 'Busca tu municipio, pueblo o provincia',
+                  hintText: 'Escribe tu ciudad',
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: _query.text.isEmpty
                       ? null
@@ -120,54 +178,71 @@ class _CityPickerSheetState extends ConsumerState<CityPickerSheet> {
                 onChanged: (_) => setState(() {}),
               ),
             ),
-            const SizedBox(height: HySpacing.sm),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
+            const SizedBox(height: HySpacing.xs),
+            Padding(
               padding: const EdgeInsets.symmetric(horizontal: HySpacing.page),
-              child: Row(
-                children: [
-                  for (final entry in [
-                    const MapEntry<int?, String>(null, 'Toda Bolivia'),
-                    ...boliviaDepartments.entries,
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(right: HySpacing.xs),
-                      child: ChoiceChip(
-                        key: Key('city-dept-${entry.key ?? 0}'),
-                        label: Text(entry.value),
-                        selected: _department == entry.key,
-                        onSelected: (_) => setState(() => _department = entry.key),
-                      ),
+              child: _gpsCity == null
+                  ? OutlinedButton.icon(
+                      key: const Key('city-gps'),
+                      onPressed: _locating || all.isEmpty ? null : () => _useLocation(all),
+                      icon: _locating
+                          ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.my_location),
+                      label: Text(_locating ? 'Buscando tu ubicación…' : 'Usar mi ubicación actual'),
+                    )
+                  : _GpsConfirm(
+                      city: _gpsCity!,
+                      onConfirm: () => Navigator.pop(context, _gpsCity),
+                      onChange: () {
+                        setState(() => _gpsCity = null);
+                        _focus.requestFocus();
+                      },
                     ),
-                ],
+            ),
+            if (_gpsError != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.xs, HySpacing.page, 0),
+                child: Text(
+                  _gpsError!,
+                  key: const Key('city-gps-error'),
+                  style: const TextStyle(color: HyColors.danger, fontSize: 15),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.md, HySpacing.page, HySpacing.xxs),
+              child: Text(
+                typed.isEmpty ? 'Ciudades principales' : 'Sugerencias',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: HyColors.textSecondary),
               ),
             ),
-            const SizedBox(height: HySpacing.xs),
             Expanded(
-              child: async.isLoading && cities.isEmpty
+              child: async.isLoading && all.isEmpty
                   ? const Center(child: CircularProgressIndicator())
-                  : cities.isEmpty
+                  : shown.isEmpty
                   ? Padding(
                       padding: const EdgeInsets.all(HySpacing.page),
                       child: Text(
-                        'No encontramos "${_query.text.trim()}". Prueba con el nombre de tu municipio o de tu provincia.',
+                        'No encontramos "$typed". Revisa cómo se escribe o prueba con el nombre de tu provincia.',
                         style: const TextStyle(color: HyColors.textSecondary, fontSize: 16),
                       ),
                     )
                   : ListView.builder(
                       key: const Key('city-list'),
-                      itemCount: cities.length,
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom + HySpacing.md),
+                      itemCount: shown.length,
                       itemBuilder: (c, i) {
-                        final city = cities[i];
+                        final city = shown[i];
                         final selected = city.id == widget.selectedId;
                         return ListTile(
                           key: Key('city-${city.slug}'),
                           minTileHeight: HySizes.touch + 8,
                           leading: Icon(
-                            selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                            selected ? Icons.check_circle : Icons.location_city_outlined,
                             color: selected ? HyColors.primary : HyColors.textMuted,
                           ),
                           title: Text(city.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                          // Provincia y departamento: distinguen municipios con nombres parecidos.
                           subtitle: city.place.isEmpty ? null : Text(city.place),
                           selected: selected,
                           onTap: () => Navigator.pop(c, city),
@@ -180,6 +255,37 @@ class _CityPickerSheetState extends ConsumerState<CityPickerSheet> {
       ),
     );
   }
+}
+
+/// La ciudad que sugiere el GPS: se confirma o se cambia.
+class _GpsConfirm extends StatelessWidget {
+  const _GpsConfirm({required this.city, required this.onConfirm, required this.onChange});
+
+  final City city;
+  final VoidCallback onConfirm;
+  final VoidCallback onChange;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('city-gps-result'),
+    padding: const EdgeInsets.all(HySpacing.sm),
+    decoration: BoxDecoration(
+      color: HyColors.surface,
+      borderRadius: BorderRadius.circular(HyRadii.md),
+      border: Border.all(color: HyColors.primary, width: 1.5),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text('Según tu ubicación estás en', style: TextStyle(color: HyColors.textSecondary)),
+        Text(city.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        if (city.place.isNotEmpty) Text(city.place, style: const TextStyle(color: HyColors.textSecondary)),
+        const SizedBox(height: HySpacing.xs),
+        PrimaryButton(key: const Key('city-gps-confirm'), label: 'Sí, usar ${city.name}', onPressed: onConfirm),
+        TextButton(key: const Key('city-gps-change'), onPressed: onChange, child: const Text('No, elegir otra')),
+      ],
+    ),
+  );
 }
 
 /// Campo de formulario que muestra el municipio elegido y abre el buscador.
