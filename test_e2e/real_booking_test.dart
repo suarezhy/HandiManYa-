@@ -165,7 +165,7 @@ void main() {
         expect(d.address?.line, 'Calle Prueba 123, casa verde');
       });
       await _step('el cliente no puede marcar el avance del profesional', () async {
-        await expectLater(customer.updateProgress(bookingId, BookingStatus.onTheWay), throwsA(isA<AppError>()));
+        await expectLater(customer.updateProgress(bookingId, BookingStatus.onTheWay), _code('HMY_FORBIDDEN'));
       });
       await _step('chat entre cliente y profesional', () async {
         final convs = await customer.conversations();
