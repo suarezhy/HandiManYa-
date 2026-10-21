@@ -71,7 +71,7 @@ class AdminList<T> extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
-        padding: const EdgeInsets.only(top: HySpacing.sm, bottom: HySpacing.xxl),
+        padding: bottomSafePadding(context, top: HySpacing.sm),
         children: [
           PageBody(
             child: Column(

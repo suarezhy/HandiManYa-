@@ -1,15 +1,55 @@
+/// Los nueve departamentos de Bolivia (mismos id que public.departments).
+const boliviaDepartments = <int, String>{
+  1: 'Chuquisaca',
+  2: 'La Paz',
+  3: 'Cochabamba',
+  4: 'Oruro',
+  5: 'Potosí',
+  6: 'Tarija',
+  7: 'Santa Cruz',
+  8: 'Beni',
+  9: 'Pando',
+};
+
+/// Un municipio de Bolivia (la tabla se llama `cities` por historia).
 class City {
-  const City({required this.id, required this.name, required this.slug});
+  const City({
+    required this.id,
+    required this.name,
+    required this.slug,
+    this.departmentId,
+    this.province,
+    this.latitude,
+    this.longitude,
+  });
 
   final int id;
   final String name;
   final String slug;
+  final int? departmentId;
+  final String? province;
+
+  /// Punto de referencia del municipio (en las capitales, la ciudad).
+  final double? latitude;
+  final double? longitude;
 
   /// Nombre corto para el encabezado ("Santa Cruz" en vez de "Santa Cruz de la Sierra").
   String get shortName => name.replaceAll(' de la Sierra', '');
 
-  factory City.fromMap(Map<String, dynamic> m) =>
-      City(id: (m['id'] as num).toInt(), name: m['name'] as String, slug: m['slug'] as String);
+  String? get department => boliviaDepartments[departmentId];
+
+  /// "Provincia Cercado · Potosí", para distinguir municipios con el mismo nombre.
+  String get place => [if (province != null) 'Prov. $province', ?department].join(' · ');
+
+  factory City.fromMap(Map<String, dynamic> m) => City(
+    id: (m['id'] as num).toInt(),
+    name: m['name'] as String,
+    slug: m['slug'] as String,
+    departmentId: (m['department_id'] as num?)?.toInt(),
+    province: m['province'] as String?,
+    latitude: (m['latitude'] as num?)?.toDouble(),
+    longitude: (m['longitude'] as num?)?.toDouble(),
+  );
 
   @override
   bool operator ==(Object other) => other is City && other.id == id;

@@ -49,7 +49,7 @@ class ProHomePage extends ConsumerWidget {
             ref.invalidate(myBookingsProvider(true));
           },
           child: ListView(
-            padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+            padding: bottomSafePadding(context),
             children: [
               PageBody(
                 child: Column(

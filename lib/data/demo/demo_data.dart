@@ -1,18 +1,17 @@
 import '../models/catalog.dart';
+import 'bolivia_municipalities.dart';
 
 /// Datos de ejemplo para el modo demostración. Nunca se usan cuando la app
 /// está conectada a Supabase.
 abstract final class DemoData {
-  static const cities = [
-    City(id: 1, name: 'Santa Cruz de la Sierra', slug: 'santa-cruz'),
-    City(id: 2, name: 'Cochabamba', slug: 'cochabamba'),
-    City(id: 3, name: 'La Paz', slug: 'la-paz'),
-  ];
+  /// Toda Bolivia; los tres primeros son Santa Cruz de la Sierra, Cochabamba y La Paz.
+  static const cities = boliviaMunicipalities;
 
   static const _zoneNames = ['Centro', 'Zona Norte', 'Zona Sur', 'Zona Este', 'Zona Oeste'];
 
   static final zones = [
-    for (final c in cities)
+    // Como en la base de datos, solo las tres ciudades grandes traen zonas.
+    for (final c in cities.take(3))
       for (var i = 0; i < _zoneNames.length; i++) Zone(id: c.id * 10 + i + 1, cityId: c.id, name: _zoneNames[i]),
   ];
 

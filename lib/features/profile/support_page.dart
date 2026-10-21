@@ -49,7 +49,7 @@ class SupportPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Ayuda y soporte')),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+        padding: bottomSafePadding(context),
         children: [
           PageBody(
             child: Column(

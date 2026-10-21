@@ -13,20 +13,66 @@ import '../../data/providers.dart';
 
 /// Marco común de las pantallas de acceso: logo, título y contenido con
 /// desplazamiento (nada se corta con letra grande).
-class AuthScaffold extends StatelessWidget {
-  const AuthScaffold({super.key, required this.title, this.subtitle, required this.child, this.showBack = true});
+///
+/// [keepVisible] marca el botón principal: cuando se abre el teclado, la
+/// pantalla se desplaza para que ese botón quede encima del teclado, sin
+/// esconder el campo que se está escribiendo.
+class AuthScaffold extends StatefulWidget {
+  const AuthScaffold({
+    super.key,
+    required this.title,
+    this.subtitle,
+    required this.child,
+    this.showBack = true,
+    this.keepVisible,
+  });
 
   final String title;
   final String? subtitle;
   final Widget child;
   final bool showBack;
+  final GlobalKey? keepVisible;
+
+  @override
+  State<AuthScaffold> createState() => _AuthScaffoldState();
+}
+
+class _AuthScaffoldState extends State<AuthScaffold> {
+  double _keyboard = 0;
+  bool _scheduled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final opening = keyboard > _keyboard;
+    _keyboard = keyboard;
+    if (opening && widget.keepVisible != null && !_scheduled) {
+      _scheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scheduled = false;
+        if (mounted) _revealAction();
+      });
+    }
+  }
+
+  void _revealAction() {
+    final action = widget.keepVisible?.currentContext;
+    if (action == null || !action.mounted) return;
+    Scrollable.ensureVisible(action, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd);
+    // Si no caben los dos, manda el campo que se está escribiendo.
+    final field = FocusManager.instance.primaryFocus?.context;
+    if (field != null && field.mounted && Scrollable.maybeOf(field) != null) {
+      Scrollable.ensureVisible(field, alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return Scaffold(
       backgroundColor: HyColors.surface,
-      appBar: showBack ? AppBar(backgroundColor: HyColors.surface) : null,
+      appBar: widget.showBack ? AppBar(backgroundColor: HyColors.surface) : null,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.md, HySpacing.page, HySpacing.xxl),
@@ -38,13 +84,13 @@ class AuthScaffold extends StatelessWidget {
                 children: [
                   const BrandLogo(height: 40),
                   const SizedBox(height: HySpacing.xl),
-                  Semantics(header: true, child: Text(title, style: text.headlineMedium)),
-                  if (subtitle != null) ...[
+                  Semantics(header: true, child: Text(widget.title, style: text.headlineMedium)),
+                  if (widget.subtitle != null) ...[
                     const SizedBox(height: HySpacing.xs),
-                    Text(subtitle!, style: text.bodyLarge?.copyWith(color: HyColors.textSecondary)),
+                    Text(widget.subtitle!, style: text.bodyLarge?.copyWith(color: HyColors.textSecondary)),
                   ],
                   const SizedBox(height: HySpacing.xl),
-                  child,
+                  widget.child,
                 ],
               ),
             ),
@@ -86,7 +132,16 @@ class PhoneField extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) => TextFormField(
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      // En un celular angosto con letra grande, el ícono le quita lugar al
+      // número: "+591" y las 8 cifras deben verse enteras.
+      final factor = MediaQuery.textScalerOf(context).scale(1);
+      return _field(box.maxWidth / factor >= 220);
+    },
+  );
+
+  Widget _field(bool withIcon) => TextFormField(
     key: const Key('phone-field'),
     controller: controller,
     keyboardType: TextInputType.phone,
@@ -97,7 +152,7 @@ class PhoneField extends StatelessWidget {
     decoration: InputDecoration(
       labelText: label,
       hintText: '7123 4567',
-      prefixIcon: const Icon(Icons.phone_iphone),
+      prefixIcon: withIcon ? const Icon(Icons.phone_iphone) : null,
       prefixText: '🇧🇴 +591  ',
     ),
     validator: Validators.boliviaPhone,
@@ -118,22 +173,34 @@ class ChannelPicker extends StatelessWidget {
     children: [
       const Text('¿Por dónde quieres recibir el código?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       const SizedBox(height: HySpacing.xs),
-      SegmentedButton<CodeChannel>(
-        segments: const [
-          ButtonSegment(
-            value: CodeChannel.whatsapp,
-            label: Text('WhatsApp', key: Key('channel-whatsapp')),
-            icon: Icon(Icons.chat_rounded),
-          ),
-          ButtonSegment(
-            value: CodeChannel.sms,
-            label: Text('SMS', key: Key('channel-sms')),
-            icon: Icon(Icons.sms_outlined),
-          ),
-        ],
-        selected: {value},
-        showSelectedIcon: false,
-        onSelectionChanged: (s) => onChanged(s.first),
+      LayoutBuilder(
+        builder: (context, box) {
+          // Con letra grande en un celular angosto, "WhatsApp" se partía en
+          // dos renglones: sin íconos y, si aún no cabe, la palabra se achica
+          // un poco en vez de cortarse.
+          final roomy = box.maxWidth / MediaQuery.textScalerOf(context).scale(1) >= 300;
+          Widget label(String text, String key) => FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(text, key: Key(key), maxLines: 1, softWrap: false),
+          );
+          return SegmentedButton<CodeChannel>(
+            segments: [
+              ButtonSegment(
+                value: CodeChannel.whatsapp,
+                label: label('WhatsApp', 'channel-whatsapp'),
+                icon: roomy ? const Icon(Icons.chat_rounded) : null,
+              ),
+              ButtonSegment(
+                value: CodeChannel.sms,
+                label: label('SMS', 'channel-sms'),
+                icon: roomy ? const Icon(Icons.sms_outlined) : null,
+              ),
+            ],
+            selected: {value},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) => onChanged(s.first),
+          );
+        },
       ),
     ],
   );

@@ -105,7 +105,8 @@ IconData problemIcon(String name) => switch (name) {
   'water_damage' => Icons.water_damage,
   'water_drop' => Icons.water_drop,
   'wb_sunny' => Icons.wb_sunny,
-  'wc' => Icons.wc,
+  // 'wc' (inodoro): una llave de reparación, no el letrero de baño público.
+  'wc' => Icons.build_rounded,
   'weekend' => Icons.weekend,
   'window' => Icons.window,
   'work' => Icons.work,

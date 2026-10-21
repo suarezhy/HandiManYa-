@@ -5,6 +5,7 @@ import 'package:handimanya/app.dart';
 import 'package:handimanya/core/services/device_auth.dart';
 import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
+import 'package:handimanya/data/demo/demo_data.dart';
 import 'package:handimanya/data/models/user.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:handimanya/features/security/confirm_identity.dart';
@@ -233,19 +234,25 @@ void main() {
       expect(
         find.byType(TextFormField),
         findsOneWidget,
-        reason: 'solo nombre (ciudad es una lista); sin correo ni contraseña',
+        reason: 'solo nombre (el municipio se elige en un buscador); sin correo ni contraseña',
       );
 
       await tap(tester, find.byKey(const Key('profile-continue')));
       expect(find.text('Debes aceptar para continuar'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('profile-name')), 'Juana Mamani');
+      // Fuera de las tres ciudades grandes: se busca el municipio por nombre.
       await tap(tester, find.byKey(const Key('profile-city')));
-      await tap(tester, find.text('Santa Cruz de la Sierra').last);
+      await tester.enterText(find.byKey(const Key('city-search')), 'uyuni');
+      await tester.pumpAndSettle();
+      await tap(tester, find.byKey(const Key('city-uyuni-pt')));
+      expect(find.text('Prov. Antonio Quijarro · Potosí'), findsOneWidget);
       await tap(tester, find.byKey(const Key('profile-terms')));
       await tap(tester, find.byKey(const Key('profile-continue')));
 
       expect(find.text('¡Hola, Juana!'), findsOneWidget);
-      expect((await backend.myAccount()).profileComplete, isTrue);
+      final account = await backend.myAccount();
+      expect(account.profileComplete, isTrue);
+      expect(DemoData.cities.firstWhere((c) => c.id == account.cityId).name, 'Uyuni');
       expect(tester.takeException(), isNull);
     });
 

@@ -9,6 +9,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/city_picker.dart';
 import '../legal/legal_texts.dart';
+import '../safety/safety_sheets.dart';
 
 /// Perfil compartido por cliente y profesional. Desde aquí se cambia de modo.
 class ProfilePage extends ConsumerWidget {
@@ -109,9 +110,39 @@ class ProfilePage extends ConsumerWidget {
                 ),
                 _Tile(
                   icon: Icons.shield_outlined,
-                  title: 'Seguridad',
+                  title: 'Seguridad de la cuenta',
                   subtitle: 'Huella, rostro y confirmación de recargas',
                   onTap: () => context.push(Routes.security),
+                ),
+                const SectionHeader(key: Key('safety-section'), title: 'Seguridad y confianza'),
+                _Tile(
+                  key: const Key('safety-emergency-guide'),
+                  icon: Icons.emergency_outlined,
+                  title: 'Guía de emergencia',
+                  subtitle: 'Números de emergencia de Bolivia y consejos',
+                  onTap: () => context.push(Routes.emergencyGuide),
+                ),
+                if (!account.isProfessionalMode)
+                  _Tile(
+                    key: const Key('safety-trusted-contact'),
+                    icon: Icons.share_location_outlined,
+                    title: 'Contacto de confianza',
+                    subtitle: 'Con "Compartir mi viaje" alguien sigue tu servicio activo',
+                    onTap: () => showTrustedContactInfo(context),
+                  ),
+                _Tile(
+                  key: const Key('safety-report'),
+                  icon: Icons.flag_outlined,
+                  title: 'Reportar un problema de seguridad',
+                  subtitle: 'Sobre un servicio o una persona',
+                  onTap: () => showSafetyReportSheet(context, asProfessional: account.isProfessionalMode),
+                ),
+                _Tile(
+                  key: const Key('safety-blocked'),
+                  icon: Icons.block,
+                  title: 'Personas bloqueadas',
+                  subtitle: account.blockedIds.isEmpty ? 'Nadie bloqueado' : '${account.blockedIds.length} bloqueadas',
+                  onTap: () => showBlockedInfo(context, account.blockedIds.length),
                 ),
                 const SectionHeader(title: 'Ayuda y legal'),
                 _Tile(
@@ -152,7 +183,11 @@ class ProfilePage extends ConsumerWidget {
                           final ok = await confirmDialog(
                             context,
                             title: '¿Eliminar tu cuenta?',
-                            message: 'Revisaremos tu pedido y eliminaremos tus datos personales. Las solicitudes en curso deben terminar o cancelarse antes.',
+                            message:
+                                'Es un pedido, no se borra al instante: nuestro equipo lo revisa y elimina tus datos personales. '
+                                'Las solicitudes en curso deben terminar o cancelarse antes. '
+                                'Algunos registros (movimientos de billetera, reportes y aceptación de términos) '
+                                'pueden conservarse el tiempo que exija la ley.',
                             confirm: 'Pedir eliminación',
                             destructive: true,
                           );
@@ -285,7 +320,7 @@ class _RoleCard extends StatelessWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({required this.icon, required this.title, this.subtitle, required this.onTap});
+  const _Tile({super.key, required this.icon, required this.title, this.subtitle, required this.onTap});
 
   final IconData icon;
   final String title;

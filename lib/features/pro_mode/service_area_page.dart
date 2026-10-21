@@ -82,7 +82,7 @@ class _FormState extends ConsumerState<_Form> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: HySpacing.md),
+      padding: bottomSafePadding(context, top: HySpacing.md, bottom: HySpacing.md),
       children: [
         PageBody(
           child: Column(

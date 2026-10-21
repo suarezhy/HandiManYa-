@@ -65,7 +65,7 @@ class _OverviewTab extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () async => _refreshAll(ref),
       child: ListView(
-        padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+        padding: bottomSafePadding(context),
         children: [
           PageBody(
             child: switch (o) {
@@ -169,7 +169,7 @@ class _DecisionsTabState extends ConsumerState<_DecisionsTab> {
     return RefreshIndicator(
       onRefresh: () async => _refreshAll(ref),
       child: ListView(
-        padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+        padding: bottomSafePadding(context),
         children: [
           PageBody(
             child: Column(
@@ -351,7 +351,7 @@ class _AgentsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final agents = ref.watch(aiAgentsProvider);
     return ListView(
-      padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+      padding: bottomSafePadding(context),
       children: [
         PageBody(
           child: switch (agents) {
@@ -450,7 +450,7 @@ class _ReportTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final reports = ref.watch(dailyReportsProvider);
     return ListView(
-      padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+      padding: bottomSafePadding(context),
       children: [
         PageBody(
           child: Column(

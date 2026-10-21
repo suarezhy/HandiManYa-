@@ -162,7 +162,7 @@ class AdminApplicationDetailPage extends ConsumerWidget {
     final a = d.summary;
     final pending = a.status == VerificationStatus.submitted || a.status == VerificationStatus.underReview;
     return ListView(
-      padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+      padding: bottomSafePadding(context),
       children: [
         PageBody(
           child: Column(

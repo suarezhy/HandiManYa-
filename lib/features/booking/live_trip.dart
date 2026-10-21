@@ -320,65 +320,68 @@ class _ShareTripSheetState extends ConsumerState<_ShareTripSheet> {
         HySpacing.page,
         MediaQuery.of(context).viewInsets.bottom + HySpacing.lg,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Compartir mi viaje', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: HySpacing.xs),
-          const Text(
-            'Manda un enlace por WhatsApp a alguien de confianza. Verá quién te atiende, si va en camino y '
-            'cuándo se verifica su llegada. No verá tu dirección ni tu teléfono. El enlace vence cuando termina '
-            'el trabajo, y puedes anularlo cuando quieras.',
-            style: TextStyle(fontSize: 16, color: HyColors.textSecondary),
-          ),
-          const SizedBox(height: HySpacing.md),
-          if (!ready)
-            const InfoBanner(
-              icon: Icons.schedule,
-              tone: StatusTone.warning,
-              text: 'Muy pronto: estamos preparando la página que verá tu contacto.',
-            )
-          else ...[
-            TextField(
-              key: const Key('share-contact-name'),
-              controller: _name,
-              textCapitalization: TextCapitalization.words,
-              maxLength: 80,
-              decoration: const InputDecoration(labelText: '¿A quién se lo mandas? (opcional)', counterText: ''),
+      // Con letra grande en celulares chicos no entra: se desplaza.
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Compartir mi viaje', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: HySpacing.xs),
+            const Text(
+              'Manda un enlace por WhatsApp a alguien de confianza. Verá quién te atiende, si va en camino y '
+              'cuándo se verifica su llegada. No verá tu dirección ni tu teléfono. El enlace vence cuando termina '
+              'el trabajo, y puedes anularlo cuando quieras.',
+              style: TextStyle(fontSize: 16, color: HyColors.textSecondary),
             ),
-            const SizedBox(height: HySpacing.sm),
-            PrimaryButton(
-              key: const Key('share-whatsapp'),
-              label: 'Enviar por WhatsApp',
-              icon: Icons.send_rounded,
-              loading: _busy,
-              onPressed: _share,
-            ),
-          ],
-          if (_shares.isNotEmpty) ...[
             const SizedBox(height: HySpacing.md),
-            const Text('Compartido con', style: TextStyle(fontWeight: FontWeight.w700)),
-            for (final s in _shares)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.person_outline),
-                title: Text(s.contactName ?? 'Contacto'),
-                subtitle: Text(s.viewedAt == null ? 'Todavía no lo abrió' : 'Lo abrió ${_ago(s.viewedAt!)}'),
-                trailing: TextButton(
-                  onPressed: () async {
-                    final ok = await runGuarded(
-                      context,
-                      () => ref.read(backendProvider).revokeTripShare(s.id),
-                      success: 'Enlace anulado',
-                    );
-                    if (ok) await _loadShares();
-                  },
-                  child: const Text('Anular'),
-                ),
+            if (!ready)
+              const InfoBanner(
+                icon: Icons.schedule,
+                tone: StatusTone.warning,
+                text: 'Muy pronto: estamos preparando la página que verá tu contacto.',
+              )
+            else ...[
+              TextField(
+                key: const Key('share-contact-name'),
+                controller: _name,
+                textCapitalization: TextCapitalization.words,
+                maxLength: 80,
+                decoration: const InputDecoration(labelText: '¿A quién se lo mandas? (opcional)', counterText: ''),
               ),
+              const SizedBox(height: HySpacing.sm),
+              PrimaryButton(
+                key: const Key('share-whatsapp'),
+                label: 'Enviar por WhatsApp',
+                icon: Icons.send_rounded,
+                loading: _busy,
+                onPressed: _share,
+              ),
+            ],
+            if (_shares.isNotEmpty) ...[
+              const SizedBox(height: HySpacing.md),
+              const Text('Compartido con', style: TextStyle(fontWeight: FontWeight.w700)),
+              for (final s in _shares)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_outline),
+                  title: Text(s.contactName ?? 'Contacto'),
+                  subtitle: Text(s.viewedAt == null ? 'Todavía no lo abrió' : 'Lo abrió ${_ago(s.viewedAt!)}'),
+                  trailing: TextButton(
+                    onPressed: () async {
+                      final ok = await runGuarded(
+                        context,
+                        () => ref.read(backendProvider).revokeTripShare(s.id),
+                        success: 'Enlace anulado',
+                      );
+                      if (ok) await _loadShares();
+                    },
+                    child: const Text('Anular'),
+                  ),
+                ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

@@ -27,6 +27,7 @@ class _PhoneAuthPageState extends ConsumerState<PhoneAuthPage> with ResendCooldo
   final _codeForm = GlobalKey<FormState>();
   final _phone = TextEditingController();
   final _code = TextEditingController();
+  final _action = GlobalKey(debugLabel: 'auth-action');
   var _channel = CodeChannel.whatsapp;
   String? _sentTo;
   bool _loading = false;
@@ -82,6 +83,7 @@ class _PhoneAuthPageState extends ConsumerState<PhoneAuthPage> with ResendCooldo
     final sent = _sentTo;
     return AuthScaffold(
       showBack: false,
+      keepVisible: _action,
       title: sent == null ? 'Bienvenido a HandiMan ¡Ya!' : 'Escribe el código',
       subtitle: sent == null
           ? 'Escribe tu número de celular. Te enviaremos un código para entrar o crear tu cuenta.'
@@ -101,7 +103,10 @@ class _PhoneAuthPageState extends ConsumerState<PhoneAuthPage> with ResendCooldo
     const SizedBox(height: HySpacing.lg),
     ChannelPicker(value: _channel, onChanged: (c) => setState(() => _channel = c)),
     const SizedBox(height: HySpacing.xl),
-    PrimaryButton(key: const Key('auth-continue'), label: 'Continuar', loading: _loading, onPressed: _send),
+    KeyedSubtree(
+      key: _action,
+      child: PrimaryButton(key: const Key('auth-continue'), label: 'Continuar', loading: _loading, onPressed: _send),
+    ),
     const SizedBox(height: HySpacing.lg),
     const Text(
       'Usamos tu número solo para que entres a tu cuenta y para avisarte de tus servicios. '
@@ -112,7 +117,7 @@ class _PhoneAuthPageState extends ConsumerState<PhoneAuthPage> with ResendCooldo
     const SizedBox(height: HySpacing.sm),
     TextButton(
       onPressed: () => context.push(Routes.recover),
-      child: const Text('¿Ya no tienes tu número? Recupera tu cuenta'),
+      child: const Text('¿Ya no tienes tu número? Recupera tu cuenta', textAlign: TextAlign.center),
     ),
   ];
 
@@ -124,17 +129,28 @@ class _PhoneAuthPageState extends ConsumerState<PhoneAuthPage> with ResendCooldo
         child: CodeField(controller: _code, onCompleted: _verify),
       ),
       const SizedBox(height: HySpacing.lg),
-      PrimaryButton(key: const Key('auth-continue'), label: 'Continuar', loading: _loading, onPressed: _verify),
+      KeyedSubtree(
+        key: _action,
+        child: PrimaryButton(
+          key: const Key('auth-continue'),
+          label: 'Continuar',
+          loading: _loading,
+          onPressed: _verify,
+        ),
+      ),
       const SizedBox(height: HySpacing.md),
       TextButton(
         key: const Key('code-resend'),
         onPressed: cooldown > 0 || _loading ? null : () => _send(),
-        child: Text(cooldown > 0 ? 'Puedes pedir otro código en $cooldown s' : 'Enviar el código de nuevo'),
+        child: Text(
+          cooldown > 0 ? 'Puedes pedir otro código en $cooldown s' : 'Enviar el código de nuevo',
+          textAlign: TextAlign.center,
+        ),
       ),
       TextButton(
         key: const Key('code-other-channel'),
         onPressed: cooldown > 0 || _loading ? null : () => _send(channel: other),
-        child: Text('Recibirlo por ${other.label}'),
+        child: Text('Recibirlo por ${other.label}', textAlign: TextAlign.center),
       ),
       TextButton(
         onPressed: _loading ? null : () => setState(() => _sentTo = null),

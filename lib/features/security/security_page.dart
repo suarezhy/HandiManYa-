@@ -67,7 +67,7 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Seguridad')),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+        padding: EdgeInsets.only(bottom: HySpacing.xxl + MediaQuery.paddingOf(context).bottom),
         children: [
           PageBody(
             child: Column(
@@ -80,29 +80,18 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
                 ),
                 const SizedBox(height: HySpacing.md),
                 switch ((device, enabled)) {
-                  (AsyncData(value: final d), AsyncData(value: final on)) when d.isNotEmpty => AppCard(
-                    child: SwitchListTile(
-                      key: const Key('biometric-switch'),
-                      contentPadding: EdgeInsets.zero,
-                      secondary: Icon(
-                        d.contains(DeviceBiometric.face) ? Icons.face_retouching_natural : Icons.fingerprint,
-                        size: 32,
-                        color: HyColors.primary,
-                      ),
-                      title: Text(
-                        'Usar ${d.map((b) => b.short).join(' o ')}',
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: Text(
-                        on ? 'Activado en este teléfono' : 'Desactivado: confirmas con un código a tu celular',
-                      ),
-                      value: on,
-                      onChanged: _busy ? null : (v) => _toggle(v, d),
-                    ),
+                  (AsyncData(value: final d), AsyncData(value: final on)) when d.isNotEmpty => _SettingCard(
+                    switchKey: const Key('biometric-switch'),
+                    icon: d.contains(DeviceBiometric.face) ? Icons.face_retouching_natural : Icons.fingerprint,
+                    title: 'Usar ${d.map((b) => b.short).join(' o ')}',
+                    subtitle: on ? 'Activado en este teléfono' : 'Desactivado: confirmas con un código a tu celular',
+                    value: on,
+                    onChanged: _busy ? null : (v) => _toggle(v, d),
                   ),
-                  (AsyncData(value: final d), _) when d.isEmpty => const InfoBanner(
+                  (AsyncData(value: final d), _) when d.isEmpty => const _SecurityNote(
+                    'Este dispositivo no tiene huella ni reconocimiento facial configurados. '
+                    'Confirmarás con un código a tu celular.',
                     icon: Icons.phonelink_lock_outlined,
-                    text: 'Este dispositivo no tiene huella ni reconocimiento facial configurados. Confirmarás con un código a tu celular.',
                   ),
                   (AsyncError(), _) || (_, AsyncError()) => ErrorView(
                     error: (device.error ?? enabled.error)!,
@@ -114,25 +103,21 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
                 },
                 if (enabled.value == true) ...[
                   const SizedBox(height: HySpacing.sm),
-                  AppCard(
-                    child: SwitchListTile(
-                      key: const Key('app-lock-switch'),
-                      contentPadding: EdgeInsets.zero,
-                      secondary: const Icon(Icons.lock_person_outlined, size: 32, color: HyColors.primary),
-                      title: const Text(
-                        'Pedirla al abrir la app',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                      ),
-                      subtitle: const Text('Tu sesión sigue abierta; solo se desbloquea con tu huella o rostro.'),
-                      value: ref.watch(appLockEnabledProvider),
-                      onChanged: (v) => ref.read(appLockEnabledProvider.notifier).set(v),
-                    ),
+                  _SettingCard(
+                    switchKey: const Key('app-lock-switch'),
+                    icon: Icons.lock_person_outlined,
+                    title: 'Pedirla al abrir la app',
+                    subtitle: 'Tu sesión sigue abierta; solo se desbloquea con tu huella o rostro.',
+                    value: ref.watch(appLockEnabledProvider),
+                    onChanged: (v) => ref.read(appLockEnabledProvider.notifier).set(v),
                   ),
                 ],
-                const SizedBox(height: HySpacing.md),
-                const InfoBanner(
-                  icon: Icons.verified_user_outlined,
-                  text: 'Tu huella y tu rostro nunca salen del teléfono: los revisa el propio teléfono y HandiMan ¡Ya! no los ve ni los guarda. Para entrar usas tu celular y un código; no hay contraseñas.',
+                const SizedBox(height: HySpacing.lg),
+                // Cierto: local_auth deja la verificación al sistema operativo y la app
+                // solo recibe "sí" o "no"; al servidor solo va si está activado.
+                const _SecurityNote(
+                  'Tu huella y rostro se verifican de forma segura en tu dispositivo. '
+                  'HandiMan ¡Ya! no almacena tus datos biométricos.',
                 ),
               ],
             ),
@@ -141,4 +126,63 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
       ),
     );
   }
+}
+
+/// Un ajuste con interruptor, compacto y con el texto alineado al título.
+class _SettingCard extends StatelessWidget {
+  const _SettingCard({
+    required this.switchKey,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final Key switchKey;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) => AppCard(
+    padding: const EdgeInsets.symmetric(horizontal: HySpacing.sm, vertical: HySpacing.xxs),
+    child: SwitchListTile(
+      key: switchKey,
+      contentPadding: EdgeInsets.zero,
+      minVerticalPadding: HySpacing.xs,
+      horizontalTitleGap: HySpacing.sm,
+      secondary: Icon(icon, size: 26, color: HyColors.primary),
+      title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 14, color: HyColors.textSecondary)),
+      value: value,
+      onChanged: onChanged,
+    ),
+  );
+}
+
+/// Nota breve en gris con un ícono pequeño, sin recuadro.
+class _SecurityNote extends StatelessWidget {
+  const _SecurityNote(this.text, {this.icon = Icons.shield_outlined});
+
+  final String text;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    key: const Key('security-note'),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Icon(icon, size: 18, color: HyColors.textSecondary),
+      ),
+      const SizedBox(width: HySpacing.xs),
+      Expanded(
+        child: Text(text, style: const TextStyle(fontSize: 14, height: 1.35, color: HyColors.textSecondary)),
+      ),
+    ],
+  );
 }

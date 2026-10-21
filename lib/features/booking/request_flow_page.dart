@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/services/location_service.dart';
 import '../../core/theme/tokens.dart';
+import '../../core/utils/bolivia_geo.dart';
+import '../../core/utils/category_order.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/category_icon.dart';
@@ -46,6 +48,8 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
   final _description = TextEditingController();
   final _address = TextEditingController();
   final _reference = TextEditingController();
+  final _categorySearch = TextEditingController();
+  String _categoryQuery = '';
 
   late final _steps = [
     if (widget.initialCategoryId == null) _Step.category,
@@ -58,6 +62,14 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
   final _selected = <int>{};
   late BookingMode _mode = widget.initialMode;
   int? _zoneId;
+
+  /// Municipio donde se hace el servicio. Es de este pedido: empieza en la
+  /// ciudad del cliente, pero puede ser cualquier municipio de Bolivia y no
+  /// cambia la ciudad guardada del cliente.
+  int? _serviceCityId;
+
+  /// Aviso cuando el GPS da un punto fuera de Bolivia.
+  String? _gpsNotice;
   DateTime? _date;
   TimeOfDay? _time;
   int _duration = 120;
@@ -73,7 +85,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
 
   @override
   void dispose() {
-    for (final c in [_otherText, _description, _address, _reference]) {
+    for (final c in [_otherText, _description, _address, _reference, _categorySearch]) {
       c.dispose();
     }
     super.dispose();
@@ -126,12 +138,21 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
     setState(() => _index++);
   }
 
+  /// El municipio del servicio: el elegido en el paso 4 o, si no se cambió,
+  /// la ciudad del cliente.
+  int? get _serviceCity => _serviceCityId ?? ref.read(currentCityProvider)?.id;
+
+  void _setServiceCity(int id) => setState(() {
+    if (id != _serviceCity) _zoneId = null;
+    _serviceCityId = id;
+  });
+
   BookingDraft? _draft({required BookingMode mode}) {
-    final city = ref.read(currentCityProvider);
-    if (city == null || _categoryId == null) return null;
+    final cityId = _serviceCity;
+    if (cityId == null || _categoryId == null) return null;
     return BookingDraft(
       categoryId: _categoryId!,
-      cityId: city.id,
+      cityId: cityId,
       mode: mode,
       description: _description.text.trim(),
       address: _address.text.trim(),
@@ -197,7 +218,18 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
     setState(() => _locating = true);
     try {
       final p = await ref.read(locationServiceProvider).current();
-      if (mounted) setState(() => _point = p);
+      final cities = await ref.read(citiesProvider.future);
+      if (!mounted) return;
+      final fix = resolveGpsFix(p, cities);
+      setState(() {
+        _point = fix.point;
+        _gpsNotice = fix.outsideBolivia ? outsideBoliviaMessage : null;
+        final city = fix.city;
+        if (city != null) {
+          if (city.id != _serviceCity) _zoneId = null;
+          _serviceCityId = city.id;
+        }
+      });
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -276,11 +308,19 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
                 ),
               ),
             ),
-            SafeArea(
-              top: false,
-              child: PageBody(
-                padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.xs, HySpacing.page, HySpacing.md),
-                child: _actions(category),
+            // Botones fijos abajo, sobre la zona de gestos/navegación del
+            // teléfono; el contenido se desplaza por encima y nunca queda tapado.
+            DecoratedBox(
+              decoration: const BoxDecoration(
+                color: HyColors.surface,
+                border: Border(top: BorderSide(color: HyColors.border)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: PageBody(
+                  padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.sm, HySpacing.page, HySpacing.sm),
+                  child: _actions(category),
+                ),
               ),
             ),
           ],
@@ -320,20 +360,51 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
     );
   }
 
-  Widget _categoryStep() {
+  Widget _categoryStep() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _CategorySearchField(controller: _categorySearch, onChanged: (q) => setState(() => _categoryQuery = q)),
+      const SizedBox(height: HySpacing.sm),
+      _categoryList(),
+    ],
+  );
+
+  Widget _categoryList() {
     final categories = ref.watch(categoriesProvider);
     return categories.when(
       loading: () => const LoadingView(),
       error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(categoriesProvider)),
-      data: (list) => Column(
-        children: [
-          for (final c in list)
-            Padding(
-              padding: const EdgeInsets.only(bottom: HySpacing.xs),
-              child: _CategoryOption(category: c, selected: c.id == _categoryId, onTap: () => _chooseCategory(c.id)),
+      data: (list) {
+        // Mismo orden que el inicio: primero los servicios del hogar a pedido.
+        final shown = orderCategories(
+          list,
+          slug: (c) => c.slug,
+          name: (c) => c.name,
+        ).where((c) => categoryMatchesQuery(_categoryQuery, [c.name, c.description, c.slug])).toList();
+        if (shown.isEmpty) {
+          return EmptyState(
+            icon: Icons.search_off_rounded,
+            title: 'No encontramos "${_categoryQuery.trim()}"',
+            message: 'Prueba con otra palabra, por ejemplo "fuga", "luz" o "llave".',
+            action: TextButton(
+              onPressed: () => setState(() {
+                _categorySearch.clear();
+                _categoryQuery = '';
+              }),
+              child: const Text('Ver todos los servicios'),
             ),
-        ],
-      ),
+          );
+        }
+        return Column(
+          children: [
+            for (final c in shown)
+              Padding(
+                padding: const EdgeInsets.only(bottom: HySpacing.xs),
+                child: _CategoryOption(category: c, selected: c.id == _categoryId, onTap: () => _chooseCategory(c.id)),
+              ),
+          ],
+        );
+      },
     );
   }
 
@@ -365,7 +436,9 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             ],
             const SizedBox(height: HySpacing.md),
             ProblemGrid(
-              problems: list,
+              problems: category == null
+                  ? list
+                  : orderProblems(list, categorySlug: category.slug, name: (p) => p.name, isOther: (p) => p.isOther),
               selected: _selected,
               icon: category?.icon ?? 'build',
               onToggle: (p) => setState(() => _selected.contains(p.id) ? _selected.remove(p.id) : _selected.add(p.id)),
@@ -458,47 +531,53 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
   }
 
   Widget _addressStep(ServiceCategory? category) {
-    final city = ref.watch(currentCityProvider);
-    final zones = city == null ? const <Zone>[] : (ref.watch(zonesProvider(city.id)).value ?? const <Zone>[]);
+    final cities = ref.watch(citiesProvider).value ?? const <City>[];
+    final cityId = _serviceCityId ?? ref.watch(currentCityProvider)?.id;
+    final city = cities.where((c) => c.id == cityId).firstOrNull;
+    final zones = cityId == null ? const <Zone>[] : (ref.watch(zonesProvider(cityId)).value ?? const <Zone>[]);
     final allowsYa = category?.allowsYa ?? true;
     return Form(
       key: _addressForm,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AppCard(
-            onTap: () => showCityPicker(context, ref),
-            child: Row(
-              children: [
-                const Icon(Icons.location_city, color: HyColors.primary),
-                const SizedBox(width: HySpacing.sm),
-                Expanded(
-                  child: Text(
-                    city?.name ?? 'Elige tu ciudad',
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                const Text(
-                  'Cambiar',
-                  style: TextStyle(color: HyColors.primaryDark, fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: HySpacing.md),
           _GpsCard(
             point: _point,
+            city: city,
             locating: _locating,
             onTap: _useMyLocation,
             onClear: () => setState(() => _point = null),
           ),
+          if (_gpsNotice != null) ...[
+            const SizedBox(height: HySpacing.sm),
+            InfoBanner(
+              key: const Key('gps-outside-bolivia'),
+              icon: Icons.public_off_outlined,
+              tone: StatusTone.warning,
+              text: _gpsNotice!,
+            ),
+          ],
+          const SizedBox(height: HySpacing.md),
+          CityField(
+            key: const Key('service-city'),
+            value: cityId,
+            label: 'Municipio del servicio',
+            onChanged: _setServiceCity,
+            validator: (v) => v == null ? 'Elige el municipio donde es el servicio' : null,
+          ),
+          const SizedBox(height: HySpacing.xxs),
+          const Text(
+            'Puede ser cualquier lugar de Bolivia, aunque no sea tu ciudad.',
+            style: TextStyle(color: HyColors.textMuted, fontSize: 14),
+          ),
           const SizedBox(height: HySpacing.md),
           DropdownButtonFormField<int?>(
+            key: ValueKey('zone-$cityId'),
             initialValue: _zoneId,
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Zona', prefixIcon: Icon(Icons.map_outlined)),
             items: [
-              const DropdownMenuItem<int?>(value: null, child: Text('No sé / toda la ciudad')),
+              const DropdownMenuItem<int?>(value: null, child: Text('No sé / todo el municipio')),
               for (final z in zones) DropdownMenuItem<int?>(value: z.id, child: Text(z.name)),
             ],
             onChanged: (v) => setState(() => _zoneId = v),
@@ -527,6 +606,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
           ),
           const SizedBox(height: HySpacing.sm),
           const InfoBanner(
+            key: Key('address-privacy'),
             icon: Icons.lock_outline,
             text: 'Tu dirección exacta solo la verá el profesional que acepte tu solicitud.',
           ),
@@ -556,9 +636,9 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
               text: 'Para este servicio eliges tú a la persona: verás su perfil y calificaciones antes de pedir.',
             ),
           ],
-          if (_isYa && allowsYa && city != null && _categoryId != null) ...[
+          if (_isYa && allowsYa && cityId != null && _categoryId != null) ...[
             const SizedBox(height: HySpacing.lg),
-            _AvailableCount(categoryId: _categoryId!, cityId: city.id, zoneId: _zoneId, point: _point),
+            _AvailableCount(categoryId: _categoryId!, cityId: cityId, zoneId: _zoneId, point: _point),
           ],
         ],
       ),
@@ -598,23 +678,34 @@ class ProblemGrid extends StatelessWidget {
     final scale = MediaQuery.textScalerOf(context).scale(1);
     return LayoutBuilder(
       builder: (context, box) {
-        final columns = (box.maxWidth / (165 * scale)).floor().clamp(1, 3);
-        const gap = HySpacing.sm;
-        final width = (box.maxWidth - gap * (columns - 1)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
+        // Tarjetas compactas: dos columnas si cada una tiene espacio, si no una.
+        final columns = (box.maxWidth / (170 * scale)).floor().clamp(1, 2);
+        const gap = HySpacing.xs;
+        return Column(
           children: [
-            for (final p in problems)
-              SizedBox(
-                width: width,
-                child: _ProblemCard(
-                  problem: p,
-                  selected: selected.contains(p.id),
-                  icon: icon,
-                  onTap: () => onToggle(p),
+            for (var r = 0; r < problems.length; r += columns) ...[
+              if (r > 0) const SizedBox(height: gap),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = r; i < r + columns; i++) ...[
+                      if (i > r) const SizedBox(width: gap),
+                      Expanded(
+                        child: i < problems.length
+                            ? _ProblemCard(
+                                problem: problems[i],
+                                selected: selected.contains(problems[i].id),
+                                icon: icon,
+                                onTap: () => onToggle(problems[i]),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+            ],
           ],
         );
       },
@@ -622,6 +713,8 @@ class ProblemGrid extends StatelessWidget {
   }
 }
 
+/// Una opción: compacta (mín. 56 dp de alto), con su ícono, el texto y una
+/// marca. Elegida: borde y fondo naranja con ✓. Se pueden elegir varias.
 class _ProblemCard extends StatelessWidget {
   const _ProblemCard({required this.problem, required this.selected, required this.icon, required this.onTap});
 
@@ -642,39 +735,41 @@ class _ProblemCard extends StatelessWidget {
       child: Material(
         color: selected ? HyColors.primarySoft : HyColors.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(HyRadii.lg),
-          side: BorderSide(color: selected ? HyColors.primary : HyColors.border, width: selected ? 2.5 : 1),
+          borderRadius: BorderRadius.circular(HyRadii.md),
+          side: BorderSide(color: selected ? HyColors.primary : HyColors.border, width: selected ? 2 : 1),
         ),
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
-          borderRadius: BorderRadius.circular(HyRadii.lg),
           onTap: onTap,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 116),
+            constraints: const BoxConstraints(minHeight: 56),
             child: Padding(
-              padding: const EdgeInsets.all(HySpacing.sm),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              padding: const EdgeInsets.symmetric(horizontal: HySpacing.sm, vertical: HySpacing.xs),
+              child: Row(
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(HyRadii.md)),
-                        child: Icon(problemIcon(problem.icon), color: fg, size: 28),
-                      ),
-                      const Spacer(),
-                      Icon(
-                        selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                        color: selected ? HyColors.primary : HyColors.border,
-                        size: 28,
-                      ),
-                    ],
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: selected ? HyColors.primary : bg,
+                      borderRadius: BorderRadius.circular(HyRadii.sm),
+                    ),
+                    child: Icon(problemIcon(problem.icon), color: selected ? HyColors.onPrimary : fg, size: 22),
                   ),
-                  const SizedBox(height: HySpacing.xs),
-                  Text(problem.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, height: 1.2)),
+                  const SizedBox(width: HySpacing.sm),
+                  Expanded(
+                    child: Text(
+                      problem.name,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.2),
+                    ),
+                  ),
+                  const SizedBox(width: HySpacing.xxs),
+                  Icon(
+                    selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                    key: ValueKey('problem-check-${problem.id}'),
+                    color: selected ? HyColors.primary : HyColors.textMuted,
+                    size: 24,
+                  ),
                 ],
               ),
             ),
@@ -769,6 +864,40 @@ class ScheduleFields extends StatelessWidget {
   );
 }
 
+/// Buscador del paso 1: filtra la lista sin importar tildes ni mayúsculas.
+class _CategorySearchField extends StatelessWidget {
+  const _CategorySearchField({required this.controller, required this.onChanged});
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    key: const Key('category-search'),
+    controller: controller,
+    onChanged: onChanged,
+    textInputAction: TextInputAction.search,
+    decoration: InputDecoration(
+      hintText: 'Buscar servicio (ej.: plomería)',
+      prefixIcon: const Icon(Icons.search),
+      isDense: true,
+      suffixIcon: ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) => controller.text.isEmpty
+            ? const SizedBox.shrink()
+            : IconButton(
+                tooltip: 'Borrar búsqueda',
+                icon: const Icon(Icons.close_rounded),
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                },
+              ),
+      ),
+    ),
+  );
+}
+
 class _CategoryOption extends StatelessWidget {
   const _CategoryOption({required this.category, required this.selected, required this.onTap});
 
@@ -847,10 +976,28 @@ class _PaymentOption extends StatelessWidget {
   );
 }
 
+/// Mensaje cuando el GPS da un punto fuera de Bolivia.
+const outsideBoliviaMessage =
+    'HandiMan ¡Ya! atiende en Bolivia. Escribe la dirección del lugar del servicio en Bolivia.';
+
+/// Qué hacer con un punto del GPS: fuera de Bolivia no se usa (ni se envía);
+/// dentro, se guarda y se sugiere el municipio más cercano (editable).
+({GeoPoint? point, City? city, bool outsideBolivia}) resolveGpsFix(GeoPoint p, List<City> cities) {
+  if (!isInBolivia(p.latitude, p.longitude)) return (point: null, city: null, outsideBolivia: true);
+  return (point: p, city: nearestCity(cities, p.latitude, p.longitude), outsideBolivia: false);
+}
+
 class _GpsCard extends StatelessWidget {
-  const _GpsCard({required this.point, required this.locating, required this.onTap, required this.onClear});
+  const _GpsCard({
+    required this.point,
+    required this.city,
+    required this.locating,
+    required this.onTap,
+    required this.onClear,
+  });
 
   final GeoPoint? point;
+  final City? city;
   final bool locating;
   final VoidCallback onTap;
   final VoidCallback onClear;
@@ -864,16 +1011,21 @@ class _GpsCard extends StatelessWidget {
         onPressed: locating ? null : onTap,
       );
     }
+    final near = city == null
+        ? ''
+        : ' cerca de ${city!.name}${city!.department == null ? '' : ', ${city!.department}'}';
     return AppCard(
+      key: const Key('gps-taken'),
       color: HyColors.greenSoft,
       child: Row(
         children: [
           const Icon(Icons.check_circle, color: HyColors.greenDark),
           const SizedBox(width: HySpacing.sm),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Ubicación tomada. Buscaremos profesionales cerca de este punto.',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              'Ubicación tomada$near. Revisa el municipio y escribe la dirección; '
+              'buscaremos profesionales cerca de este punto.',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
           TextButton(onPressed: onClear, child: const Text('Quitar')),
@@ -911,7 +1063,7 @@ class _AvailableCount extends ConsumerWidget {
           icon: n > 0 ? Icons.bolt_rounded : Icons.hourglass_empty_rounded,
           tone: n > 0 ? StatusTone.success : StatusTone.warning,
           text: n == 0
-              ? 'Ahora no hay profesionales disponibles para este servicio en tu zona. Prueba "toda la ciudad" o programa para después.'
+              ? 'Ahora no hay profesionales disponibles para este servicio en esta zona. Prueba "todo el municipio" o programa para después.'
               : n == 1
               ? '1 profesional disponible cerca de ti recibirá tu pedido.'
               : '$n profesionales disponibles cerca de ti recibirán tu pedido. El primero que acepte irá.',

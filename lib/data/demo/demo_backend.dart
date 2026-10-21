@@ -737,13 +737,14 @@ class DemoBackend
   }) => _pros.values.where((p) {
     if (p.status != VerificationStatus.approved || !p.available || p.id == customerId) return false;
     if (_blockedBetween(p.id, customerId)) return false;
-    if (p.cityId != cityId || p.primaryCategoryId != categoryId) return false;
+    if (p.primaryCategoryId != categoryId) return false;
     final base = p.location;
-    // Igual que el servidor: con ubicación manda el radio; sin ella, la zona.
+    // Igual que el servidor: con ubicación manda el radio (aunque el profesional
+    // esté registrado en otro municipio); sin ella, el municipio y la zona.
     if (latitude != null && longitude != null && base != null) {
       return distanceKm(latitude, longitude, base.latitude, base.longitude) <= base.radiusKm;
     }
-    return zoneId == null || p.zoneIds.isEmpty || p.zoneIds.contains(zoneId);
+    return p.cityId == cityId && (zoneId == null || p.zoneIds.isEmpty || p.zoneIds.contains(zoneId));
   });
 
   double? _distanceFor(String proId, BookingDraft d) {

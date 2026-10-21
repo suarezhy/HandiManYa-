@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../core/utils/category_order.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/booking.dart';
@@ -13,8 +14,10 @@ import '../../data/models/catalog.dart';
 import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
+import '../common/city_picker.dart';
 import '../legal/legal_texts.dart';
 import 'identity_check_card.dart';
+import 'service_selector.dart';
 
 /// Postulación para ser profesional: datos, zonas, documentos y envío.
 class ApplicationPage extends ConsumerWidget {
@@ -112,7 +115,9 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
 
   Future<bool> _save({bool quiet = false}) async {
     if (!_formKey.currentState!.validate()) return false;
-    if (_zones.isEmpty) {
+    // Solo algunas ciudades tienen zonas; en el resto se trabaja por radio.
+    final zones = _cityId == null ? const <Zone>[] : ref.read(zonesProvider(_cityId!)).value ?? const <Zone>[];
+    if (zones.isNotEmpty && _zones.isEmpty) {
       showMessage(context, 'Elige al menos una zona donde trabajas.');
       return false;
     }
@@ -182,13 +187,14 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
   @override
   Widget build(BuildContext context) {
     final categories = ref.watch(categoriesProvider).value ?? const <ServiceCategory>[];
-    final cities = ref.watch(citiesProvider).value ?? const <City>[];
+    final ordered = orderCategories(categories, slug: (c) => c.slug, name: (c) => c.name);
     final zones = _cityId == null ? const <Zone>[] : ref.watch(zonesProvider(_cityId!)).value ?? const <Zone>[];
     final text = Theme.of(context).textTheme;
     return Form(
       key: _formKey,
       child: ListView(
-        padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+        key: const Key('application-form'),
+        padding: bottomSafePadding(context),
         children: [
           PageBody(
             child: Column(
@@ -220,14 +226,18 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                 ),
                 const SizedBox(height: HySpacing.md),
                 DropdownButtonFormField<int>(
+                  key: const Key('application-primary'),
                   initialValue: _primary,
                   isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Servicio principal',
                     prefixIcon: Icon(Icons.handyman_outlined),
                   ),
-                  items: [for (final c in categories) DropdownMenuItem(value: c.id, child: Text(c.name))],
-                  onChanged: (v) => setState(() => _primary = v),
+                  items: [for (final c in ordered) DropdownMenuItem(value: c.id, child: Text(c.name))],
+                  onChanged: (v) => setState(() {
+                    _primary = v;
+                    _categories.remove(v);
+                  }),
                   validator: (v) => v == null ? 'Elige tu servicio principal' : null,
                 ),
                 const SizedBox(height: HySpacing.md),
@@ -236,13 +246,35 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                 Wrap(
                   spacing: HySpacing.xs,
                   runSpacing: HySpacing.xs,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    for (final c in categories.where((c) => c.id != _primary))
-                      FilterChip(
+                    for (final c in ordered.where((c) => _categories.contains(c.id) && c.id != _primary))
+                      InputChip(
+                        key: Key('extra-${c.slug}'),
                         label: Text(c.name),
-                        selected: _categories.contains(c.id),
-                        onSelected: (v) => setState(() => v ? _categories.add(c.id) : _categories.remove(c.id)),
+                        onDeleted: () => setState(() => _categories.remove(c.id)),
+                        deleteButtonTooltipMessage: 'Quitar ${c.name}',
                       ),
+                    TextButton.icon(
+                      key: const Key('add-extra-services'),
+                      onPressed: () async {
+                        final picked = await pickExtraServices(
+                          context,
+                          categories: ordered,
+                          primaryId: _primary,
+                          selected: _categories,
+                        );
+                        if (picked != null && mounted) {
+                          setState(() {
+                            _categories
+                              ..clear()
+                              ..addAll(picked);
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.add),
+                      label: const Text('Agregar otros servicios'),
+                    ),
                   ],
                 ),
                 const SizedBox(height: HySpacing.md),
@@ -273,21 +305,22 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                   ),
                 ),
                 const SectionHeader(title: '2. Dónde trabajas'),
-                DropdownButtonFormField<int>(
-                  initialValue: _cityId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Ciudad',
-                    prefixIcon: Icon(Icons.location_city_outlined),
-                  ),
-                  items: [for (final c in cities) DropdownMenuItem(value: c.id, child: Text(c.name))],
+                CityField(
+                  key: const Key('application-city'),
+                  value: _cityId,
+                  label: 'Municipio donde trabajas',
                   onChanged: (v) => setState(() {
                     _cityId = v;
                     _zones.clear();
                   }),
-                  validator: (v) => v == null ? 'Elige tu ciudad' : null,
+                  validator: (v) => v == null ? 'Elige tu municipio' : null,
                 ),
                 const SizedBox(height: HySpacing.sm),
+                if (_cityId != null && zones.isEmpty)
+                  Text(
+                    'Después de la aprobación marcas en el mapa tu base y hasta dónde llegas.',
+                    style: text.bodyMedium?.copyWith(color: HyColors.textSecondary),
+                  ),
                 Wrap(
                   spacing: HySpacing.xs,
                   runSpacing: HySpacing.xs,
@@ -306,24 +339,19 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                   style: text.bodyLarge?.copyWith(color: HyColors.textSecondary),
                 ),
                 const SizedBox(height: HySpacing.sm),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SecondaryButton(
-                        label: 'Carnet (anverso)',
-                        icon: Icons.upload_file,
-                        onPressed: _uploading ? null : () => _pickDocument('ci_anverso'),
-                      ),
-                    ),
-                    const SizedBox(width: HySpacing.sm),
-                    Expanded(
-                      child: SecondaryButton(
-                        label: 'Carnet (reverso)',
-                        icon: Icons.upload_file,
-                        onPressed: _uploading ? null : () => _pickDocument('ci_reverso'),
-                      ),
-                    ),
-                  ],
+                // Uno debajo del otro: lado a lado no entran en celulares angostos.
+                SecondaryButton(
+                  key: const Key('doc-ci-anverso'),
+                  label: 'Subir carnet (anverso)',
+                  icon: Icons.upload_file,
+                  onPressed: _uploading ? null : () => _pickDocument('ci_anverso'),
+                ),
+                const SizedBox(height: HySpacing.xs),
+                SecondaryButton(
+                  key: const Key('doc-ci-reverso'),
+                  label: 'Subir carnet (reverso)',
+                  icon: Icons.upload_file,
+                  onPressed: _uploading ? null : () => _pickDocument('ci_reverso'),
                 ),
                 for (final c in categories.where(
                   (c) => c.isSensitive && (_categories.contains(c.id) || _primary == c.id),
@@ -397,13 +425,18 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                 ),
                 const SizedBox(height: HySpacing.md),
                 PrimaryButton(
+                  key: const Key('application-submit'),
                   label: 'Enviar postulación',
                   icon: Icons.send_rounded,
                   loading: _saving,
                   onPressed: _submit,
                 ),
                 const SizedBox(height: HySpacing.sm),
-                SecondaryButton(label: 'Guardar borrador', onPressed: _saving ? null : () => _save()),
+                SecondaryButton(
+                  key: const Key('application-save-draft'),
+                  label: 'Guardar borrador',
+                  onPressed: _saving ? null : () => _save(),
+                ),
               ],
             ),
           ),

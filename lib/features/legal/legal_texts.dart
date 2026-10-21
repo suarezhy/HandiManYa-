@@ -74,6 +74,8 @@ Ubicación
 • Antes de aceptar tu pedido, los profesionales solo ven un punto aproximado (alrededor de 1 km) y la distancia.
 • La dirección exacta solo la ve el profesional que acepta, mientras el trabajo está activo.
 • La ubicación base de un profesional no se muestra a los clientes.
+• Mientras el profesional va en camino, su app comparte su ubicación con el cliente de ese pedido (solo con la pantalla abierta y la puede pausar). Se guarda solo el último punto y se borra al verificar la llegada o al cancelar.
+• Si usas "Compartir mi viaje", la persona que recibe el enlace ve el nombre del profesional, el estado del servicio y su ubicación mientras viene, nunca tu dirección ni tu teléfono. El enlace vence en 12 horas o al terminar el trabajo.
 
 Quién ve tus datos
 • Fotos del problema: tú, los profesionales que reciben la oferta y el que la acepta.
@@ -87,7 +89,7 @@ Cuánto tiempo
 [PENDIENTE: plazos de conservación por tipo de dato, a definir con el abogado.]
 
 Tus opciones
-Puedes ver y corregir tus datos en Perfil, y pedir que borremos tu cuenta desde Perfil > Eliminar cuenta. Para otras solicitudes escríbenos desde Ayuda.
+Puedes ver y corregir tus datos en Perfil, y pedir que borremos tu cuenta desde Perfil > Eliminar mi cuenta. Para otras solicitudes escríbenos desde Ayuda.
 
 Contacto
 [PENDIENTE: responsable de datos y correo de contacto.]''';

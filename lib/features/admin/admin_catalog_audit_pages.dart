@@ -187,7 +187,7 @@ class _NewBannerSheetState extends ConsumerState<_NewBannerSheet> {
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Dónde se muestra'),
             items: [
-              const DropdownMenuItem<int?>(value: null, child: Text('Todas las ciudades')),
+              const DropdownMenuItem<int?>(value: null, child: Text('Toda Bolivia')),
               for (final c in cities) DropdownMenuItem<int?>(value: c.id, child: Text(c.name)),
             ],
             onChanged: (v) => setState(() => _city = v),

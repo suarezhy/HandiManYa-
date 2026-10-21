@@ -35,7 +35,7 @@ class WalletPage extends ConsumerWidget {
             ..invalidate(topupsProvider);
         },
         child: ListView(
-          padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+          padding: bottomSafePadding(context),
           children: [
             PageBody(
               child: Column(
@@ -501,7 +501,7 @@ class TopupReceiptPage extends StatelessWidget {
       key: const Key('topup-receipt'),
       appBar: AppBar(title: const Text('Solicitud enviada'), automaticallyImplyLeading: false),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+        padding: bottomSafePadding(context),
         children: [
           PageBody(
             child: Column(

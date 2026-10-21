@@ -26,6 +26,7 @@ class _RecoverAccountPageState extends ConsumerState<RecoverAccountPage> with Re
   final _code = TextEditingController();
   bool _sent = false;
   bool _loading = false;
+  final _action = GlobalKey(debugLabel: 'recover-action');
 
   @override
   void dispose() {
@@ -59,6 +60,7 @@ class _RecoverAccountPageState extends ConsumerState<RecoverAccountPage> with Re
   @override
   Widget build(BuildContext context) => AuthScaffold(
     title: 'Recupera tu cuenta',
+    keepVisible: _action,
     subtitle: _sent
         ? 'Si ${_email.text.trim()} está en una cuenta, te llegó un código. Revisa también la carpeta de spam.'
         : 'Escribe el correo que agregaste en tu perfil. Te enviaremos un código para entrar y cambiar tu número.',
@@ -80,13 +82,22 @@ class _RecoverAccountPageState extends ConsumerState<RecoverAccountPage> with Re
           if (_sent) ...[
             CodeField(controller: _code, onCompleted: _verify),
             const SizedBox(height: HySpacing.lg),
-            PrimaryButton(label: 'Continuar', loading: _loading, onPressed: _verify),
+            KeyedSubtree(
+              key: _action,
+              child: PrimaryButton(label: 'Continuar', loading: _loading, onPressed: _verify),
+            ),
             TextButton(
               onPressed: cooldown > 0 ? null : _send,
-              child: Text(cooldown > 0 ? 'Puedes pedir otro código en $cooldown s' : 'Enviar el código de nuevo'),
+              child: Text(
+                cooldown > 0 ? 'Puedes pedir otro código en $cooldown s' : 'Enviar el código de nuevo',
+                textAlign: TextAlign.center,
+              ),
             ),
           ] else
-            PrimaryButton(label: 'Continuar', loading: _loading, onPressed: _send),
+            KeyedSubtree(
+              key: _action,
+              child: PrimaryButton(label: 'Continuar', loading: _loading, onPressed: _send),
+            ),
           const SizedBox(height: HySpacing.xl),
           Text(
             '¿No agregaste un correo? Escríbenos a ${Env.supportEmail} desde otro número. Para proteger tu cuenta, '

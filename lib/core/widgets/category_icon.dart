@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/tokens.dart';
+import '../utils/category_order.dart';
 
 /// Ícono por categoría. El nombre viene de la base de datos (columna `icon`),
 /// así el administrador puede agregar categorías sin cambiar la app.
@@ -35,4 +36,14 @@ IconData categoryIcon(String name) => switch (name) {
   'directions_car' || 'construction' || 'carpenter' => (HyColors.primaryDark, HyColors.primarySoft),
   'cleaning_services' || 'content_cut' || 'spa' || 'gavel' => (const Color(0xFF6B3FA0), const Color(0xFFF2ECFA)),
   _ => (HyColors.navy, HyColors.surfaceMuted),
+};
+
+/// Etiqueta corta para las tarjetas del inicio. El nombre completo se sigue
+/// usando para lectores de pantalla y en la lista completa de servicios.
+String categoryShortLabel({required String slug, required String name}) => switch (normalizeCategoryKey(slug)) {
+  'reparaciones-hogar' => 'Reparaciones',
+  'belleza' => 'Belleza',
+  'manicure' => 'Manicure',
+  'clases' => 'Clases',
+  _ => name,
 };

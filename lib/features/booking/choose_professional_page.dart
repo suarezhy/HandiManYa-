@@ -56,7 +56,7 @@ class ChooseProfessionalPage extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(searchResultsProvider(filters).future),
         child: ListView(
-          padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+          padding: bottomSafePadding(context),
           children: [
             PageBody(
               child: Column(

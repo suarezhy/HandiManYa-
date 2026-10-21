@@ -10,6 +10,7 @@ import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import '../legal/legal_texts.dart';
 import 'auth_scaffold.dart';
+import '../common/city_picker.dart';
 
 /// Después del primer código: nombre, ciudad y cómo quiere usar la app.
 /// Quien elige ofrecer sus servicios sigue con su perfil profesional
@@ -60,7 +61,6 @@ class _CompleteProfilePageState extends ConsumerState<CompleteProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final cities = ref.watch(citiesProvider).value ?? const [];
     final pro = _role == AppRole.professional;
     return AuthScaffold(
       showBack: false,
@@ -80,14 +80,11 @@ class _CompleteProfilePageState extends ConsumerState<CompleteProfilePage> {
               validator: Validators.fullName,
             ),
             const SizedBox(height: HySpacing.md),
-            DropdownButtonFormField<int>(
+            CityField(
               key: const Key('profile-city'),
-              initialValue: _cityId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Ciudad', prefixIcon: Icon(Icons.location_city_outlined)),
-              items: [for (final c in cities) DropdownMenuItem(value: c.id, child: Text(c.name))],
+              value: _cityId,
               onChanged: (v) => setState(() => _cityId = v),
-              validator: (v) => v == null ? 'Elige tu ciudad' : null,
+              validator: (v) => v == null ? 'Elige tu municipio' : null,
             ),
             const SizedBox(height: HySpacing.lg),
             const Text(

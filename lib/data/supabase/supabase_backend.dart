@@ -158,7 +158,12 @@ class SupabaseBackend
   // ---------------------------------------------------------------- Catálogo
   @override
   Future<List<City>> cities() async =>
-      _rows(await _db.from('cities').select('id, name, slug').eq('is_active', true).order('sort_order'))
+      _rows(await _db
+              .from('cities')
+              .select('id, name, slug, department_id, province, latitude, longitude')
+              .eq('is_active', true)
+              .order('sort_order')
+              .order('name'))
           .map(City.fromMap)
           .toList();
 

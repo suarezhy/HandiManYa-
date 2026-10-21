@@ -42,7 +42,7 @@ class AdminCostsPage extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(costDashboardProvider),
         child: ListView(
-          padding: const EdgeInsets.only(top: HySpacing.sm, bottom: HySpacing.xxl),
+          padding: bottomSafePadding(context, top: HySpacing.sm),
           children: [
             PageBody(
               child: switch (d) {

@@ -27,6 +27,12 @@ class PageBody extends StatelessWidget {
   );
 }
 
+/// Relleno para listas a pantalla completa: el final queda por encima de la
+/// barra de navegación de Android (botones o gestos) y del indicador de inicio
+/// del iPhone. Con padding explícito, ListView ya no lo agrega solo.
+EdgeInsets bottomSafePadding(BuildContext context, {double top = 0, double bottom = HySpacing.xxl}) =>
+    EdgeInsets.only(top: top, bottom: bottom + MediaQuery.paddingOf(context).bottom);
+
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,
@@ -142,7 +148,14 @@ class RatingLabel extends StatelessWidget {
           const Icon(Icons.star_rounded, color: HyColors.star, size: 20),
           const SizedBox(width: 2),
           Text(Fmt.rating(rating), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-          Text(' ($count)', style: const TextStyle(color: HyColors.textMuted, fontSize: 14)),
+          Flexible(
+            child: Text(
+              ' ($count)',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: HyColors.textMuted, fontSize: 14),
+            ),
+          ),
         ],
       ),
     );

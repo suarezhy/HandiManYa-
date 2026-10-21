@@ -13,6 +13,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/photo_picker.dart';
 import '../common/safety_menu.dart';
+import '../safety/emergency_sheet.dart';
 import 'arrival_pin.dart';
 import 'live_trip.dart';
 
@@ -72,6 +73,7 @@ class _Content extends StatelessWidget {
         const SizedBox(height: HySpacing.md),
         ArrivalCard(b: b),
         _LiveTrip(b: b),
+        EmergencyLink(b: b),
 
         if (b.viewerIsCustomer && b.professional != null) ...[
           AppCard(

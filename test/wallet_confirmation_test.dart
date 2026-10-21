@@ -6,6 +6,7 @@ import 'package:handimanya/core/services/device_auth.dart';
 import 'package:handimanya/core/theme/app_theme.dart';
 import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/core/utils/formatters.dart';
+import 'package:handimanya/core/widgets/common.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/models/user.dart';
 import 'package:handimanya/data/models/wallet.dart';
@@ -306,6 +307,37 @@ void main() {
       expect(tester.widget<SwitchListTile>(find.byKey(const Key('biometric-switch'))).value, isFalse);
       expect(await r.backend.biometricEnabled(), isFalse);
     });
+
+    for (final (size, scale) in [
+      (const Size(320, 568), 1.3),
+      (const Size(360, 640), 1.0),
+      (const Size(412, 915), 1.6),
+    ]) {
+      testWidgets('nota breve sin recuadro azul en ${size.width.toInt()}x${size.height.toInt()} texto x$scale', (
+        tester,
+      ) async {
+        await _pump(tester, const SecurityPage(), deviceAuth: _FakeDeviceAuth());
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byType(InfoBanner), findsNothing);
+        final note = find.text(
+          'Tu huella y rostro se verifican de forma segura en tu dispositivo. '
+          'HandiMan ¡Ya! no almacena tus datos biométricos.',
+        );
+        await tester.ensureVisible(note);
+        await tester.pumpAndSettle();
+        expect(note, findsOneWidget);
+        expect(
+          find.descendant(of: find.byKey(const Key('security-note')), matching: find.byIcon(Icons.shield_outlined)),
+          findsOneWidget,
+        );
+        expect(tester.getRect(note).right, lessThanOrEqualTo(size.width));
+      });
+    }
 
     testWidgets('sin biometría en el teléfono solo explica que se usa un código', (tester) async {
       await _pump(tester, const SecurityPage(), deviceAuth: _FakeDeviceAuth(types: const {}));

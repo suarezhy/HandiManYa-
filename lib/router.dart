@@ -37,6 +37,7 @@ import 'features/professional/professional_profile_page.dart';
 import 'features/profile/edit_profile_page.dart';
 import 'features/profile/profile_page.dart';
 import 'features/profile/support_page.dart';
+import 'features/safety/emergency_guide_page.dart';
 import 'features/search/search_page.dart';
 import 'features/security/security_page.dart';
 import 'features/shell/app_shell.dart';
@@ -66,6 +67,7 @@ abstract final class Routes {
   static const notifications = '/notificaciones';
   static const editProfile = '/perfil/editar';
   static const security = '/perfil/seguridad';
+  static const emergencyGuide = '/perfil/emergencia';
   static const apply = '/postular';
   static const wallet = '/billetera';
   static const support = '/ayuda';
@@ -270,6 +272,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.notifications, builder: (_, _) => const NotificationsPage()),
       GoRoute(path: Routes.editProfile, builder: (_, _) => const EditProfilePage()),
       GoRoute(path: Routes.security, builder: (_, _) => const SecurityPage()),
+      GoRoute(path: Routes.emergencyGuide, builder: (_, _) => const EmergencyGuidePage()),
       GoRoute(path: Routes.apply, builder: (_, _) => const ApplicationPage()),
       GoRoute(path: Routes.wallet, builder: (_, _) => const WalletPage()),
       GoRoute(path: Routes.support, builder: (_, _) => const SupportPage()),

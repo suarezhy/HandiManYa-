@@ -9,6 +9,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import '../auth/auth_scaffold.dart';
+import '../common/city_picker.dart';
 
 class EditProfilePage extends ConsumerWidget {
   const EditProfilePage({super.key});
@@ -73,7 +74,6 @@ class _FormState extends ConsumerState<_Form> {
 
   @override
   Widget build(BuildContext context) {
-    final cities = ref.watch(citiesProvider).value ?? const [];
     final a = ref.watch(accountProvider).value ?? widget.account;
     return Form(
       key: _formKey,
@@ -94,14 +94,9 @@ class _FormState extends ConsumerState<_Form> {
                   validator: Validators.fullName,
                 ),
                 const SizedBox(height: HySpacing.md),
-                DropdownButtonFormField<int>(
-                  initialValue: _cityId,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Ciudad',
-                    prefixIcon: Icon(Icons.location_city_outlined),
-                  ),
-                  items: [for (final c in cities) DropdownMenuItem(value: c.id, child: Text(c.name))],
+                CityField(
+                  key: const Key('edit-profile-city'),
+                  value: _cityId,
                   onChanged: (v) => setState(() => _cityId = v),
                 ),
                 const SizedBox(height: HySpacing.md),
