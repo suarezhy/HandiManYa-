@@ -151,6 +151,15 @@ void main() {
       // Revisar una postulación hasta aprobarla.
       await _tapText(tester, 'Postulaciones');
       await _tapText(tester, 'Rubén Gutiérrez');
+      expect(find.byKey(const Key('approve-needs-id')), findsOneWidget);
+      // Aceptar el carnet (frente y reverso) habilita la aprobación.
+      for (final pick in [find.text('Aceptar').first, find.text('Aceptar').last]) {
+        await tester.ensureVisible(pick);
+        await tester.pumpAndSettle();
+        await tester.tap(pick);
+        await tester.pumpAndSettle();
+      }
+      expect(find.byKey(const Key('approve-needs-id')), findsNothing);
       await _tapText(tester, 'Aprobar profesional');
       await _tapText(tester, 'Aprobar');
       expect(find.text('Este profesional ya está aprobado.'), findsOneWidget);

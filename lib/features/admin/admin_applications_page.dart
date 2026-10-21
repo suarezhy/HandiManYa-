@@ -161,6 +161,13 @@ class AdminApplicationDetailPage extends ConsumerWidget {
   Widget _detail(BuildContext context, WidgetRef ref, AdminApplicationDetail d) {
     final a = d.summary;
     final pending = a.status == VerificationStatus.submitted || a.status == VerificationStatus.underReview;
+    // La base también lo exige (HMY_ID_DOCUMENTS_REQUIRED); aquí solo se avisa antes.
+    final idAccepted =
+        {
+          for (final doc in d.documents)
+            if (doc.status == DocumentStatus.accepted && doc.docType.startsWith('ci_')) doc.docType,
+        }.length ==
+        2;
     return ListView(
       padding: bottomSafePadding(context),
       children: [
@@ -272,11 +279,22 @@ class AdminApplicationDetailPage extends ConsumerWidget {
                   text: 'Este profesional ya está aprobado.',
                 )
               else ...[
+                if (!idAccepted && a.status != VerificationStatus.suspended) ...[
+                  const InfoBanner(
+                    key: Key('approve-needs-id'),
+                    icon: Icons.badge_outlined,
+                    tone: StatusTone.warning,
+                    text: 'Para aprobar, primero acepta el carnet de identidad (frente y reverso).',
+                  ),
+                  const SizedBox(height: HySpacing.xs),
+                ],
                 PrimaryButton(
                   label: 'Aprobar profesional',
                   icon: Icons.verified_outlined,
                   color: HyColors.greenDark,
-                  onPressed: () => _decide(context, ref, VerificationStatus.approved),
+                  onPressed: idAccepted || a.status == VerificationStatus.suspended
+                      ? () => _decide(context, ref, VerificationStatus.approved)
+                      : null,
                 ),
                 const SizedBox(height: HySpacing.xs),
                 if (pending) ...[
