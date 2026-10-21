@@ -57,6 +57,22 @@ jobs:
           end $$;
           SQL
 
+      - name: Revisar los números de prueba por rol (solo pide un código)
+        env:
+          E2E_URL: https://yldqopeldibwgbwmdnzy.supabase.co
+          E2E_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "Cuentas y permisos (solo lectura):"
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          select right(p.n, 2) || ': cuenta=' || (u.id is not null)::text
+            || ', admin=' || coalesce((select bool_or(r.role = 'admin') from public.user_roles r where r.user_id = u.id), false)::text
+            || ', profesional=' || coalesce((select pp.status::text from public.professional_profiles pp where pp.user_id = u.id), 'no')
+          from (values ('59170000001'), ('59170000002'), ('59170000003')) p(n)
+          left join auth.users u on u.phone = p.n order by p.n;
+          SQL
+          existing=$(psql "${DB_URL}" -X -At -c "select string_agg(phone, ',') from auth.users where phone in ('59170000001','59170000002','59170000003')")
+          EXISTING="$existing" node supabase/e2e/phone/role_numbers.mjs
+
       - name: Borrar restos de una corrida anterior
         run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -v phone="${E2E_TEST_PHONE}" -f supabase/e2e/phone/cleanup.sql
 
