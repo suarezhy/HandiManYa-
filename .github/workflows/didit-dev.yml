@@ -42,6 +42,20 @@ jobs:
       - name: Verificar que es el proyecto nuevo
         run: supabase/scripts/check_target.sh
 
+      - name: Diagnóstico de la clave pública (sin mostrar el valor)
+        env:
+          K_SECRET: ${{ secrets.SUPABASE_ANON_KEY }}
+          K_VAR: ${{ vars.SUPABASE_ANON_KEY }}
+          K_SECRET_SET: ${{ secrets.SUPABASE_ANON_KEY != '' }}
+          DB_SET: ${{ secrets.SUPABASE_DB_URL != '' }}
+        run: |
+          kind() { case "$1" in sb_publishable_*) echo publishable;; eyJ*) echo "anon JWT";; "") echo vacía;; *) echo "otro formato";; esac; }
+          echo "Repositorio: ${GITHUB_REPOSITORY} (id ${GITHUB_REPOSITORY_ID}), evento: ${GITHUB_EVENT_NAME}, rama: ${GITHUB_REF_NAME}"
+          echo "SUPABASE_DB_URL disponible: ${DB_SET}"
+          echo "secrets.SUPABASE_ANON_KEY disponible: ${K_SECRET_SET}, largo ${#K_SECRET}, tipo $(kind "$K_SECRET")"
+          t=$(printf '%s' "$K_SECRET" | tr -d '[:space:]'); echo "  sin espacios: largo ${#t}"
+          echo "vars.SUPABASE_ANON_KEY: largo ${#K_VAR}, tipo $(kind "$K_VAR")"
+
       - name: Revisar los secretos de GitHub
         run: |
           missing=0
