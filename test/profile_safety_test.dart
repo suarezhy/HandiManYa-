@@ -366,21 +366,24 @@ void main() {
     Future<void> checkDoc(WidgetTester tester, LegalDoc doc) async {
       final tile = find.widgetWithText(ListTile, doc.title);
       await _tap(tester, tile);
-      final sheet = find.byType(DraggableScrollableSheet);
-      expect(sheet, findsOneWidget, reason: doc.key);
+      final page = find.byType(LegalDocPage);
+      expect(page, findsOneWidget, reason: doc.key);
       expect(
-        find.descendant(of: sheet, matching: find.text(doc.title)),
+        find.descendant(of: page, matching: find.text(doc.title)),
         findsOneWidget,
         reason: doc.key,
       );
       expect(
-        find.descendant(of: sheet, matching: find.text(doc.body)),
+        find.descendant(of: page, matching: find.text(doc.body)),
         findsOneWidget,
         reason: doc.key,
       );
-      expect(find.descendant(of: sheet, matching: find.textContaining('BORRADOR')), findsOneWidget);
-      await _closeSheet(tester);
-      expect(sheet, findsNothing);
+      expect(find.descendant(of: page, matching: find.textContaining('BORRADOR')), findsOneWidget);
+      // La flecha de volver funciona y deja el perfil donde estaba.
+      await tester.tap(find.byKey(const Key('legal-back')));
+      await tester.pumpAndSettle();
+      expect(page, findsNothing);
+      expect(tile, findsOneWidget);
     }
 
     testWidgets('cliente: cada documento abre el texto correcto', (tester) async {
@@ -403,30 +406,55 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('al crear la cuenta, los enlaces de términos y privacidad abren su documento', (tester) async {
+    testWidgets('al crear la cuenta, los enlaces abren su documento y al volver se conserva lo escrito', (
+      tester,
+    ) async {
       await _pumpApp(tester);
       await loginWithPhone(tester, '+59167770001');
+      await tester.enterText(find.byKey(const Key('profile-name')), 'Ana Quispe');
       await tester.ensureVisible(find.byKey(const Key('profile-terms')));
       await tester.pumpAndSettle();
-      for (final (label, doc) in const [
-        ('Términos de uso', LegalDoc.terms),
-        ('Política de privacidad', LegalDoc.privacy),
+      final scrollable = find.byType(Scrollable).first;
+      final before = tester.state<ScrollableState>(scrollable).position.pixels;
+      for (final (label, doc, systemBack) in const [
+        ('Términos de uso', LegalDoc.terms, false),
+        ('Política de privacidad', LegalDoc.privacy, true),
       ]) {
         await tester.tapOnText(find.textRange.ofSubstring(label));
         await tester.pumpAndSettle();
-        final sheet = find.byType(DraggableScrollableSheet);
+        final page = find.byType(LegalDocPage);
         expect(
-          find.descendant(of: sheet, matching: find.text(doc.title)),
+          find.descendant(of: page, matching: find.text(doc.title)),
           findsOneWidget,
           reason: label,
         );
         expect(
-          find.descendant(of: sheet, matching: find.text(doc.body)),
+          find.descendant(of: page, matching: find.text(doc.body)),
           findsOneWidget,
           reason: label,
         );
-        await _closeSheet(tester);
+        if (systemBack) {
+          // Botón atrás de Android.
+          await tester.binding.handlePopRoute();
+        } else {
+          await tester.tap(find.byKey(const Key('legal-back')));
+        }
+        await tester.pumpAndSettle();
+        expect(page, findsNothing, reason: label);
+        expect(find.text('Ana Quispe'), findsOneWidget, reason: 'se conserva el nombre escrito');
+        expect(tester.state<ScrollableState>(scrollable).position.pixels, before, reason: 'misma posición');
       }
+    });
+
+    test('los textos legales describen el ingreso sin contraseña y los pagos directos', () {
+      final all = LegalDoc.values.map((d) => d.body).join('\n');
+      expect(all, isNot(matches(RegExp('tu contraseña|correo y contraseña'))), reason: 'el ingreso es con celular');
+      expect(LegalDoc.terms.body, contains('No hay contraseña'));
+      expect(LegalDoc.terms.body, contains('no recibe, no retiene y no garantiza ese pago'));
+      expect(LegalDoc.terms.body, contains('Los clientes no tienen billetera'));
+      expect(LegalDoc.privacy.body, contains('Didit'));
+      expect(LegalDoc.terms.body, contains('no es un servicio de emergencias'));
+      expect(LegalDoc.commissions.body, contains('Los clientes no tienen billetera ni pagan comisión'));
     });
 
     test('la política de privacidad nombra el botón real y la ubicación en vivo', () {

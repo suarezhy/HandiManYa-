@@ -166,7 +166,7 @@ class ProfilePage extends ConsumerWidget {
                     final ok = await confirmDialog(
                       context,
                       title: '¿Cerrar sesión?',
-                      message: 'Podrás volver a ingresar con tu correo y contraseña.',
+                      message: 'Podrás volver a entrar con tu número de celular y un código.',
                       confirm: 'Cerrar sesión',
                     );
                     if (ok && context.mounted) await runGuarded(context, () => ref.read(backendProvider).signOut());

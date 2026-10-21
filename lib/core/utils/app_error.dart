@@ -70,7 +70,7 @@ class AppError implements Exception {
       return AppError(switch (off.group(1)) {
         'CHANNEL_OFF' => 'Todavía no enviamos códigos por $name. Prueba por $other.',
         'BUDGET' =>
-          'Por ahora no podemos enviar códigos por $name. Entra con tu correo y contraseña o intenta más tarde.',
+          'Todavía no podemos enviar códigos por $name a este número. Intenta más tarde o escríbenos desde otro número.',
         _ => 'No pudimos enviar el código por $name. Vuelve a intentar o prueba por $other.',
       }, code: 'HMY_OTP_${off.group(1)}');
     }
