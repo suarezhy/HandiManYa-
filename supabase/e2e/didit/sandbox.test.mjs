@@ -52,7 +52,8 @@ test('identity-check: crea una sesión del sandbox de Didit (gratis)', needsUser
   const r = await call('identity-check', { auth: token });
   const hint = {
     HMY_IDENTITY_OFF: 'falta DIDIT_API_KEY o DIDIT_WORKFLOW_ID en los secretos de la función',
-    HMY_IDENTITY_SEND_FAILED: 'Didit rechazó crear la sesión: revisa DIDIT_WORKFLOW_ID (de la app sandbox) y el permiso de la clave',
+    HMY_IDENTITY_SEND_FAILED: `Didit rechazó crear la sesión (HTTP ${r.json?.didit_status ?? '?'}): 401/403 = clave o permiso; 400/404 = DIDIT_WORKFLOW_ID`,
+    HMY_IDENTITY_BAD_WORKFLOW_ID: 'DIDIT_WORKFLOW_ID no es un UUID: copia el ID del flujo (Console > Workflows), no su nombre',
     HMY_IDENTITY_LIVE_LOCKED: 'DIDIT_SANDBOX=false está puesto; quítalo',
   }[r.json?.error];
   assert.equal(r.status, 200, `${JSON.stringify(r.json)} ${hint ?? ''}`);

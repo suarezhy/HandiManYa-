@@ -248,25 +248,37 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
     await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
     return error(503, 'HMY_IDENTITY_OFF');
   }
+  // El id de un flujo de Didit es un UUID (Console > Workflows). Un nombre o un
+  // texto copiado de más se detecta aquí, sin llamar a Didit.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(env.DIDIT_WORKFLOW_ID.trim())) {
+    await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
+    return error(503, 'HMY_IDENTITY_BAD_WORKFLOW_ID');
+  }
   let session: { session_id?: string; verification_url?: string } = {};
+  let diditStatus = 0;
   try {
     const res = await fetchFn(`${DIDIT}/v3/session/`, {
       method: 'POST',
       headers: { 'x-api-key': env.DIDIT_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        workflow_id: env.DIDIT_WORKFLOW_ID,
+        workflow_id: env.DIDIT_WORKFLOW_ID.trim(),
         // Solo el id interno; nunca el nombre ni el carnet.
         vendor_data: user,
         ...(env.DIDIT_CALLBACK_URL ? { callback: env.DIDIT_CALLBACK_URL } : {}),
       }),
     });
+    diditStatus = res.status;
     if (res.ok) session = await res.json();
-  } catch {
-    // Se trata abajo como falla.
+    // Para el registro de la función (Supabase > Edge Functions > Logs): el
+    // motivo que da Didit. No lleva datos de la persona, solo el id interno.
+    else console.error(`Didit rechazó crear la sesión (${res.status}): ${(await res.text()).slice(0, 300)}`);
+  } catch (e) {
+    console.error(`No se pudo llamar a Didit: ${e}`);
   }
   if (!session.session_id || !session.verification_url) {
     await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
-    return error(502, 'HMY_IDENTITY_SEND_FAILED');
+    // Solo el código HTTP de Didit, para saber si es la clave (401/403) o el flujo (400/404).
+    return { status: 502, body: { error: 'HMY_IDENTITY_SEND_FAILED', didit_status: diditStatus } };
   }
   const saved = await rpc(env, fetchFn, 'hmy_identity_session', {
     p_check: g.id,

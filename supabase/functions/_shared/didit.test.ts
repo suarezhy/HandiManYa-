@@ -21,7 +21,7 @@ const base: Env = {
   SUPABASE_SERVICE_ROLE_KEY: 'srv',
   SUPABASE_ANON_KEY: 'anon',
   DIDIT_API_KEY: 'didit-key',
-  DIDIT_WORKFLOW_ID: 'wf-1',
+  DIDIT_WORKFLOW_ID: '1b2c3d4e-0000-4000-8000-00000000abcd',
   DIDIT_WEBHOOK_SECRET: secret,
 };
 
@@ -133,7 +133,7 @@ test('pedir la verificación: sandbox por defecto, solo el id interno va a Didit
   assert.deepEqual(JSON.parse(begin.body), { p_user: 'pro-1', p_sandbox: true });
   const create = calls.find((c) => c.url.endsWith('/v3/session/'))!;
   assert.equal(create.headers['x-api-key'], 'didit-key');
-  assert.deepEqual(JSON.parse(create.body), { workflow_id: 'wf-1', vendor_data: 'pro-1' });
+  assert.deepEqual(JSON.parse(create.body), { workflow_id: '1b2c3d4e-0000-4000-8000-00000000abcd', vendor_data: 'pro-1' });
   assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_session') && c.body.includes('ses-1')));
 });
 
@@ -181,10 +181,19 @@ test('pedir la verificación: sin claves de Didit, error claro y queda registrad
   assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_failed')));
 });
 
+test('pedir la verificación: un id de flujo que no es UUID no llega a Didit', async () => {
+  const { fn, calls } = fakeFetch({ hmy_identity_begin: { allowed: true, resume: false, id: 9 } });
+  const r = await handleStart(start(), { ...base, DIDIT_WORKFLOW_ID: 'Free KYC' }, fn);
+  assert.deepEqual(r.body, { error: 'HMY_IDENTITY_BAD_WORKFLOW_ID' });
+  assert.equal(calls.some((c) => c.url.includes('didit.me')), false);
+  assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_failed')));
+});
+
 test('pedir la verificación: si Didit falla, no se simula éxito', async () => {
   const { fn, calls } = fakeFetch({ hmy_identity_begin: { allowed: true, resume: false, id: 9 } }, { didit: 500 });
   const r = await handleStart(start(), base, fn);
   assert.equal(r.status, 502);
+  assert.deepEqual(r.body, { error: 'HMY_IDENTITY_SEND_FAILED', didit_status: 500 });
   assert.ok(calls.some((c) => c.url.endsWith('/rpc/hmy_identity_failed')));
 });
 
