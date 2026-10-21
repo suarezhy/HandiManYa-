@@ -55,6 +55,39 @@ Future<void> _scrollToEnd(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _tapKey(WidgetTester tester, String key) async {
+  final f = find.byKey(Key(key));
+  await tester.ensureVisible(f);
+  await tester.pumpAndSettle();
+  await tester.tap(f);
+  await tester.pumpAndSettle();
+}
+
+/// Etapa 1 completa: nombre, servicio principal y descripción.
+Future<void> _fillServices(WidgetTester tester, {String primary = 'Limpieza'}) async {
+  final fields = find.byType(TextFormField);
+  await tester.enterText(fields.at(0), 'Rosa Mamani');
+  await tester.enterText(fields.at(2), 'Limpieza de casas y oficinas en Uyuni, con productos propios.');
+  await _tapKey(tester, 'application-primary');
+  await tester.tap(find.text(primary).last);
+  await tester.pumpAndSettle();
+}
+
+/// Etapa 2: un municipio sin zonas, fuera de las tres ciudades.
+Future<void> _chooseUyuni(WidgetTester tester) async {
+  await _tapKey(tester, 'application-city');
+  await tester.enterText(find.byKey(const Key('city-search')), 'uyuni');
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('city-uyuni-pt')));
+  await tester.pumpAndSettle();
+}
+
+void _expectAboveSystemBar(WidgetTester tester, String key, Size size, double navBar) {
+  final r = tester.getRect(find.byKey(Key(key)));
+  expect(r.bottom, lessThanOrEqualTo(size.height - navBar), reason: '$key tapado por la barra del sistema');
+  expect(r.left >= 0 && r.right <= size.width, isTrue, reason: '$key se sale de la pantalla');
+}
+
 void main() {
   for (final (size, navBar, scale) in [
     (const Size(320, 568), 48.0, 1.0),
@@ -63,55 +96,56 @@ void main() {
     (const Size(393, 852), 34.0, 1.6), // iPhone con indicador de inicio
     (const Size(412, 915), 48.0, 1.0),
   ]) {
-    testWidgets('los dos botones quedan por encima de la barra del sistema en '
+    testWidgets('en cada etapa los botones quedan por encima de la barra del sistema en '
         '${size.width.toInt()}x${size.height.toInt()}, barra $navBar, texto x$scale', (tester) async {
       await _pump(tester, size: size, navBar: navBar, textScale: scale);
       expect(tester.takeException(), isNull);
       await _scrollToEnd(tester);
-      for (final key in ['application-submit', 'application-save-draft', 'doc-ci-anverso', 'doc-ci-reverso']) {
-        final f = find.byKey(Key(key));
-        await tester.ensureVisible(f);
+      for (final key in ['application-next', 'application-save-draft']) {
+        await tester.ensureVisible(find.byKey(Key(key)));
         await tester.pumpAndSettle();
-        final r = tester.getRect(f);
-        expect(r.bottom, lessThanOrEqualTo(size.height - navBar), reason: '$key tapado por la barra del sistema');
-        expect(r.left >= 0 && r.right <= size.width, isTrue, reason: '$key se sale de la pantalla');
+        _expectAboveSystemBar(tester, key, size, navBar);
+      }
+      await _fillServices(tester);
+      await _tapKey(tester, 'application-next');
+      expect(find.text('Dónde trabajo'), findsWidgets);
+      await _chooseUyuni(tester);
+      await _tapKey(tester, 'application-next');
+      expect(find.text('Verificación'), findsWidgets);
+      await _scrollToEnd(tester);
+      for (final key in ['application-submit', 'application-save-draft', 'doc-ci-anverso', 'doc-ci-reverso']) {
+        await tester.ensureVisible(find.byKey(Key(key)));
+        await tester.pumpAndSettle();
+        _expectAboveSystemBar(tester, key, size, navBar);
       }
       await _scrollToEnd(tester);
-      final draft = tester.getRect(find.byKey(const Key('application-save-draft')));
-      expect(draft.bottom, lessThanOrEqualTo(size.height - navBar), reason: 'al final de la lista sigue visible');
+      _expectAboveSystemBar(tester, 'application-save-draft', size, navBar);
       expect(tester.takeException(), isNull);
     });
   }
 
+  testWidgets('tres etapas: no avanza sin lo obligatorio y se puede volver', (tester) async {
+    await _pump(tester, size: const Size(360, 640));
+    expect(find.byKey(const Key('application-city')), findsNothing, reason: 'el municipio va en la etapa 2');
+    expect(find.byKey(const Key('doc-ci-anverso')), findsNothing, reason: 'los documentos van en la etapa 3');
+    await _tapKey(tester, 'application-next');
+    expect(find.text('Escribe al menos 20 caracteres'), findsOneWidget);
+    expect(find.byKey(const Key('application-city')), findsNothing);
+    await _fillServices(tester);
+    await _tapKey(tester, 'application-next');
+    expect(find.byKey(const Key('application-city')), findsOneWidget);
+    expect(find.byKey(const Key('application-service-area')), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing, reason: 'no pide el municipio antes de mostrar el campo');
+    await _tapKey(tester, 'application-back');
+    expect(find.text('Rosa Mamani'), findsOneWidget, reason: 'al volver se conserva lo escrito');
+  });
+
   testWidgets('el borrador se guarda sin enviarse y vuelve al abrir otra vez', (tester) async {
     final backend = await _pump(tester, size: const Size(412, 915));
-    final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(0), 'Rosa Mamani');
-    await tester.enterText(fields.at(2), 'Limpieza de casas y oficinas en Uyuni, con productos propios.');
-    // Servicio principal: la primera opción de la lista.
-    final primary = find.byKey(const Key('application-primary'));
-    await tester.ensureVisible(primary);
-    await tester.pumpAndSettle();
-    await tester.tap(primary);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownMenuItem<int>).last);
-    await tester.pumpAndSettle();
-    // Municipio sin zonas (fuera de las tres ciudades): se puede guardar igual.
-    final city = find.byKey(const Key('application-city'));
-    await tester.ensureVisible(city);
-    await tester.pumpAndSettle();
-    await tester.tap(city);
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(const Key('city-search')), 'uyuni');
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('city-uyuni-pt')));
-    await tester.pumpAndSettle();
-
-    final save = find.byKey(const Key('application-save-draft'));
-    await tester.ensureVisible(save);
-    await tester.pumpAndSettle();
-    await tester.tap(save);
-    await tester.pumpAndSettle();
+    await _fillServices(tester);
+    await _tapKey(tester, 'application-next');
+    await _chooseUyuni(tester);
+    await _tapKey(tester, 'application-save-draft');
     expect(find.text('Borrador guardado'), findsOneWidget);
 
     final app = await backend.application();
@@ -122,6 +156,7 @@ void main() {
     await _pump(tester, size: const Size(412, 915), backend: backend);
     expect(find.text('Rosa Mamani'), findsOneWidget);
     expect(find.text('Limpieza de casas y oficinas en Uyuni, con productos propios.'), findsOneWidget);
+    await _tapKey(tester, 'application-next');
     expect(find.text('Uyuni'), findsOneWidget);
   });
 

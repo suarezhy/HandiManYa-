@@ -290,25 +290,46 @@ class InfoBanner extends StatelessWidget {
   final IconData icon;
   final StatusTone tone;
 
+  /// Los avisos informativos son una nota breve en gris, sin recuadro de color;
+  /// solo las advertencias y los errores llevan fondo para llamar la atención.
+  bool get _isNote => tone == StatusTone.info || tone == StatusTone.success || tone == StatusTone.neutral;
+
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(HySpacing.sm),
-    decoration: BoxDecoration(color: tone.background, borderRadius: BorderRadius.circular(HyRadii.md)),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: tone.foreground),
-        const SizedBox(width: HySpacing.xs),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(color: tone.foreground, fontWeight: FontWeight.w600),
+  Widget build(BuildContext context) => _isNote
+      ? Padding(
+          padding: const EdgeInsets.symmetric(vertical: HySpacing.xxs),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(icon, size: 18, color: HyColors.textSecondary),
+              ),
+              const SizedBox(width: HySpacing.xs),
+              Expanded(
+                child: Text(text, style: const TextStyle(fontSize: 14, height: 1.35, color: HyColors.textSecondary)),
+              ),
+            ],
           ),
-        ),
-      ],
-    ),
-  );
+        )
+      : Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(HySpacing.sm),
+          decoration: BoxDecoration(color: tone.background, borderRadius: BorderRadius.circular(HyRadii.md)),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: tone.foreground),
+              const SizedBox(width: HySpacing.xs),
+              Expanded(
+                child: Text(
+                  text,
+                  style: TextStyle(color: tone.foreground, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        );
 }
 
 void showMessage(BuildContext context, String text) {

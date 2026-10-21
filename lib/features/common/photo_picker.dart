@@ -41,6 +41,36 @@ Future<PhotoUpload?> pickPhoto(BuildContext context) async {
   }
 }
 
+/// Muestra una foto en grande. El botón Cerrar va arriba, fuera de la foto,
+/// para que siempre reciba el toque aunque la imagen sea chica.
+Future<void> showPhotoPreview(BuildContext context, Widget image) => showDialog<void>(
+  context: context,
+  builder: (c) => Dialog(
+    insetPadding: const EdgeInsets.all(HySpacing.md),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: IconButton(
+            key: const Key('photo-preview-close'),
+            tooltip: 'Cerrar',
+            onPressed: () => Navigator.pop(c),
+            icon: const Icon(Icons.close),
+          ),
+        ),
+        Flexible(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(HySpacing.xs, 0, HySpacing.xs, HySpacing.xs),
+            child: InteractiveViewer(child: image),
+          ),
+        ),
+      ],
+    ),
+  ),
+);
+
 class PhotoPickerRow extends StatelessWidget {
   const PhotoPickerRow({super.key, required this.photos, required this.onChanged, this.max = 5});
 
@@ -65,25 +95,46 @@ class PhotoPickerRow extends StatelessWidget {
           runSpacing: HySpacing.sm,
           children: [
             for (var i = 0; i < photos.length; i++)
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(HyRadii.md),
-                    child: Image.memory(photos[i].bytes, width: 88, height: 88, fit: BoxFit.cover),
-                  ),
-                  Positioned(
-                    right: -10,
-                    top: -10,
-                    child: IconButton.filled(
-                      tooltip: 'Quitar foto',
-                      iconSize: 18,
-                      style: IconButton.styleFrom(backgroundColor: HyColors.navy, minimumSize: const Size(32, 32)),
-                      onPressed: () => onChanged([...photos]..removeAt(i)),
-                      icon: const Icon(Icons.close),
+              // El botón de quitar queda dentro de la caja: fuera de ella no recibe toques.
+              SizedBox(
+                key: Key('photo-$i'),
+                width: 100,
+                height: 100,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      left: 0,
+                      bottom: 0,
+                      child: Semantics(
+                        button: true,
+                        label: 'Ver foto ${i + 1}',
+                        child: GestureDetector(
+                          onTap: () => showPhotoPreview(context, Image.memory(photos[i].bytes, fit: BoxFit.contain)),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(HyRadii.md),
+                            child: Image.memory(photos[i].bytes, width: 88, height: 88, fit: BoxFit.cover),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: IconButton.filled(
+                        key: Key('photo-remove-$i'),
+                        tooltip: 'Quitar foto',
+                        iconSize: 18,
+                        style: IconButton.styleFrom(
+                          backgroundColor: HyColors.navy,
+                          minimumSize: const Size(36, 36),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: () => onChanged([...photos]..removeAt(i)),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             if (photos.length < max)
               Semantics(
@@ -96,8 +147,10 @@ class PhotoPickerRow extends StatelessWidget {
                     if (p != null) onChanged([...photos, p]);
                   },
                   child: Container(
+                    key: const Key('photo-add'),
                     width: 88,
                     height: 88,
+                    margin: photos.isEmpty ? null : const EdgeInsets.only(top: 12),
                     decoration: BoxDecoration(
                       color: HyColors.surface,
                       borderRadius: BorderRadius.circular(HyRadii.md),
@@ -159,26 +212,7 @@ class BookingPhotosStrip extends StatelessWidget {
           button: true,
           label: 'Ver foto ${i + 1} de ${photos.length}',
           child: GestureDetector(
-            onTap: () => showDialog<void>(
-              context: context,
-              builder: (c) => Dialog(
-                insetPadding: const EdgeInsets.all(HySpacing.md),
-                child: Stack(
-                  children: [
-                    InteractiveViewer(child: _image(photos[i], fit: BoxFit.contain)),
-                    Positioned(
-                      right: 4,
-                      top: 4,
-                      child: IconButton.filled(
-                        tooltip: 'Cerrar',
-                        onPressed: () => Navigator.pop(c),
-                        icon: const Icon(Icons.close),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            onTap: () => showPhotoPreview(context, _image(photos[i], fit: BoxFit.contain)),
             child: ClipRRect(borderRadius: BorderRadius.circular(HyRadii.md), child: _image(photos[i], size: 96)),
           ),
         ),
