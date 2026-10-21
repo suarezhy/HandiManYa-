@@ -10,6 +10,11 @@
 --   el intento vacío recién creado.
 -- - Una sesión de otro profesional, de otro entorno o ya cerrada nunca se acepta.
 -- - Un enlace guardado que no es de Didit se descarta para no volver a entregarlo.
+-- - Dos pedidos a la vez con la misma sesión: el segundo la reutiliza (no falla).
+--
+-- Para deshacer: drop function public.hmy_identity_attach(bigint, text, text),
+-- public.hmy_identity_session_free(bigint, text), public.hmy_identity_forget_link(bigint);
+-- No cambia tablas ni políticas; los datos que deja son válidos para 0017.
 
 create function public.hmy_identity_attach(p_check bigint, p_session_id text, p_url text)
 returns jsonb
@@ -28,8 +33,14 @@ begin
   end if;
   select * into e from public.identity_checks where session_id = p_session_id for update;
   if not found then
-    update public.identity_checks set session_id = p_session_id, verification_url = p_url where id = c.id;
-    return jsonb_build_object('saved', true, 'check', c.id, 'reused', false);
+    begin
+      update public.identity_checks set session_id = p_session_id, verification_url = p_url where id = c.id;
+      return jsonb_build_object('saved', true, 'check', c.id, 'reused', false);
+    exception when unique_violation then
+      -- Dos pedidos a la vez recibieron la misma sesión de Didit: el otro la
+      -- guardó primero. Se sigue como sesión ya conocida.
+      select * into e from public.identity_checks where session_id = p_session_id for update;
+    end;
   end if;
   if e.professional_id = c.professional_id and e.sandbox = c.sandbox
      and e.status in ('created', 'in_progress', 'resubmitted') then
