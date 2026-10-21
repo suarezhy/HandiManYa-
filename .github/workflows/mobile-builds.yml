@@ -49,6 +49,13 @@ jobs:
           f="config/supabase-${ENTORNO}.json"
           test -f "$f" || { echo "::error::Falta $f"; exit 1; }
           jq -e '.SUPABASE_URL != "" and .SUPABASE_ANON_KEY != ""' "$f" >/dev/null
+      # La misma llave de depuración en cada compilación: así el APK de prueba
+      # se instala encima del anterior sin desinstalar (solo para probar).
+      - name: Reusar la llave de depuración de las pruebas
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
       - name: Preparar la firma (si hay secretos)
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
