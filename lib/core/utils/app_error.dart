@@ -109,6 +109,7 @@ class AppError implements Exception {
     'HMY_INVALID_PHONE': 'Escribe un celular de Bolivia de 8 dígitos, por ejemplo 71234567.',
     'HMY_INVALID_CHANNEL': 'Elige WhatsApp o SMS.',
     'HMY_INVALID_NAME': 'Escribe tu nombre y apellido.',
+    'HMY_INVALID_PHOTO': 'No pudimos usar esa foto. Prueba con otra (JPG o PNG, hasta 5 MB).',
     'HMY_INVALID_CITY': 'Elige tu ciudad.',
     'HMY_TERMS_REQUIRED': 'Para continuar, acepta los Términos de uso y la Política de privacidad.',
     'HMY_SAME_PHONE': 'Ese ya es tu número.',

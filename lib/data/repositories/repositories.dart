@@ -43,6 +43,11 @@ abstract interface class AccountRepository {
   Future<void> completeSignup({required String fullName, required int cityId, required bool acceptTerms});
   Future<void> updateProfile({required String fullName, int? cityId});
 
+  /// Foto de perfil (cliente y profesional). Se guarda en la carpeta del
+  /// usuario del depósito público `avatars`; el carnet va en otro, privado.
+  Future<void> setProfilePhoto({required Uint8List bytes, required String fileName});
+  Future<void> removeProfilePhoto();
+
   /// Cambiar de número: código al número nuevo; al verificarlo, la cuenta
   /// (con sus pedidos y billetera) pasa a entrar con ese número.
   Future<void> requestPhoneChange({required String phone, required CodeChannel channel});

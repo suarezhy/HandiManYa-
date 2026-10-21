@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../data/models/booking.dart';
@@ -193,10 +195,13 @@ class AvailabilityDot extends StatelessWidget {
 }
 
 class PersonAvatar extends StatelessWidget {
-  const PersonAvatar({super.key, required this.name, this.url, this.size = 56});
+  const PersonAvatar({super.key, required this.name, this.url, this.bytes, this.size = 56});
 
   final String name;
   final String? url;
+
+  /// Foto en memoria (modo demostración).
+  final Uint8List? bytes;
   final double size;
 
   @override
@@ -212,6 +217,19 @@ class PersonAvatar extends StatelessWidget {
         textScaler: TextScaler.noScaling,
       ),
     );
+    if (bytes != null) {
+      return ExcludeSemantics(
+        child: ClipOval(
+          child: Image.memory(
+            bytes!,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => fallback,
+          ),
+        ),
+      );
+    }
     if (url == null) return ExcludeSemantics(child: fallback);
     return ExcludeSemantics(
       child: ClipOval(

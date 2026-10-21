@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -32,6 +34,11 @@ class _FakeLocation implements LocationService {
 }
 
 const _small = Size(320, 568);
+
+// PNG de 1x1 píxel.
+final _png = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+);
 
 const _phone = Size(390, 844);
 
@@ -360,6 +367,45 @@ void main() {
       await tester.ensureVisible(find.text('Eliminación de cuenta solicitada'));
       final button = tester.widget<TextButton>(find.widgetWithText(TextButton, 'Eliminación de cuenta solicitada'));
       expect(button.onPressed, isNull, reason: 'no se puede pedir dos veces');
+    });
+  });
+
+  group('Foto de perfil', () {
+    testWidgets('agregar, ver y quitar la foto (cliente)', (tester) async {
+      final backend = await _openProfile(tester);
+      expect(find.byKey(const Key('profile-photo')), findsOneWidget);
+      // Sin foto: solo cámara y galería.
+      await _tap(tester, find.byKey(const Key('profile-photo')));
+      expect(find.byKey(const Key('profile-photo-camera')), findsOneWidget);
+      expect(find.byKey(const Key('profile-photo-gallery')), findsOneWidget);
+      expect(find.byKey(const Key('profile-photo-remove')), findsNothing);
+      Navigator.of(tester.element(find.byKey(const Key('profile-photo-camera')))).pop();
+      await tester.pumpAndSettle();
+
+      // La cámara y la galería no corren en pruebas: la foto llega por la misma API.
+      await backend.setProfilePhoto(bytes: _png, fileName: 'yo.png');
+      _router(tester).go(Routes.home);
+      await tester.pumpAndSettle();
+      _router(tester).go(Routes.profile);
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: find.byKey(const Key('profile-photo')), matching: find.byType(Image)), findsOneWidget);
+
+      await _tap(tester, find.byKey(const Key('profile-photo')));
+      await _tap(tester, find.byKey(const Key('profile-photo-view')));
+      expect(find.byType(Dialog), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('photo-preview-close')));
+
+      await _tap(tester, find.byKey(const Key('profile-photo')));
+      await _tap(tester, find.byKey(const Key('profile-photo-remove')));
+      await _tap(tester, find.text('Quitar'));
+      expect(find.descendant(of: find.byKey(const Key('profile-photo')), matching: find.byType(Image)), findsNothing);
+      expect((await backend.myAccount()).hasPhoto, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('el profesional también tiene foto de perfil', (tester) async {
+      await _openProfile(tester, phone: DemoBackend.professionalPhone);
+      expect(find.byKey(const Key('profile-photo')), findsOneWidget);
     });
   });
 

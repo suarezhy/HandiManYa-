@@ -477,7 +477,23 @@ class DemoBackend
       isSuspended: a.suspendedAt != null,
       suspensionReason: a.suspensionReason,
       blockedIds: {...a.blocked},
+      photoBytes: a.photo,
     );
+  }
+
+  @override
+  Future<void> setProfilePhoto({required Uint8List bytes, required String fileName}) async {
+    await _latency();
+    if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) throw AppError.from('HMY_INVALID_PHOTO');
+    _me.photo = bytes;
+    _changes.add(null);
+  }
+
+  @override
+  Future<void> removeProfilePhoto() async {
+    await _latency();
+    _me.photo = null;
+    _changes.add(null);
   }
 
   @override
@@ -3084,6 +3100,7 @@ class _Account {
   DateTime? suspendedAt;
   String? suspensionReason;
   final Set<String> blocked = {};
+  Uint8List? photo;
 }
 
 class _PendingCode {

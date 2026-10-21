@@ -93,9 +93,14 @@ class SupabaseBackend
   // ---------------------------------------------------------------- Cuenta
   @override
   Future<UserProfile> myAccount() async {
-    final results = await Future.wait([_db.rpc('my_account'), _db.rpc('my_status')]);
+    final results = await Future.wait<dynamic>([
+      _db.rpc('my_account'),
+      _db.rpc('my_status'),
+      _db.from('profiles').select('avatar_path').eq('id', _uid).maybeSingle(),
+    ]);
     final m = Map<String, dynamic>.from(results[0] as Map);
     final st = Map<String, dynamic>.from(results[1] as Map? ?? const {});
+    final avatar = (results[2] as Map?)?['avatar_path'] as String?;
     return UserProfile(
       id: m['id'] as String,
       email: m['email'] as String? ?? '',
@@ -113,7 +118,41 @@ class SupabaseBackend
       isSuspended: st['suspended_at'] != null,
       suspensionReason: st['suspension_reason'] as String?,
       blockedIds: {for (final id in (st['blocked'] as List? ?? const [])) id as String},
+      photoUrl: _publicPhoto(avatar),
     );
+  }
+
+  @override
+  Future<void> setProfilePhoto({required Uint8List bytes, required String fileName}) async {
+    final photo = PhotoUpload(bytes: bytes, fileName: fileName);
+    final old = (await _db.from('profiles').select('avatar_path').eq('id', _uid).maybeSingle())?['avatar_path'];
+    // Ruta nueva en cada cambio: así nadie ve la foto anterior guardada en caché.
+    final ext = photo.contentType.split('/').last.replaceAll('jpeg', 'jpg');
+    final path = '$_uid/perfil-${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await _db.storage
+        .from('avatars')
+        .uploadBinary(path, bytes, fileOptions: FileOptions(contentType: photo.contentType, upsert: false));
+    await _db.from('profiles').update({'avatar_path': path}).eq('id', _uid);
+    // La misma foto en el perfil público de profesional, si lo tiene.
+    await _db.from('professional_profiles').update({'photo_path': path}).eq('user_id', _uid);
+    if (old is String && old.isNotEmpty && old != path) await _removeAvatarFile(old);
+  }
+
+  @override
+  Future<void> removeProfilePhoto() async {
+    final old = (await _db.from('profiles').select('avatar_path').eq('id', _uid).maybeSingle())?['avatar_path'];
+    await _db.from('profiles').update({'avatar_path': null}).eq('id', _uid);
+    await _db.from('professional_profiles').update({'photo_path': null}).eq('user_id', _uid);
+    if (old is String && old.isNotEmpty) await _removeAvatarFile(old);
+  }
+
+  /// Borra un archivo propio de `avatars`. Si falla, la foto ya no se muestra
+  /// igual (la ruta se quitó del perfil), así que no se interrumpe al usuario.
+  Future<void> _removeAvatarFile(String path) async {
+    if (!path.startsWith('$_uid/')) return;
+    try {
+      await _db.storage.from('avatars').remove([path]);
+    } catch (_) {}
   }
 
   @override
@@ -157,15 +196,14 @@ class SupabaseBackend
 
   // ---------------------------------------------------------------- Catálogo
   @override
-  Future<List<City>> cities() async =>
-      _rows(await _db
-              .from('cities')
-              .select('id, name, slug, department_id, province, latitude, longitude')
-              .eq('is_active', true)
-              .order('sort_order')
-              .order('name'))
-          .map(City.fromMap)
-          .toList();
+  Future<List<City>> cities() async => _rows(
+    await _db
+        .from('cities')
+        .select('id, name, slug, department_id, province, latitude, longitude')
+        .eq('is_active', true)
+        .order('sort_order')
+        .order('name'),
+  ).map(City.fromMap).toList();
 
   @override
   Future<List<Zone>> zones(int cityId) async => _rows(

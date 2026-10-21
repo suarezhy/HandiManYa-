@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 enum AppRole {
   customer('customer'),
   professional('professional'),
@@ -71,6 +73,8 @@ class UserProfile {
     this.suspensionReason,
     this.isSuspended = false,
     this.blockedIds = const {},
+    this.photoUrl,
+    this.photoBytes,
   });
 
   final String id;
@@ -95,6 +99,12 @@ class UserProfile {
 
   /// Personas que este usuario bloqueó.
   final Set<String> blockedIds;
+
+  /// Foto de perfil pública (URL en Supabase, bytes en el modo demostración).
+  /// Es otra cosa que el carnet y los documentos, que son privados.
+  final String? photoUrl;
+  final Uint8List? photoBytes;
+  bool get hasPhoto => photoUrl != null || photoBytes != null;
 
   bool get isApprovedProfessional =>
       roles.contains(AppRole.professional) && professionalStatus == VerificationStatus.approved;
@@ -128,6 +138,8 @@ class UserProfile {
     isSuspended: isSuspended,
     suspensionReason: suspensionReason,
     blockedIds: blockedIds ?? this.blockedIds,
+    photoUrl: photoUrl,
+    photoBytes: photoBytes,
   );
 }
 

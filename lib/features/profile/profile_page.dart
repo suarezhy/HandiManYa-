@@ -10,6 +10,7 @@ import '../../router.dart';
 import '../common/city_picker.dart';
 import '../legal/legal_texts.dart';
 import '../safety/safety_sheets.dart';
+import 'profile_photo.dart';
 
 /// Perfil compartido por cliente y profesional. Desde aquí se cambia de modo.
 class ProfilePage extends ConsumerWidget {
@@ -41,7 +42,7 @@ class ProfilePage extends ConsumerWidget {
                 AppCard(
                   child: Row(
                     children: [
-                      PersonAvatar(name: account.fullName, size: 64),
+                      ProfilePhotoButton(account: account),
                       const SizedBox(width: HySpacing.md),
                       Expanded(
                         child: Column(
