@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -88,9 +89,16 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
                     value: on,
                     onChanged: _busy ? null : (v) => _toggle(v, d),
                   ),
+                  // En el navegador no hay acceso a la huella ni al rostro del equipo,
+                  // aunque el iPad o el teléfono los tengan.
+                  (AsyncData(value: final d), _) when d.isEmpty && kIsWeb => const _SecurityNote(
+                    'En la versión web no se puede usar la huella ni el rostro. '
+                    'Confirmarás con un código a tu celular. En la app para Android o iPhone puedes activarlos.',
+                    icon: Icons.language,
+                  ),
                   (AsyncData(value: final d), _) when d.isEmpty => const _SecurityNote(
-                    'Este dispositivo no tiene huella ni reconocimiento facial configurados. '
-                    'Confirmarás con un código a tu celular.',
+                    'Este teléfono no tiene huella ni rostro configurados. '
+                    'Confirmarás con un código a tu celular. Puedes configurarlos en los ajustes del teléfono.',
                     icon: Icons.phonelink_lock_outlined,
                   ),
                   (AsyncError(), _) || (_, AsyncError()) => ErrorView(
@@ -115,10 +123,11 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
                 const SizedBox(height: HySpacing.lg),
                 // Cierto: local_auth deja la verificación al sistema operativo y la app
                 // solo recibe "sí" o "no"; al servidor solo va si está activado.
-                const _SecurityNote(
-                  'Tu huella y rostro se verifican de forma segura en tu dispositivo. '
-                  'HandiMan ¡Ya! no almacena tus datos biométricos.',
-                ),
+                if (!kIsWeb)
+                  const _SecurityNote(
+                    'Tu huella y rostro se verifican de forma segura en tu dispositivo. '
+                    'HandiMan ¡Ya! no almacena tus datos biométricos.',
+                  ),
               ],
             ),
           ),
