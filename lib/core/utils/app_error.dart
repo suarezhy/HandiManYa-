@@ -88,6 +88,8 @@ class AppError implements Exception {
     'HMY_IDENTITY_ALREADY_APPROVED': 'Tu identidad ya está verificada.',
     'HMY_IDENTITY_ATTEMPT_LIMIT':
         'Ya hiciste 3 intentos este mes. Escríbenos a soporte y una persona revisará tu caso.',
+    'HMY_ID_DOCUMENTS_REQUIRED':
+        'Para aprobar, primero acepta el carnet de identidad (frente y reverso) en Documentos.',
     'HMY_IDENTITY_CHECK_REQUIRED':
         'Para aprobar, primero tiene que haber una verificación de identidad real aprobada (las de prueba no cuentan).',
     'HMY_CAP_REQUIRED': 'Para autorizar un gasto, fija un tope mensual mayor que cero.',

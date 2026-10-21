@@ -29,10 +29,14 @@ select test.logout();
 update public.professional_profiles set created_at = now() - interval '3 days'
  where user_id = '00000000-0000-0000-0000-0000000009f1';
 
+-- Un aprobado cuyo carnet dejó de estar aceptado (prueba 90), para la alerta.
+update public.professional_documents set status = 'pending' where professional_id = '00000000-0000-0000-0000-0000000009b1';
+
 -- Un documento aceptado que vence pronto (profesional de la prueba 93, aprobado).
 update public.professional_profiles set status = 'approved' where user_id = '00000000-0000-0000-0000-0000000009e1';
 update public.professional_documents set status = 'accepted', expires_on = current_date + 10
- where professional_id = '00000000-0000-0000-0000-0000000009e1';
+ where professional_id = '00000000-0000-0000-0000-0000000009e1'
+   and storage_path not like '%/ci-_.jpg'; -- no el carnet de test.accept_id
 
 -- 1. Solo el equipo los corre a mano.
 select test.login('00000000-0000-0000-0000-0000000009c1');

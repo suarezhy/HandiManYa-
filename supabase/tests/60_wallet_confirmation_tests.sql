@@ -32,6 +32,7 @@ begin
   perform public.submit_professional_application();
   perform test.logout();
   perform test.login('00000000-0000-0000-0000-00000000000a');
+  perform test.accept_id(v);
   perform public.review_professional_application(v, 'approved');
   perform test.logout();
 end $$;

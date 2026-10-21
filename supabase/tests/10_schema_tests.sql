@@ -48,6 +48,13 @@ begin
   raise notice 'ok - %', p_msg;
 end $$;
 
+-- Carnet aceptado (anverso y reverso): aprobar a un profesional lo exige (0032).
+create function test.accept_id(p_pro uuid) returns void language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.professional_documents (professional_id, doc_type, storage_path, status)
+  values (p_pro, 'ci_anverso', p_pro || '/ci-a.jpg', 'accepted'), (p_pro, 'ci_reverso', p_pro || '/ci-r.jpg', 'accepted');
+end $$;
+
 -- Llegada verificada (0014): el profesional marca "He llegado" y el cliente
 -- escribe el código. Deja la sesión como el profesional.
 create function test.arrive(p_booking uuid, p_pro uuid, p_customer uuid) returns void language plpgsql as $$
@@ -120,6 +127,10 @@ select test.logout();
 
 select test.login('00000000-0000-0000-0000-00000000000a');
 select test.expect_error($$select public.review_professional_application('00000000-0000-0000-0000-0000000000b1', 'rejected')$$, 'HMY_REASON_REQUIRED');
+select test.expect_error($$select public.review_professional_application('00000000-0000-0000-0000-0000000000b1', 'approved')$$, 'HMY_ID_DOCUMENTS_REQUIRED');
+select test.eq((select status from public.professional_profiles where user_id = '00000000-0000-0000-0000-0000000000b1')::text, 'submitted',
+               'sin carnet aceptado no se puede aprobar');
+select test.accept_id('00000000-0000-0000-0000-0000000000b1');
 select public.review_professional_application('00000000-0000-0000-0000-0000000000b1', 'approved', 'Documentos correctos');
 select test.logout();
 
@@ -153,6 +164,7 @@ insert into public.professional_documents (professional_id, doc_type, storage_pa
 select public.submit_professional_application();
 select test.logout();
 select test.login('00000000-0000-0000-0000-00000000000a');
+select test.accept_id('00000000-0000-0000-0000-0000000000b2');
 select public.review_professional_application('00000000-0000-0000-0000-0000000000b2', 'approved');
 select test.logout();
 

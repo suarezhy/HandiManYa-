@@ -20,6 +20,7 @@ insert into public.professional_services (professional_id, category_id, specialt
 insert into public.professional_documents (professional_id, doc_type, storage_path) values (auth.uid(), 'ci_anverso', auth.uid() || '/ci.jpg');
 select public.submit_professional_application();
 select test.login('00000000-0000-0000-0000-00000000000a');
+select test.accept_id('00000000-0000-0000-0000-0000000009b1');
 select public.review_professional_application('00000000-0000-0000-0000-0000000009b1', 'approved');
 select test.logout();
 update public.wallets set available = 500 where professional_id = '00000000-0000-0000-0000-0000000009b1';

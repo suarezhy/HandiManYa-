@@ -2378,11 +2378,16 @@ class DemoBackend
     final needsReason =
         decision == VerificationStatus.rejected || decision == VerificationStatus.reverificationRequired;
     if (needsReason && (note ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
-    if (decision == VerificationStatus.approved &&
+    final approving =
+        decision == VerificationStatus.approved &&
         p.status != VerificationStatus.approved &&
-        p.status != VerificationStatus.suspended &&
-        _identityRequired &&
-        !p.identity.any((c) => !c.sandbox && c.status == IdentityStatus.approved)) {
+        p.status != VerificationStatus.suspended;
+    final idAccepted = {
+      for (final d in p.docs)
+        if (d.status == DocumentStatus.accepted && (d.type == 'ci_anverso' || d.type == 'ci_reverso')) d.type,
+    };
+    if (approving && idAccepted.length < 2) throw AppError.from('HMY_ID_DOCUMENTS_REQUIRED');
+    if (approving && _identityRequired && !p.identity.any((c) => !c.sandbox && c.status == IdentityStatus.approved)) {
       throw AppError.from('HMY_IDENTITY_CHECK_REQUIRED');
     }
     p

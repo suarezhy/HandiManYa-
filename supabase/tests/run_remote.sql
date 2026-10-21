@@ -29,5 +29,6 @@ end $$;
 \ir 96_bolivia_locations_tests.sql
 \ir 97_customer_payment_choice_tests.sql
 \ir 98_profile_photo_tests.sql
+\ir 99_approval_id_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'

@@ -90,9 +90,15 @@ void main() {
       await _step('un cliente no puede aprobar', () async {
         await expectLater(customer.reviewApplication(_proId, VerificationStatus.approved), _code('HMY_FORBIDDEN'));
       });
-      await _step('el equipo ve la postulación y la aprueba', () async {
+      await _step('el equipo ve la postulación, acepta el carnet y la aprueba', () async {
         final pending = await admin.adminApplications();
         expect(pending.map((a) => a.userId), contains(_proId));
+        final detail = await admin.adminApplicationDetail(_proId);
+        final ids = detail.documents.where((d) => d.docType.startsWith('ci_')).toList();
+        expect(ids.map((d) => d.docType).toSet(), {'ci_anverso', 'ci_reverso'});
+        for (final d in ids) {
+          await admin.reviewDocument(d.id, DocumentStatus.accepted);
+        }
         await admin.reviewApplication(_proId, VerificationStatus.approved, note: 'Prueba E2E');
       });
 

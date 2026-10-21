@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/core/theme/app_theme.dart';
 import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
+import 'package:handimanya/data/models/admin.dart';
 import 'package:handimanya/data/models/costs.dart';
 import 'package:handimanya/data/models/user.dart';
 import 'package:handimanya/data/providers.dart';
@@ -94,6 +95,9 @@ void main() {
       expect(d.summary.status, VerificationStatus.submitted, reason: 'el resultado de Didit no aprueba');
       expect(d.identityChecks.single.sandbox, isTrue);
 
+      for (final doc in d.documents) {
+        await backend.reviewDocument(doc.id, DocumentStatus.accepted);
+      }
       await backend.setIdentityCheckRequired(true);
       await expectLater(
         backend.reviewApplication(_applicant, VerificationStatus.approved),

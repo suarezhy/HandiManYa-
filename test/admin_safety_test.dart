@@ -43,6 +43,14 @@ void main() {
 
     await expectLater(backend.reviewApplication(id, VerificationStatus.rejected), _code('HMY_REASON_REQUIRED'));
     await backend.reviewDocument(detail.documents.first.id, DocumentStatus.accepted);
+    await expectLater(
+      backend.reviewApplication(id, VerificationStatus.approved),
+      _code('HMY_ID_DOCUMENTS_REQUIRED'),
+      reason: 'hace falta el carnet completo (frente y reverso) aceptado',
+    );
+    for (final doc in detail.documents.skip(1)) {
+      await backend.reviewDocument(doc.id, DocumentStatus.accepted);
+    }
     await backend.reviewApplication(id, VerificationStatus.approved);
 
     expect((await backend.adminApplications()).map((a) => a.userId), isNot(contains(id)));

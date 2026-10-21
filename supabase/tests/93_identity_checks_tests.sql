@@ -93,6 +93,7 @@ begin
 end $$;
 
 -- 5. Si se exige, una prueba del sandbox no alcanza: hace falta una real aprobada.
+select test.accept_id('00000000-0000-0000-0000-0000000009e1');
 select public.admin_set_setting('identity_check', '{"required": true}');
 select test.expect_error($$select public.review_professional_application('00000000-0000-0000-0000-0000000009e1', 'approved')$$,
                          'HMY_IDENTITY_CHECK_REQUIRED');

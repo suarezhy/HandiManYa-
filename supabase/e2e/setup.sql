@@ -45,12 +45,13 @@ select gen_random_uuid(), id::text, id,
 
 insert into public.user_roles (user_id, role) select id, 'admin' from e2e_users where admin;
 
--- El carnet del profesional (solo la fila; la revisión la hace el admin por la API).
+-- El carnet del profesional, frente y reverso (solo las filas; la revisión la hace el admin por la API).
 select set_config('request.jwt.claims',
   '{"sub":"e2e00000-0000-4000-8000-0000000000b1","role":"authenticated"}', true);
 select public.start_professional_application();
 insert into public.professional_documents (professional_id, doc_type, storage_path)
-values ('e2e00000-0000-4000-8000-0000000000b1', 'ci_anverso', 'e2e00000-0000-4000-8000-0000000000b1/e2e-ci.jpg');
+values ('e2e00000-0000-4000-8000-0000000000b1', 'ci_anverso', 'e2e00000-0000-4000-8000-0000000000b1/e2e-ci.jpg'),
+       ('e2e00000-0000-4000-8000-0000000000b1', 'ci_reverso', 'e2e00000-0000-4000-8000-0000000000b1/e2e-ci-r.jpg');
 select set_config('request.jwt.claims', '', true);
 
 commit;
