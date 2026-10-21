@@ -41,7 +41,8 @@ function fakeFetch(rpcs: Record<string, unknown>, opts: { user?: string | null; 
     const rpc = url.match(/\/rpc\/(\w+)$/)?.[1];
     if (rpc) return new Response(JSON.stringify(rpcs[rpc] ?? null), { status: 200 });
     if (url.endsWith('/v3/session/')) {
-      return new Response(JSON.stringify({ session_id: 'ses-1', verification_url: 'https://verify.didit.me/s/abc' }), {
+      // Como responde Didit (docs.didit.me/sessions-api/create-session): el enlace va en "url".
+      return new Response(JSON.stringify({ session_id: 'ses-1', session_token: 'tok', url: 'https://verify.didit.me/s/abc', status: 'Not Started' }), {
         status: opts.didit ?? 201,
       });
     }

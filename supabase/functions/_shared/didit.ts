@@ -254,7 +254,8 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
     await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
     return error(503, 'HMY_IDENTITY_BAD_WORKFLOW_ID');
   }
-  let session: { session_id?: string; verification_url?: string } = {};
+  // Didit responde 201 con { session_id, url, session_token, ... }: el enlace es "url".
+  let session: { session_id?: string; url?: string; verification_url?: string } = {};
   let diditStatus = 0;
   try {
     const res = await fetchFn(`${DIDIT}/v3/session/`, {
@@ -275,7 +276,11 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
   } catch (e) {
     console.error(`No se pudo llamar a Didit: ${e}`);
   }
-  if (!session.session_id || !session.verification_url) {
+  const link = session.url ?? session.verification_url;
+  if (!session.session_id || !link) {
+    if (diditStatus >= 200 && diditStatus < 300) {
+      console.error(`Didit creó la sesión pero la respuesta no trae session_id o url (campos: ${Object.keys(session).join(', ')})`);
+    }
     await rpc(env, fetchFn, 'hmy_identity_failed', { p_check: g.id });
     // Solo el código HTTP de Didit, para saber si es la clave (401/403) o el flujo (400/404).
     return { status: 502, body: { error: 'HMY_IDENTITY_SEND_FAILED', didit_status: diditStatus } };
@@ -283,10 +288,10 @@ export async function handleStart(req: Request, env: Env, fetchFn: Fetch): Promi
   const saved = await rpc(env, fetchFn, 'hmy_identity_session', {
     p_check: g.id,
     p_session_id: session.session_id,
-    p_url: session.verification_url,
+    p_url: link,
   });
   if (!saved.ok) return error(500, 'HMY_IDENTITY_UNAVAILABLE');
-  return { status: 200, body: { verification_url: session.verification_url, sandbox } };
+  return { status: 200, body: { verification_url: link, sandbox } };
 }
 
 // ---------------------------------------------------------------------------
