@@ -201,6 +201,18 @@ class ProfilePage extends ConsumerWidget {
                         },
                   child: Text(account.deletionRequested ? 'Eliminación de cuenta solicitada' : 'Eliminar mi cuenta'),
                 ),
+                // Número de compilación de las pruebas (lo pone GitHub Actions),
+                // para saber qué APK tiene instalado el teléfono.
+                if (_buildNumber.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: HySpacing.sm),
+                    child: Text(
+                      'Compilación de prueba $_buildNumber',
+                      key: const Key('profile-build'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: HyColors.textMuted, fontSize: 13),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -209,6 +221,8 @@ class ProfilePage extends ConsumerWidget {
     );
   }
 }
+
+const _buildNumber = String.fromEnvironment('BUILD_NUMBER');
 
 class _ModeChip extends StatelessWidget {
   const _ModeChip({required this.professional});

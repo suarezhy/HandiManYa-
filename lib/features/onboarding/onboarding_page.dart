@@ -25,7 +25,7 @@ class _Slide {
 const _slides = [
   _Slide(
     'assets/images/onboarding_1.jpg',
-    720 / 790,
+    696 / 697,
     'Profesionales de confianza cerca de ti',
     'Plomeros, electricistas, albañiles, limpieza y mucho más en toda Bolivia. Todos verificados.',
     Icons.verified_user_outlined,
@@ -46,12 +46,17 @@ const _slides = [
   ),
   _Slide(
     'assets/images/onboarding_4.jpg',
-    720 / 1040,
+    700 / 815,
     'Trabajo bien hecho, con tranquilidad',
     'Pagas directo al profesional en efectivo o QR cuando termina, y calificas su trabajo para ayudar a otros.',
     Icons.thumb_up_alt_outlined,
   ),
 ];
+
+/// Foto y proporción de cada paso, para las pruebas (cada paso tiene su
+/// propia foto: 1 equipo, 2 aviso de trabajo nuevo, 3 chat, 4 pulgar arriba).
+@visibleForTesting
+List<(String, double)> get onboardingImages => [for (final s in _slides) (s.image, s.aspectRatio)];
 
 class OnboardingPage extends ConsumerStatefulWidget {
   const OnboardingPage({super.key});

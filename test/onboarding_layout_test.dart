@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/app.dart';
 import 'package:handimanya/data/providers.dart';
+import 'package:handimanya/features/onboarding/onboarding_page.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -103,13 +105,31 @@ void main() {
   setUpAll(loadAppFonts);
 
   test('cada foto declara la forma real de su archivo (no se estira)', () {
-    // Las proporciones que usa onboarding_page.dart.
-    const declared = [720 / 790, 518 / 570, 720 / 689, 720 / 1040];
-    for (var i = 0; i < slides.length; i++) {
-      final s = jpegSize(slides[i].image);
-      expect(s.width / s.height, closeTo(declared[i], 0.001), reason: slides[i].image);
-      expect(File(slides[i].image).lengthSync(), lessThan(300 * 1024), reason: '${slides[i].image} pesa demasiado');
+    expect([for (final i in onboardingImages) i.$1], [for (final s in slides) s.image]);
+    for (final (path, ratio) in onboardingImages) {
+      final s = jpegSize(path);
+      expect(s.width / s.height, closeTo(ratio, 0.001), reason: path);
+      expect(File(path).lengthSync(), lessThan(300 * 1024), reason: '$path pesa demasiado');
     }
+  });
+
+  test('los cuatro pasos usan cuatro fotos distintas, incluidas en la app', () {
+    final paths = [for (final i in onboardingImages) i.$1];
+    expect(paths, hasLength(4));
+    expect(paths.toSet(), hasLength(4), reason: 'dos pasos apuntan al mismo archivo');
+    final pubspec = File('pubspec.yaml').readAsStringSync();
+    for (final p in paths) {
+      expect(File(p).existsSync(), isTrue, reason: p);
+      expect(pubspec.contains('- ${p.substring(0, p.lastIndexOf('/') + 1)}'), isTrue, reason: '$p no se empaqueta');
+    }
+    final bytes = [for (final p in paths) File(p).readAsBytesSync()];
+    for (var a = 0; a < 4; a++) {
+      for (var b = a + 1; b < 4; b++) {
+        expect(listEquals(bytes[a], bytes[b]), isFalse, reason: '${paths[a]} y ${paths[b]} son el mismo archivo');
+      }
+    }
+    // Dos recortes de una misma foto pasan esta prueba: eso se revisa a ojo
+    // (docs/LESSONS.md, "Bienvenida").
   });
 
   for (final scale in [1.0, 1.3, 2.0]) {

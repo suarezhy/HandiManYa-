@@ -68,7 +68,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           flutter build appbundle --release --dart-define-from-file="config/supabase-${ENTORNO}.json" \
-            --build-number="${GITHUB_RUN_NUMBER}" --obfuscate --split-debug-info=build/symbols/android
+            --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}" --obfuscate --split-debug-info=build/symbols/android
       - name: Comprobar firma
         run: |
           aab=build/app/outputs/bundle/release/app-release.aab
@@ -78,13 +78,25 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build apk --release --dart-define-from-file="config/supabase-${ENTORNO}.json" --build-number="${GITHUB_RUN_NUMBER}"
+        run: flutter build apk --release --dart-define-from-file="config/supabase-${ENTORNO}.json" --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
       # Para instalar en un teléfono de prueba: firmado con la llave de depuración
       # (Android no instala un APK sin firmar). Nunca se sube a Google Play.
       - name: Compilar APK de prueba (instalable, solo para probar)
         run: |
-          flutter build apk --debug --dart-define-from-file="config/supabase-${ENTORNO}.json" --build-number="${GITHUB_RUN_NUMBER}"
+          flutter build apk --debug --dart-define-from-file="config/supabase-${ENTORNO}.json" --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
           cp build/app/outputs/flutter-apk/app-debug.apk "build/app/outputs/flutter-apk/handimanya-prueba-${ENTORNO}.apk"
+      - name: Comprobar las fotos de bienvenida dentro del APK
+        run: |
+          apk="build/app/outputs/flutter-apk/handimanya-prueba-${ENTORNO}.apk"
+          for i in 1 2 3 4; do
+            f="assets/images/onboarding_$i.jpg"
+            dentro=$(unzip -p "$apk" "assets/flutter_assets/$f" | sha256sum | cut -c1-64)
+            repo=$(sha256sum "$f" | cut -c1-64)
+            echo "$f  $dentro" | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "$dentro" = "$repo" ] || { echo "::error::$f del APK no coincide con el repositorio"; exit 1; }
+          done
+          [ "$(for i in 1 2 3 4; do sha256sum "assets/images/onboarding_$i.jpg" | cut -c1-64; done | sort -u | wc -l)" = 4 ] \
+            || { echo "::error::Hay fotos de bienvenida repetidas"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: android-prueba-${{ env.ENTORNO }}-${{ github.run_number }}
@@ -121,7 +133,7 @@ jobs:
       - name: Compilar web
         run: |
           flutter build web --release --no-web-resources-cdn --base-href /HandiManYa-/dev/ \
-            --dart-define-from-file=config/supabase-dev.json --build-number="${GITHUB_RUN_NUMBER}"
+            --dart-define-from-file=config/supabase-dev.json --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
           # Que los buscadores no la muestren.
           sed -i 's|<head>|<head>\n  <meta name="robots" content="noindex, nofollow">|' build/web/index.html
           grep -q 'noindex' build/web/index.html
@@ -159,7 +171,7 @@ jobs:
         # La firma necesita la cuenta de Apple Developer; se agrega cuando exista.
         run: |
           flutter build ios --release --no-codesign --dart-define-from-file="config/supabase-${ENTORNO}.json" \
-            --build-number="${GITHUB_RUN_NUMBER}"
+            --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
       - name: Revisar Info.plist y manifiestos de privacidad
         run: |
           app=build/ios/iphoneos/Runner.app
