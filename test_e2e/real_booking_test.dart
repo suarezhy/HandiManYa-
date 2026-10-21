@@ -24,7 +24,9 @@ Future<SupabaseBackend> _signIn(String email) async {
   return SupabaseBackend(client);
 }
 
-Matcher _code(String code) => throwsA(isA<AppError>().having((e) => e.code, 'code', code));
+// El servidor rechaza con un código HMY_*; la app lo traduce con AppError.from
+// (igual que al mostrar el error en pantalla).
+Matcher _code(String code) => throwsA(predicate((e) => AppError.from(e!).code == code, 'error con código $code'));
 
 Future<T> _step<T>(String name, Future<T> Function() run) async {
   try {
