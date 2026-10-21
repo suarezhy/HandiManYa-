@@ -65,6 +65,15 @@ const error = (status: number, message: string): HookResult => ({
   body: { error: { http_code: status, message } },
 });
 
+/**
+ * Estado HTTP con el que responde la función. Supabase Auth solo lee el
+ * mensaje de error del cuerpo cuando la respuesta es 200; con 400, 429 o 503
+ * muestra un error genérico ("Invalid payload sent to hook") y la app no sabe
+ * qué pasó. Por eso los rechazos van con 200 y el código real en
+ * error.http_code. Una llamada sin firma válida sigue recibiendo 401.
+ */
+export const httpStatus = (result: HookResult): number => (result.status === 401 ? 401 : 200);
+
 /** Lo que pasa cuando Supabase pide entregar un código. */
 export async function handleHook(req: Request, env: Env, fetchFn: Fetch, nowSeconds?: number): Promise<HookResult> {
   const secret = env.SEND_SMS_HOOK_SECRET;

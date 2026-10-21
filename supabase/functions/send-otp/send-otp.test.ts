@@ -1,7 +1,7 @@
 // node --experimental-strip-types --test supabase/functions/send-otp/send-otp.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleHook, sign, type Env } from './otp.ts';
+import { handleHook, httpStatus, sign, type Env } from './otp.ts';
 
 const secret = 'v1,whsec_' + btoa('clave-de-prueba-solo-para-tests');
 const now = 1_800_000_000;
@@ -112,4 +112,16 @@ test('sin autorización de gasto, no envía nada y lo dice', async () => {
   assert.equal(r.status, 503);
   assert.match(JSON.stringify(r.body), /HMY_OTP_BUDGET:whatsapp/);
   assert.equal(calls.some((c) => c.url.includes('graph.facebook.com') || c.url.includes('twilio')), false);
+});
+
+test('Supabase recibe el motivo del rechazo: 200 con el error en el cuerpo; sin firma, 401', async () => {
+  const { fn } = fakeFetch({ allowed: false, reason: 'invalid_phone' });
+  const r = await handleHook(await hookRequest(payload), base, fn, now);
+  assert.deepEqual(r.body, { error: { http_code: 400, message: 'HMY_INVALID_PHONE' } });
+  assert.equal(httpStatus(r), 200);
+  const bad = await handleHook(await hookRequest(payload, { badSig: true }), base, fn, now);
+  assert.equal(httpStatus(bad), 401);
+  const sent = await handleHook(await hookRequest(payload), { ...base, TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_FROM: '+1' }, fakeFetch(allowed('sms')).fn, now);
+  assert.equal(httpStatus(sent), 200);
+  assert.deepEqual(sent.body, {});
 });

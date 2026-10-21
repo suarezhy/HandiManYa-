@@ -60,9 +60,20 @@ test('número de prueba: el código correcto crea la cuenta y entra', { skip: !r
   userId = me.json.id;
 });
 
+test('límite de envíos: pedir otro código enseguida se rechaza', { skip: !ready }, async () => {
+  const r = await auth('otp', { phone: PHONE, create_user: true });
+  assert.equal(r.status, 429, `pedir otro código enseguida: ${code(r)}`);
+  assert.equal(r.json?.error_code, 'over_sms_send_rate_limit');
+});
+
 test('número de prueba: al volver a entrar es la misma cuenta', { skip: !ready }, async () => {
   assert.ok(userId, 'la prueba anterior no creó la cuenta');
-  const sent = await auth('otp', { phone: PHONE, create_user: true });
+  // Supabase deja pedir otro código al mismo número recién después de 60 segundos.
+  let sent = await auth('otp', { phone: PHONE, create_user: true });
+  for (let i = 0; sent.status === 429 && i < 16; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    sent = await auth('otp', { phone: PHONE, create_user: true });
+  }
   assert.equal(sent.status, 200, `pedir el código otra vez: ${code(sent)}`);
   const r = await auth('verify', { type: 'sms', phone: PHONE, token: OTP });
   assert.equal(r.status, 200, `verificar otra vez: ${code(r)}`);
@@ -73,5 +84,9 @@ test('un número fuera de Bolivia se rechaza (pasa por nuestra función, que no 
   // +1 555 01xx: rango reservado para ficción en Norteamérica, no es de nadie.
   const r = await auth('otp', { phone: '+15555550123', create_user: true });
   assert.notEqual(r.status, 200, 'un número fuera de Bolivia no debe recibir código');
-  console.log(`fuera de Bolivia: ${code(r)} ${String(r.json?.msg ?? r.json?.message ?? '').slice(0, 40)}`);
+  const msg = String(r.json?.msg ?? r.json?.message ?? '');
+  console.log(`fuera de Bolivia: ${code(r)} ${msg.slice(0, 40)}`);
+  // La función respondió con la firma correcta y Supabase le pasa a la app el motivo.
+  assert.equal(r.status, 400, `se esperaba el motivo de la función: ${code(r)} ${msg.slice(0, 40)}`);
+  assert.match(msg, /HMY_INVALID_PHONE/);
 });
