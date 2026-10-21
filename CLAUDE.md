@@ -3,7 +3,7 @@
 Flutter (iOS, Android, web) + Supabase app for on-demand home services in Bolivia. The UI is in Spanish. See README.md for the layout and demo mode. Lessons from past mistakes: docs/LESSONS.md (read it before touching an area it mentions).
 
 ## Standing rules (from the owner)
-- Customer safety comes first. Never weaken professional verification or customer safety to save money. No SOS button.
+- Customer safety comes first. Never weaken professional verification or customer safety to save money. No SOS button that promises an app response; an "Emergencia" link in active requests (public emergency numbers, trip sharing, safety report, clearly not an emergency service) was approved on 2026-10-21.
 - Never touch the old FlutterFlow app or its Supabase projects. Only the dev project `yldqopeldibwgbwmdnzy` is ours.
 - Work on `feature/base-app` (PR #1). Never merge PR #1, deploy, apply migrations, publish apps, enable paid services, or switch Didit to live without the owner's explicit approval for that step.
 - Didit stays sandbox-only: `LIVE_ENABLED = false` in `supabase/functions/_shared/didit.ts`.
