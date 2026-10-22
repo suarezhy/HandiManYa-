@@ -10,6 +10,7 @@ import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/data/models/admin.dart';
 import 'package:handimanya/data/models/booking.dart';
 import 'package:handimanya/data/models/geo.dart';
+import 'package:handimanya/data/models/staff.dart';
 import 'package:handimanya/data/models/user.dart';
 import 'package:handimanya/data/supabase/supabase_backend.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -19,12 +20,22 @@ const _key = String.fromEnvironment('E2E_ANON_KEY');
 const _pw = String.fromEnvironment('E2E_PASSWORD');
 
 const _proId = 'e2e00000-0000-4000-8000-0000000000b1';
+const _managerId = 'e2e00000-0000-4000-8000-0000000000e0';
+const _emp1Id = 'e2e00000-0000-4000-8000-0000000000e1';
+const _emp2Id = 'e2e00000-0000-4000-8000-0000000000e2';
 
-Future<SupabaseBackend> _signIn(String email) async {
+Future<SupabaseBackend> _signIn(String email) async => (await _signInWithClient(email)).$1;
+
+/// La capa de datos de la app y el cliente de Supabase de esa sesión, para
+/// leer tablas directo como lo intentaría alguien sin pasar por la app.
+Future<(SupabaseBackend, SupabaseClient)> _signInWithClient(String email) async {
   final client = SupabaseClient(_url, _key, authOptions: const AuthClientOptions(autoRefreshToken: false));
   await client.auth.signInWithPassword(email: email, password: _pw);
-  return SupabaseBackend(client);
+  return (SupabaseBackend(client), client);
 }
+
+/// Lo que esta sesión puede leer directo de una tabla (RLS decide).
+Future<int> _visibleRows(SupabaseClient c, String table) async => (await c.from(table).select().limit(50)).length;
 
 // El servidor rechaza con un código HMY_*; la app lo traduce con AppError.from
 // (igual que al mostrar el error en pantalla).
@@ -369,5 +380,189 @@ void main() {
     },
     skip: configured ? false : 'Falta E2E_URL, E2E_ANON_KEY o E2E_PASSWORD',
     timeout: const Timeout(Duration(minutes: 6)),
+  );
+
+  // Corre después de la reserva (las pruebas de un archivo van en orden).
+  test(
+    'equipo: el propietario da roles; gerente y empleados sin dinero; cada empleado solo sus casos; suspensión y auditoría',
+    () async {
+      final customer = await _step('el cliente entra', () => _signIn('e2e-cliente@test.bo'));
+      final (owner, ownerDb) = await _step('el propietario entra', () => _signInWithClient('e2e-admin@test.bo'));
+      final (manager, managerDb) = await _step('el gerente entra', () => _signInWithClient('e2e-gerente@test.bo'));
+      final (emp1, emp1Db) = await _step('el empleado 1 entra', () => _signInWithClient('e2e-empleado1@test.bo'));
+      final (emp2, _) = await _step('el empleado 2 entra', () => _signInWithClient('e2e-empleado2@test.bo'));
+      final city = (await customer.cities()).first.id;
+      for (final (name, api) in [
+        ('Gerente Prueba E2E', manager),
+        ('Empleado Uno E2E', emp1),
+        ('Empleado Dos E2E', emp2),
+      ]) {
+        await _step(
+          'perfil completo: $name',
+          () => api.completeSignup(fullName: name, cityId: city, acceptTerms: true),
+        );
+      }
+
+      await _step('sin rol, el gerente y los empleados no entran a ningún panel', () async {
+        for (final api in [manager, emp1, emp2]) {
+          expect((await api.myAccount()).managementRole, isNull);
+          await expectLater(api.opsDashboard(), _code('HMY_FORBIDDEN'));
+        }
+      });
+      await _step('un cliente no puede darse un rol', () async {
+        await expectLater(customer.grantStaff(_managerId, StaffRole.manager), _code('HMY_FORBIDDEN'));
+      });
+      await _step('el propietario da los roles por id de cuenta', () async {
+        await owner.grantStaff(_managerId, StaffRole.manager);
+        await owner.grantStaff(_emp1Id, StaffRole.employee);
+        await owner.grantStaff(_emp2Id, StaffRole.employee);
+        expect((await manager.myAccount()).managementRole, StaffRole.manager);
+        expect((await emp1.myAccount()).managementRole, StaffRole.employee);
+        final team = await owner.staffOverview();
+        expect(team.map((m) => m.userId), containsAll([_managerId, _emp1Id, _emp2Id]));
+      });
+      await _step('el gerente no puede dar ni subir roles', () async {
+        await expectLater(manager.grantStaff(_emp1Id, StaffRole.manager), _code('HMY_FORBIDDEN'));
+        await expectLater(manager.setStaffStatus(_emp1Id, 'suspended', reason: 'Prueba E2E'), _code('HMY_FORBIDDEN'));
+      });
+      await _step('un empleado no puede dar roles', () async {
+        await expectLater(emp1.grantStaff(_emp2Id, StaffRole.manager), _code('HMY_FORBIDDEN'));
+      });
+
+      // Dinero: solo el propietario.
+      await _step('el propietario conserva el acceso completo', () async {
+        final d = await owner.adminDashboard();
+        expect(d.isOwnerView, isTrue, reason: 'owner_dashboard aplicado en dev');
+        await owner.adminTopups();
+        await owner.costDashboard();
+        await owner.aiOverview();
+        await owner.auditLog();
+      });
+      for (final (who, api, db) in [('el gerente', manager, managerDb), ('el empleado', emp1, emp1Db)]) {
+        await _step('$who no ve dinero ni ajustes', () async {
+          await expectLater(api.adminDashboard(), _code('HMY_FORBIDDEN'));
+          await expectLater(api.adminTopups(), _code('HMY_FORBIDDEN'));
+          await expectLater(api.reviewTopup(1, approve: true), _code('HMY_FORBIDDEN'));
+          await expectLater(api.adjustWallet(_proId, 10, 'Prueba E2E'), _code('HMY_FORBIDDEN'));
+          await expectLater(api.costDashboard(), _code('HMY_FORBIDDEN'));
+          await expectLater(api.aiOverview(), _code('HMY_FORBIDDEN'));
+          await expectLater(api.auditLog(), _code('HMY_FORBIDDEN'));
+          for (final table in ['wallets', 'wallet_ledger', 'topup_requests', 'cost_usage', 'admin_audit_log']) {
+            expect(await _visibleRows(db, table), 0, reason: '$who no lee $table');
+          }
+          final ops = await api.opsDashboard();
+          for (final k in ops.keys) {
+            expect(k, isNot(anyOf(contains('revenue'), contains('commission'), contains('wallet'), contains('topup'))));
+          }
+        });
+      }
+      await _step('el gerente no resuelve disputas (cambian la comisión)', () async {
+        await expectLater(
+          manager.resolveDispute('00000000-0000-0000-0000-000000000000', DisputeOutcome.completed, 'Prueba E2E'),
+          _code('HMY_FORBIDDEN'),
+        );
+      });
+
+      // Casos: el cliente escribe a soporte dos veces; cada mensaje abre un caso.
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      await _step('el cliente escribe a soporte', () async {
+        await customer.contactSupport(subject: 'E2E caso A $stamp', body: 'Prueba E2E: no puedo ver mi pedido');
+        await customer.contactSupport(subject: 'E2E caso B $stamp', body: 'Prueba E2E: duda con el pago');
+      });
+      final (caseA, caseB) = await _step('el gerente ve los casos nuevos sin asignar', () async {
+        final open = await manager.opsCases(scope: 'unassigned');
+        final a = open.firstWhere((c) => c.title == 'E2E caso A $stamp');
+        final b = open.firstWhere((c) => c.title == 'E2E caso B $stamp');
+        return (a.id, b.id);
+      });
+      await _step('el gerente asigna un caso a cada empleado', () async {
+        await manager.assignCase(caseA, _emp1Id);
+        await manager.assignCase(caseB, _emp2Id);
+      });
+      await _step('un empleado no puede asignar casos', () async {
+        await expectLater(emp1.assignCase(caseB, _emp1Id), _code('HMY_FORBIDDEN'));
+      });
+      await _step('cada empleado ve solo sus casos', () async {
+        final mine1 = await emp1.opsCases(scope: 'all', includeResolved: true);
+        expect(mine1.map((c) => c.id), contains(caseA));
+        expect(mine1.map((c) => c.id), isNot(contains(caseB)));
+        expect(mine1.every((c) => c.assignedTo == _emp1Id), isTrue);
+        await expectLater(emp1.opsCaseDetail(caseB), _code('HMY_FORBIDDEN'));
+        await expectLater(emp1.replyCase(caseB, 'Prueba E2E'), _code('HMY_FORBIDDEN'));
+        expect(await _visibleRows(emp1Db, 'ops_cases'), lessThanOrEqualTo(mine1.length));
+        final mine2 = await emp2.opsCases(scope: 'all');
+        expect(mine2.map((c) => c.id), contains(caseB));
+        expect(mine2.map((c) => c.id), isNot(contains(caseA)));
+      });
+      await _step('el empleado responde, anota y resuelve su caso de rutina', () async {
+        await emp1.replyCase(caseA, 'Hola, ya revisamos tu pedido. Prueba E2E.');
+        await emp1.addCaseNote(caseA, 'Nota interna de prueba E2E');
+        await expectLater(emp1.setCaseStatus(caseA, OpsCaseStatus.resolved), throwsA(anything));
+        await emp1.setCaseStatus(caseA, OpsCaseStatus.resolved, note: 'Resuelto en la prueba E2E');
+        final d = await manager.opsCaseDetail(caseA);
+        expect(d.item.status, OpsCaseStatus.resolved);
+        expect(d.notes.length, greaterThanOrEqualTo(2));
+      });
+
+      // Seguridad: el empleado no la resuelve; la escala.
+      await _step('un reporte de acoso abre un caso de seguridad', () async {
+        await customer.reportUser(userId: _proId, reason: ReportReason.harassment, details: 'Prueba E2E: seguridad');
+      });
+      final safetyCase = await _step('el gerente asigna el caso de seguridad', () async {
+        final c = (await manager.opsCases(scope: 'unassigned')).firstWhere(
+          (c) =>
+              c.kind == OpsCaseKind.report &&
+              c.category == 'safety' &&
+              c.createdAt.isAfter(DateTime.now().subtract(const Duration(minutes: 10))),
+        );
+        await manager.assignCase(c.id, _emp1Id);
+        return c.id;
+      });
+      await _step('el empleado no puede cerrar un caso de seguridad: lo escala', () async {
+        await expectLater(
+          emp1.setCaseStatus(safetyCase, OpsCaseStatus.resolved, note: 'Prueba E2E'),
+          _code('HMY_ESCALATE_REQUIRED'),
+        );
+        await emp1.escalateCase(safetyCase, 'Prueba E2E: posible acoso', category: 'safety');
+        final esc = await manager.opsCases(scope: 'escalated');
+        expect(esc.map((c) => c.id), contains(safetyCase));
+      });
+
+      // Lo que el empleado nunca hace.
+      await _step('el empleado no aprueba, no abre documentos y no suspende', () async {
+        await expectLater(emp1.reviewApplication(_proId, VerificationStatus.rejected), _code('HMY_FORBIDDEN'));
+        await expectLater(emp1.adminApplicationDetail(_proId), _code('HMY_FORBIDDEN'));
+        await expectLater(emp1.setSuspension(_proId, suspend: true, reason: 'Prueba E2E'), _code('HMY_FORBIDDEN'));
+        expect(await _visibleRows(emp1Db, 'professional_documents'), 0);
+        expect((await emp1Db.storage.from('professional-documents').list(path: _proId)).length, 0);
+      });
+      await _step('el gerente no suspende al equipo ni al propietario', () async {
+        await expectLater(manager.setSuspension(_emp1Id, suspend: true, reason: 'Prueba E2E'), _code('HMY_FORBIDDEN'));
+      });
+
+      // Suspensión: pierde el acceso en la siguiente llamada y su caso vuelve a la bandeja.
+      await _step('el propietario suspende al empleado 2', () async {
+        await owner.setStaffStatus(_emp2Id, 'suspended', reason: 'Prueba E2E de suspensión');
+        await expectLater(emp2.opsCases(scope: 'all'), _code('HMY_FORBIDDEN'));
+        expect((await emp2.myAccount()).managementRole, isNull);
+        final unassigned = await manager.opsCases(scope: 'unassigned');
+        expect(unassigned.map((c) => c.id), contains(caseB));
+      });
+
+      // Auditoría: queda quién hizo qué; nadie del equipo la puede borrar.
+      await _step('la auditoría registra roles y acciones del equipo', () async {
+        final log = await owner.auditLog();
+        final actions = log.map((e) => e.action).toSet();
+        expect(actions, containsAll(['staff.grant', 'staff.suspended']));
+        expect(log.where((e) => e.targetId == _emp2Id), isNotEmpty);
+        final activity = await emp1.myStaffActivity();
+        expect(activity.map((a) => a.action), containsAll(['case.reply', 'case.resolved', 'case.escalate']));
+        await emp1Db.from('admin_audit_log').delete().eq('actor_id', _emp1Id);
+        await managerDb.from('admin_audit_log').delete().neq('id', 0);
+        expect((await owner.auditLog()).length, greaterThanOrEqualTo(log.length), reason: 'nadie borra la auditoría');
+      });
+    },
+    skip: configured ? false : 'Falta E2E_URL, E2E_ANON_KEY o E2E_PASSWORD',
+    timeout: const Timeout(Duration(minutes: 4)),
   );
 }

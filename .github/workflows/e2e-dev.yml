@@ -1,9 +1,12 @@
 name: Prueba de punta a punta (handimanya-flutter-dev)
 
 # Corre la app (su capa de datos real) contra el proyecto Supabase de
-# DESARROLLO: entra con tres cuentas temporales, postula y aprueba a un
+# DESARROLLO: entra con seis cuentas temporales (cliente, profesional,
+# propietario, gerente y dos empleados), postula y aprueba a un
 # profesional, recarga la billetera, hace un pedido completo (aceptar, chat,
-# avance, pago, reseña) y uno cancelado, y revisa la privacidad de la dirección.
+# avance, pago, reseña) y uno cancelado, revisa la privacidad de la dirección y
+# los permisos del equipo (casos, sin dinero, suspensión, auditoría). Antes y
+# después toma una huella de los datos que no son de la prueba y falla si cambian.
 # Al final borra todo lo que creó, aunque la prueba falle.
 #
 # Solo se activa al subir la rama supabase/e2e-dev. No aplica migraciones ni
@@ -55,6 +58,9 @@ jobs:
       - name: Borrar restos de una corrida anterior
         run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -f supabase/e2e/cleanup.sql
 
+      - name: Huella de los datos que no son de la prueba (antes)
+        run: psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -f supabase/e2e/fingerprint.sql | tee "${RUNNER_TEMP}/huella-antes.txt"
+
       - name: Crear las cuentas temporales
         run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -v pw="${E2E_PASSWORD}" -f supabase/e2e/setup.sql
 
@@ -76,6 +82,17 @@ jobs:
       - name: Borrar todo lo que creó la prueba
         if: always()
         run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -f supabase/e2e/cleanup.sql
+
+      - name: Confirmar que los datos que no son de la prueba no cambiaron
+        if: always()
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -f supabase/e2e/fingerprint.sql | tee "${RUNNER_TEMP}/huella-despues.txt"
+          if diff "${RUNNER_TEMP}/huella-antes.txt" "${RUNNER_TEMP}/huella-despues.txt"; then
+            echo "Los datos que no son de la prueba quedaron iguales (cuentas, roles, perfiles, pedidos, billeteras, casos)."
+          else
+            echo "::error::Cambiaron datos que no son de la prueba (arriba, la tabla y el conteo)."
+            exit 1
+          fi
 
       - name: Confirmar que no quedaron datos de prueba
         if: always()

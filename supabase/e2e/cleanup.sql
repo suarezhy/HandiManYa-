@@ -1,4 +1,4 @@
--- Borra todo lo que dejó la prueba E2E: las tres cuentas e2e-*@test.bo y
+-- Borra todo lo que dejó la prueba E2E: las cuentas e2e-*@test.bo y
 -- todo lo que hicieron (pedidos, mensajes, recargas, movimientos de billetera,
 -- avisos, registros de auditoría). Corre siempre al final, aunque la prueba falle.
 --
@@ -16,6 +16,28 @@ create temp table e2e_ids on commit drop as
 create temp table e2e_bookings on commit drop as
   select id from public.bookings
    where customer_id in (select id from e2e_ids) or professional_id in (select id from e2e_ids);
+
+-- Casos del equipo que abrieron los datos de la prueba (soporte, reportes,
+-- disputas y la postulación del profesional de prueba) y sus notas.
+create temp table e2e_cases on commit drop as
+  select c.id from public.ops_cases c
+   where (c.kind = 'support' and c.ref_id in (select t.id::text from public.support_tickets t
+                                               where t.user_id in (select id from e2e_ids)
+                                                  or t.booking_id in (select id from e2e_bookings)))
+      or (c.kind = 'report' and c.ref_id in (select r.id::text from public.user_reports r
+                                              where r.reporter_id in (select id from e2e_ids)
+                                                 or r.reported_id in (select id from e2e_ids)
+                                                 or r.booking_id in (select id from e2e_bookings)))
+      or (c.kind = 'dispute' and c.ref_id in (select id::text from e2e_bookings))
+      or (c.kind = 'application' and c.ref_id in (select id::text from e2e_ids));
+delete from public.ops_case_notes where case_id in (select id from e2e_cases) or author_id in (select id from e2e_ids);
+delete from public.ops_cases where id in (select id from e2e_cases);
+-- Un caso real nunca se borra: si el equipo de prueba lo tocó, solo se le quita.
+update public.ops_cases set assigned_to = null, assigned_at = null where assigned_to in (select id from e2e_ids);
+update public.ops_cases set assigned_by = null where assigned_by in (select id from e2e_ids);
+update public.professional_documents set flagged_at = null, flagged_by = null, flag_note = null
+ where flagged_by in (select id from e2e_ids);
+delete from public.staff_members where user_id in (select id from e2e_ids) or granted_by in (select id from e2e_ids);
 
 delete from public.reviews where booking_id in (select id from e2e_bookings)
    or customer_id in (select id from e2e_ids) or professional_id in (select id from e2e_ids);
@@ -52,6 +74,9 @@ delete from auth.users where id in (select id from e2e_ids);
 do $$ begin
   if exists (select 1 from auth.users where email like 'e2e-%@test.bo') then
     raise exception 'HMY: quedaron cuentas E2E';
+  end if;
+  if exists (select 1 from public.staff_members where user_id::text like 'e2e00000-%') then
+    raise exception 'HMY: quedaron roles de equipo de prueba';
   end if;
   if not exists (select 1 from pg_trigger where tgname = 'wallet_ledger_no_update' and tgenabled = 'O') then
     raise exception 'HMY: el bloqueo del libro de la billetera no quedó encendido';

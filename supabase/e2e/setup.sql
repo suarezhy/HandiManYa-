@@ -1,6 +1,7 @@
 -- Prepara las cuentas temporales de la prueba de punta a punta (E2E) en el
 -- proyecto de desarrollo. La app real las usa por la API de Supabase, como
--- lo haría un teléfono: cliente, profesional y equipo (admin).
+-- lo haría un teléfono: cliente, profesional, propietario (admin), gerente y
+-- dos empleados.
 --
 -- Solo crea lo que la app no puede crear sola: las cuentas con contraseña
 -- (así no se gastan códigos por WhatsApp o SMS), el rol de admin y la fila
@@ -22,7 +23,12 @@ create temp table e2e_users (id uuid, email text, phone text, name text, admin b
 insert into e2e_users values
   ('e2e00000-0000-4000-8000-0000000000c1', 'e2e-cliente@test.bo', '59160000901', 'Cliente Prueba E2E', false),
   ('e2e00000-0000-4000-8000-0000000000b1', 'e2e-pro@test.bo', '59160000902', 'Profesional Prueba E2E', false),
-  ('e2e00000-0000-4000-8000-00000000000a', 'e2e-admin@test.bo', '59160000903', 'Equipo Prueba E2E', true);
+  ('e2e00000-0000-4000-8000-00000000000a', 'e2e-admin@test.bo', '59160000903', 'Equipo Prueba E2E', true),
+  -- Gerente y empleados de prueba: entran sin rol; el propietario de prueba
+  -- se lo da por la API (owner_grant_staff), como en la app.
+  ('e2e00000-0000-4000-8000-0000000000e0', 'e2e-gerente@test.bo', '59160000904', 'Gerente Prueba E2E', false),
+  ('e2e00000-0000-4000-8000-0000000000e1', 'e2e-empleado1@test.bo', '59160000905', 'Empleado Uno E2E', false),
+  ('e2e00000-0000-4000-8000-0000000000e2', 'e2e-empleado2@test.bo', '59160000906', 'Empleado Dos E2E', false);
 
 -- Como una cuenta creada por Supabase Auth con correo confirmado. Las columnas
 -- de tokens van vacías (no nulas) porque Auth las lee como texto.
