@@ -160,12 +160,7 @@ class _NewBannerSheetState extends ConsumerState<_NewBannerSheet> {
   Widget build(BuildContext context) {
     final cities = ref.watch(citiesProvider).value ?? const [];
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        HySpacing.page,
-        0,
-        HySpacing.page,
-        MediaQuery.viewInsetsOf(context).bottom + HySpacing.lg,
-      ),
+      padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

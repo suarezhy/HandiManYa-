@@ -314,12 +314,7 @@ class _ShareTripSheetState extends ConsumerState<_ShareTripSheet> {
   Widget build(BuildContext context) {
     final ready = ref.watch(tripShareBaseUrlProvider).isNotEmpty;
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        HySpacing.page,
-        0,
-        HySpacing.page,
-        MediaQuery.of(context).viewInsets.bottom + HySpacing.lg,
-      ),
+      padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
       // Con letra grande en celulares chicos no entra: se desplaza.
       child: SingleChildScrollView(
         child: Column(

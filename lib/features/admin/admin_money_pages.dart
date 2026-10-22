@@ -294,12 +294,7 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
     final cities = ref.watch(citiesProvider).value ?? const [];
     final numberInput = [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')), LengthLimitingTextInputFormatter(8)];
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        HySpacing.page,
-        0,
-        HySpacing.page,
-        MediaQuery.viewInsetsOf(context).bottom + HySpacing.lg,
-      ),
+      padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
       child: Form(
         key: _form,
         child: SingleChildScrollView(

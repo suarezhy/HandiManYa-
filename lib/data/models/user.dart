@@ -63,6 +63,7 @@ class UserProfile {
     this.phone,
     this.phoneVerified = false,
     this.emailConfirmed = false,
+    this.emailPending,
     this.profileComplete = true,
     this.cityId,
     this.activeRole = AppRole.customer,
@@ -85,6 +86,10 @@ class UserProfile {
 
   /// El correo es opcional; [email] queda vacío si no lo agregó.
   final bool emailConfirmed;
+
+  /// Correo nuevo que pidió y todavía no confirmó con el código. No sirve
+  /// para recuperar la cuenta hasta que lo confirme.
+  final String? emailPending;
 
   /// Ya puso nombre y ciudad y aceptó los términos (después del código).
   final bool profileComplete;
@@ -128,6 +133,7 @@ class UserProfile {
     phone: phone != null ? phone() : this.phone,
     phoneVerified: phoneVerified,
     emailConfirmed: emailConfirmed,
+    emailPending: emailPending,
     profileComplete: profileComplete,
     cityId: cityId != null ? cityId() : this.cityId,
     activeRole: activeRole ?? this.activeRole,

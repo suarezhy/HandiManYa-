@@ -250,12 +250,7 @@ class _CategorySheetState extends ConsumerState<_CategorySheet> {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      HySpacing.page,
-      0,
-      HySpacing.page,
-      MediaQuery.viewInsetsOf(context).bottom + HySpacing.lg,
-    ),
+    padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
     child: Form(
       key: _form,
       child: SingleChildScrollView(
@@ -505,12 +500,7 @@ class _ProblemSheetState extends ConsumerState<_ProblemSheet> {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      HySpacing.page,
-      0,
-      HySpacing.page,
-      MediaQuery.viewInsetsOf(context).bottom + HySpacing.lg,
-    ),
+    padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
     child: Form(
       key: _form,
       child: SingleChildScrollView(

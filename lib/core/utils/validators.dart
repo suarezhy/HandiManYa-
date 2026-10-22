@@ -7,7 +7,11 @@ abstract final class Validators {
 
   static String? email(String? v) {
     if (v == null || v.trim().isEmpty) return 'Escribe tu correo electrónico';
-    if (!_email.hasMatch(v.trim())) return 'Revisa tu correo, parece incompleto';
+    final value = v.trim();
+    if (value.contains(' ')) return 'Escribe el correo sin espacios';
+    if (!value.contains('@')) return 'Al correo le falta la @, por ejemplo nombre@correo.com';
+    if (value.length > 254) return 'Ese correo es demasiado largo';
+    if (!_email.hasMatch(value)) return 'Revisa tu correo, parece incompleto';
     return null;
   }
 

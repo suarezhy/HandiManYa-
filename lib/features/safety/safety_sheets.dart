@@ -15,7 +15,7 @@ Future<void> _sheet(BuildContext context, Widget Function(BuildContext) builder)
   isScrollControlled: true,
   showDragHandle: true,
   builder: (c) => Padding(
-    padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, MediaQuery.viewInsetsOf(c).bottom + HySpacing.lg),
+    padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(c) + HySpacing.lg),
     child: SingleChildScrollView(child: builder(c)),
   ),
 );

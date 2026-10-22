@@ -235,13 +235,18 @@ class CodeField extends StatelessWidget {
 /// +591 7123 4567
 String formatBoliviaPhone(String phone) {
   final d = phone.replaceFirst('+591', '');
-  return d.length == 8 ? '+591 ${d.substring(0, 4)} ${d.substring(4)}' : phone;
+  // Espacios que no se cortan: el número nunca queda partido en dos líneas.
+  return d.length == 8 ? '+591\u00A0${d.substring(0, 4)}\u00A0${d.substring(4)}' : phone;
 }
 
 /// Cuenta regresiva para volver a pedir un código.
 mixin ResendCooldown<T extends StatefulWidget> on State<T> {
   int cooldown = 0;
   Timer? _cooldownTimer;
+
+  /// "Puedes pedir otro código en 39 s", con "39 s" siempre junto (espacio
+  /// que no se corta), o "Enviar el código de nuevo".
+  String get resendLabel => cooldown > 0 ? 'Puedes pedir otro código en $cooldown\u00A0s' : 'Enviar el código de nuevo';
 
   void startCooldown([int seconds = 60]) {
     _cooldownTimer?.cancel();

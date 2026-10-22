@@ -241,12 +241,7 @@ class _ResolveSheetState extends State<_ResolveSheet> {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      HySpacing.page,
-      0,
-      HySpacing.page,
-      MediaQuery.viewInsetsOf(context).bottom + HySpacing.lg,
-    ),
+    padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,

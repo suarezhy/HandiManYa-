@@ -6,6 +6,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/app_error.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
+import '../../core/widgets/common.dart';
 import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import '../auth/auth_scaffold.dart';
@@ -214,12 +215,7 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> wit
     final phone = ref.watch(authUserProvider).value?.phone;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        HySpacing.page,
-        0,
-        HySpacing.page,
-        MediaQuery.viewInsetsOf(context).bottom + HySpacing.lg,
-      ),
+      padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -269,7 +265,8 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> wit
             _MethodTile(
               key: const Key('confirm-code'),
               icon: Icons.sms_outlined,
-              label: phone == null ? 'Código a tu celular' : 'Código al ${formatBoliviaPhone(phone)}',
+              label: 'Código por celular',
+              detail: phone == null ? null : formatBoliviaPhone(phone),
               selected: _method == null,
               onTap: _busy
                   ? null
@@ -299,10 +296,7 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> wit
               ),
               const SizedBox(height: HySpacing.xs),
               CodeField(controller: _code, onCompleted: _submit, fieldKey: const Key('confirm-code-field')),
-              TextButton(
-                onPressed: cooldown > 0 || _busy ? null : _sendCode,
-                child: Text(cooldown > 0 ? 'Puedes pedir otro código en $cooldown s' : 'Enviar el código de nuevo'),
-              ),
+              TextButton(onPressed: cooldown > 0 || _busy ? null : _sendCode, child: Text(resendLabel)),
             ],
             if (_error != null)
               Padding(
@@ -326,7 +320,12 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> wit
               onPressed: _submit,
             ),
             const SizedBox(height: HySpacing.xs),
-            TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancelar')),
+            TextButton(
+              key: const Key('confirm-cancel'),
+              style: TextButton.styleFrom(minimumSize: const Size.fromHeight(HySizes.touch)),
+              onPressed: _busy ? null : () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
           ],
         ),
       ),
@@ -335,10 +334,21 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> wit
 }
 
 class _MethodTile extends StatelessWidget {
-  const _MethodTile({super.key, required this.icon, required this.label, required this.selected, this.onTap});
+  const _MethodTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.detail,
+    required this.selected,
+    this.onTap,
+  });
 
   final IconData icon;
   final String label;
+
+  /// Segunda línea (el celular): siempre entera en una línea; si no cabe,
+  /// se achica un poco en vez de partirse.
+  final String? detail;
   final bool selected;
   final VoidCallback? onTap;
 
@@ -361,8 +371,32 @@ class _MethodTile extends StatelessWidget {
               Icon(icon, size: 28, color: selected ? HyColors.primary : HyColors.textSecondary),
               const SizedBox(width: HySpacing.sm),
               Expanded(
-                child: Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                    if (detail != null)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          detail!,
+                          key: const Key('confirm-code-phone'),
+                          maxLines: 1,
+                          softWrap: false,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: HyColors.textSecondary,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
+              const SizedBox(width: HySpacing.xs),
               Icon(
                 selected ? Icons.radio_button_checked : Icons.radio_button_off,
                 color: selected ? HyColors.primary : HyColors.textMuted,

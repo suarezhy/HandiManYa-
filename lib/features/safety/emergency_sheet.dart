@@ -74,7 +74,13 @@ class _EmergencySheet extends StatelessWidget {
     final other = _other;
     return ListView(
       controller: scroll,
-      padding: const EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, HySpacing.xl),
+      // La barra de navegación de Android y el indicador del iPhone.
+      padding: EdgeInsets.fromLTRB(
+        HySpacing.page,
+        0,
+        HySpacing.page,
+        HySpacing.xl + MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
         Text('Emergencia', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: HySpacing.sm),

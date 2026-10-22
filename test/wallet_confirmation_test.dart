@@ -175,7 +175,8 @@ void main() {
       expect(find.byKey(const Key('confirm-amount')), findsOneWidget);
       expect(find.text(Fmt.bs(150)), findsOneWidget);
       expect(find.byKey(const Key('confirm-face')), findsNothing, reason: 'sin biometría solo hay código');
-      expect(find.text('Código al +591 7654 3210'), findsOneWidget);
+      expect(find.text('Código por celular'), findsOneWidget);
+      expect(find.text('+591\u00A07654\u00A03210'), findsOneWidget);
       expect(await _pending(r.backend), isEmpty, reason: 'nada se envía antes de confirmar');
 
       await _confirmWithCode(tester);

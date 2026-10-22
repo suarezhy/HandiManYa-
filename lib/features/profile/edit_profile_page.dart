@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../core/utils/app_error.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
@@ -66,6 +67,7 @@ class _FormState extends ConsumerState<_Form> {
     final changed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: (_) => sheet,
     );
@@ -113,9 +115,17 @@ class _FormState extends ConsumerState<_Form> {
                   key: const Key('profile-email'),
                   icon: Icons.mail_outline,
                   label: 'Correo (opcional, sirve para recuperar tu cuenta)',
-                  value: a.email.isEmpty ? 'Sin correo' : a.email,
-                  action: a.email.isEmpty ? 'Agregar' : 'Cambiar',
-                  onTap: () => _change(_ChangeEmailSheet(current: a.email)),
+                  value: a.emailPending != null
+                      ? '${a.emailPending} (falta confirmar)'
+                      : a.email.isEmpty
+                      ? 'Sin correo'
+                      : a.email,
+                  action: a.emailPending != null
+                      ? 'Confirmar'
+                      : a.email.isEmpty
+                      ? 'Agregar'
+                      : 'Cambiar',
+                  onTap: () => _change(_ChangeEmailSheet(current: a.email, pending: a.emailPending)),
                 ),
                 const SizedBox(height: HySpacing.xl),
                 PrimaryButton(label: 'Guardar cambios', loading: _saving, onPressed: _save),
@@ -144,14 +154,25 @@ class _ContactRow extends StatelessWidget {
   final String action;
   final VoidCallback onTap;
 
+  // Toda la fila abre el formulario, no solo el botón: parece un campo y se
+  // toca como un campo.
   @override
-  Widget build(BuildContext context) => InputDecorator(
-    decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
-    child: Row(
-      children: [
-        Expanded(child: Text(value, style: const TextStyle(fontSize: 16))),
-        TextButton(onPressed: onTap, child: Text(action)),
-      ],
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: '$label: $value. $action',
+    excludeSemantics: true,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(HyRadii.md),
+      child: InputDecorator(
+        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+        child: Row(
+          children: [
+            Expanded(child: Text(value, style: const TextStyle(fontSize: 16))),
+            TextButton(onPressed: onTap, child: Text(action)),
+          ],
+        ),
+      ),
     ),
   );
 }
@@ -230,10 +251,7 @@ class _ChangePhoneSheetState extends ConsumerState<_ChangePhoneSheet> with Resen
             CodeField(controller: _code, onCompleted: _verify),
             const SizedBox(height: HySpacing.lg),
             PrimaryButton(label: 'Continuar', loading: _busy, onPressed: _verify),
-            TextButton(
-              onPressed: cooldown > 0 || _busy ? null : _send,
-              child: Text(cooldown > 0 ? 'Puedes pedir otro código en $cooldown s' : 'Enviar el código de nuevo'),
-            ),
+            TextButton(onPressed: cooldown > 0 || _busy ? null : _send, child: Text(resendLabel)),
           ],
         ],
       ),
@@ -241,10 +259,14 @@ class _ChangePhoneSheetState extends ConsumerState<_ChangePhoneSheet> with Resen
   );
 }
 
+/// Agregar, cambiar o quitar el correo opcional. El correo nuevo solo queda
+/// en la cuenta (y sirve para recuperarla) después de escribir el código que
+/// le llega: así se comprueba que es de la persona.
 class _ChangeEmailSheet extends ConsumerStatefulWidget {
-  const _ChangeEmailSheet({required this.current});
+  const _ChangeEmailSheet({required this.current, this.pending});
 
   final String current;
+  final String? pending;
 
   @override
   ConsumerState<_ChangeEmailSheet> createState() => _ChangeEmailSheetState();
@@ -252,10 +274,12 @@ class _ChangeEmailSheet extends ConsumerStatefulWidget {
 
 class _ChangeEmailSheetState extends ConsumerState<_ChangeEmailSheet> with ResendCooldown {
   final _form = GlobalKey<FormState>();
-  late final _email = TextEditingController(text: widget.current);
+  late final _email = TextEditingController(text: widget.pending ?? widget.current);
   final _code = TextEditingController();
-  bool _sent = false;
+  late bool _sent = widget.pending != null;
   bool _busy = false;
+
+  bool get _hasEmail => widget.current.isNotEmpty || widget.pending != null;
 
   @override
   void dispose() {
@@ -264,10 +288,16 @@ class _ChangeEmailSheetState extends ConsumerState<_ChangeEmailSheet> with Resen
     super.dispose();
   }
 
+  String get _value => _email.text.trim().toLowerCase();
+
   Future<void> _send() async {
-    if (!_form.currentState!.validate()) return;
+    if (_busy || !_form.currentState!.validate()) return;
+    if (_value == widget.current.toLowerCase()) {
+      await runGuarded(context, () async => throw AppError.from('HMY_SAME_EMAIL'));
+      return;
+    }
     setState(() => _busy = true);
-    final ok = await runGuarded(context, () => ref.read(backendProvider).requestEmailChange(_email.text));
+    final ok = await runGuarded(context, () => ref.read(backendProvider).requestEmailChange(_value));
     if (!mounted) return;
     setState(() {
       _busy = false;
@@ -277,11 +307,11 @@ class _ChangeEmailSheetState extends ConsumerState<_ChangeEmailSheet> with Resen
   }
 
   Future<void> _verify() async {
-    if (!_form.currentState!.validate() || _busy) return;
+    if (_busy || !_form.currentState!.validate()) return;
     setState(() => _busy = true);
     final ok = await runGuarded(
       context,
-      () => ref.read(backendProvider).verifyEmailChange(email: _email.text, code: _code.text),
+      () => ref.read(backendProvider).verifyEmailChange(email: _value, code: _code.text),
       success: 'Correo confirmado.',
     );
     if (!mounted) return;
@@ -289,12 +319,44 @@ class _ChangeEmailSheetState extends ConsumerState<_ChangeEmailSheet> with Resen
     if (ok) Navigator.pop(context, true);
   }
 
+  Future<void> _remove() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Quitar el correo?'),
+        content: const Text(
+          'Ya no podrás recuperar tu cuenta con ese correo. Sigues entrando con tu celular y un código.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Volver')),
+          TextButton(
+            key: const Key('email-remove-confirm'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Quitar'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    setState(() => _busy = true);
+    final ok = await runGuarded(context, () => ref.read(backendProvider).removeEmail(), success: 'Correo quitado.');
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok) Navigator.pop(context, true);
+  }
+
   @override
   Widget build(BuildContext context) => _SheetFrame(
-    title: widget.current.isEmpty ? 'Agregar correo' : 'Cambiar correo',
+    title: _sent
+        ? 'Escribe el código'
+        : widget.current.isEmpty
+        ? 'Agregar correo'
+        : 'Cambiar correo',
     subtitle: _sent
-        ? 'Te enviamos un código a ${_email.text.trim()}. Revisa también la carpeta de spam.'
-        : 'Es opcional. Sirve para recuperar tu cuenta si pierdes tu número.',
+        ? 'Te enviamos un código a $_value. Revisa también la carpeta de spam. '
+              'Hasta que lo confirmes, el correo no sirve para recuperar tu cuenta.'
+        : 'Es opcional. Sirve para recuperar tu cuenta si pierdes tu número. '
+              'Siempre entras con tu celular, sin contraseña.',
     child: Form(
       key: _form,
       child: Column(
@@ -303,19 +365,53 @@ class _ChangeEmailSheetState extends ConsumerState<_ChangeEmailSheet> with Resen
           TextFormField(
             key: const Key('email-field'),
             controller: _email,
-            enabled: !_sent,
+            enabled: !_sent && !_busy,
+            autofocus: !_sent,
             keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.done,
+            autocorrect: false,
+            enableSuggestions: false,
             autofillHints: const [AutofillHints.email],
-            decoration: const InputDecoration(labelText: 'Correo electrónico', prefixIcon: Icon(Icons.mail_outline)),
+            decoration: const InputDecoration(
+              labelText: 'Correo electrónico',
+              hintText: 'nombre@correo.com',
+              prefixIcon: Icon(Icons.mail_outline),
+            ),
             validator: Validators.email,
+            onFieldSubmitted: (_) => _send(),
           ),
           const SizedBox(height: HySpacing.md),
           if (_sent) ...[
             CodeField(controller: _code, onCompleted: _verify, fieldKey: const Key('email-code-field')),
             const SizedBox(height: HySpacing.lg),
-            PrimaryButton(label: 'Continuar', loading: _busy, onPressed: _verify),
+            PrimaryButton(
+              key: const Key('email-verify'),
+              label: 'Confirmar correo',
+              loading: _busy,
+              onPressed: _verify,
+            ),
+            TextButton(
+              key: const Key('email-resend'),
+              onPressed: cooldown > 0 || _busy ? null : _send,
+              child: Text(resendLabel),
+            ),
+            TextButton(
+              key: const Key('email-edit'),
+              onPressed: _busy ? null : () => setState(() => _sent = false),
+              child: const Text('Usar otro correo'),
+            ),
           ] else
-            PrimaryButton(label: 'Continuar', loading: _busy, onPressed: _send),
+            PrimaryButton(key: const Key('email-send'), label: 'Enviar código', loading: _busy, onPressed: _send),
+          if (_hasEmail) ...[
+            const SizedBox(height: HySpacing.sm),
+            TextButton.icon(
+              key: const Key('email-remove'),
+              onPressed: _busy ? null : _remove,
+              style: TextButton.styleFrom(foregroundColor: HyColors.danger),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Quitar correo'),
+            ),
+          ],
         ],
       ),
     ),
@@ -331,7 +427,7 @@ class _SheetFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+    padding: EdgeInsets.only(bottom: sheetBottomInset(context)),
     child: SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, HySpacing.xl),
       child: Column(

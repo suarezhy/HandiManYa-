@@ -433,3 +433,10 @@ Future<String?> promptText(
     ),
   );
 }
+
+/// Espacio de abajo para el contenido de una hoja: el teclado cuando está
+/// abierto y, si no, la barra de navegación de Android (tres botones o
+/// gestos) o el indicador de inicio del iPhone. Con el teclado abierto
+/// Flutter deja `padding.bottom` en 0, así que nunca se suman los dos.
+double sheetBottomInset(BuildContext context) =>
+    MediaQuery.viewInsetsOf(context).bottom + MediaQuery.paddingOf(context).bottom;

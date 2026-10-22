@@ -358,12 +358,7 @@ class _TopupSheetState extends ConsumerState<_TopupSheet> {
     final methods = ref.watch(topupMethodsProvider).value ?? const <TopupMethod>[];
     final selected = methods.where((m) => m.id == _methodId).firstOrNull;
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        HySpacing.page,
-        0,
-        HySpacing.page,
-        MediaQuery.viewInsetsOf(context).bottom + HySpacing.lg,
-      ),
+      padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
       child: Form(
         key: _formKey,
         child: SingleChildScrollView(

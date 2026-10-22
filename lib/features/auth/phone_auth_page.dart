@@ -142,10 +142,7 @@ class _PhoneAuthPageState extends ConsumerState<PhoneAuthPage> with ResendCooldo
       TextButton(
         key: const Key('code-resend'),
         onPressed: cooldown > 0 || _loading ? null : () => _send(),
-        child: Text(
-          cooldown > 0 ? 'Puedes pedir otro código en $cooldown s' : 'Enviar el código de nuevo',
-          textAlign: TextAlign.center,
-        ),
+        child: Text(resendLabel, textAlign: TextAlign.center),
       ),
       TextButton(
         key: const Key('code-other-channel'),

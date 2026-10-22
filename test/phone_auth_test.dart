@@ -274,7 +274,7 @@ void main() {
       await tester.enterText(find.byKey(const Key('phone-field')), '7123 4567');
       await tap(tester, find.byKey(const Key('auth-continue')));
       expect(find.text('Escribe el código'), findsOneWidget);
-      expect(find.textContaining('WhatsApp al +591 7123 4567'), findsOneWidget);
+      expect(find.textContaining('WhatsApp al +591\u00A07123\u00A04567'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('code-field')), '111111');
       await tester.pumpAndSettle();
       expect(find.text('El código no es correcto. Revísalo y vuelve a intentar.'), findsOneWidget);
@@ -282,7 +282,7 @@ void main() {
 
       await tester.pump(const Duration(seconds: 61)); // un minuto entre envíos
       await tap(tester, find.byKey(const Key('code-other-channel')));
-      expect(find.textContaining('SMS al +591 7123 4567'), findsOneWidget);
+      expect(find.textContaining('SMS al +591\u00A07123\u00A04567'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('code-field')), DemoBackend.demoCode);
       await tester.pumpAndSettle();
       expect(find.text('¡Hola, Carla!'), findsOneWidget);

@@ -28,7 +28,18 @@ create table auth.users (
   phone_confirmed_at timestamptz,
   raw_user_meta_data jsonb default '{}'::jsonb,
   email_confirmed_at timestamptz,
+  -- Correo nuevo pedido y todavía sin confirmar (como en Supabase Auth).
+  email_change text default '',
+  email_change_token_new text default '',
+  email_change_token_current text default '',
+  email_change_confirm_status smallint default 0,
   created_at timestamptz default now()
+);
+
+create table auth.identities (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  provider text not null
 );
 
 create function auth.uid() returns uuid language sql stable as $$

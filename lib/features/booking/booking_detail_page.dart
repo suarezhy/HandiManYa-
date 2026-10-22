@@ -818,12 +818,7 @@ Future<(int, String?)?> showReviewSheet(BuildContext context) {
     isScrollControlled: true,
     builder: (c) => StatefulBuilder(
       builder: (c, setState) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          HySpacing.page,
-          0,
-          HySpacing.page,
-          MediaQuery.of(c).viewInsets.bottom + HySpacing.lg,
-        ),
+        padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(c) + HySpacing.lg),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -893,12 +888,7 @@ Future<(double?, String?)?> showAmountSheet(
     context: context,
     isScrollControlled: true,
     builder: (c) => Padding(
-      padding: EdgeInsets.fromLTRB(
-        HySpacing.page,
-        0,
-        HySpacing.page,
-        MediaQuery.of(c).viewInsets.bottom + HySpacing.lg,
-      ),
+      padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(c) + HySpacing.lg),
       child: Form(
         key: form,
         child: Column(

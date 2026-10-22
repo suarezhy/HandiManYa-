@@ -27,6 +27,18 @@ class AppError implements Exception {
     if (lower.contains('email') && (lower.contains('already') || lower.contains('exists'))) {
       return AppError.from('email_exists');
     }
+    // Supabase Auth: formato que no acepta.
+    if (lower.contains('email_address_invalid') || lower.contains('unable to validate email')) {
+      return AppError.from('HMY_INVALID_EMAIL');
+    }
+    // Supabase Auth no pudo mandar el correo (sin servidor de correo propio,
+    // correo no autorizado o límite de envíos del proyecto).
+    if (lower.contains('error sending') && lower.contains('email') ||
+        lower.contains('email_address_not_authorized') ||
+        lower.contains('over_email_send_rate_limit') ||
+        lower.contains('email rate limit')) {
+      return AppError.from('HMY_EMAIL_UNAVAILABLE');
+    }
     if (lower.contains('phone provider') || lower.contains('sending sms') || lower.contains('sms_send_failed')) {
       return const AppError(
         'Todavía no podemos enviar códigos a este número. Vuelve a intentar más tarde.',
@@ -115,7 +127,10 @@ class AppError implements Exception {
     'HMY_INVALID_CITY': 'Elige tu ciudad.',
     'HMY_TERMS_REQUIRED': 'Para continuar, acepta los Términos de uso y la Política de privacidad.',
     'HMY_SAME_PHONE': 'Ese ya es tu número.',
-    'HMY_INVALID_EMAIL': 'Revisa el correo electrónico.',
+    'HMY_INVALID_EMAIL': 'Revisa el correo electrónico. Debe ser como nombre@correo.com.',
+    'HMY_SAME_EMAIL': 'Ese ya es tu correo.',
+    'HMY_PHONE_REQUIRED': 'Para quitar el correo, tu cuenta necesita un celular confirmado.',
+    'HMY_EMAIL_UNAVAILABLE': 'Todavía no podemos enviar el código a correos. Vuelve a intentar más tarde.',
     'phone_exists': 'Ese número ya tiene una cuenta. Si es tuyo, entra con ese número.',
     'email_exists': 'Ese correo ya está en otra cuenta.',
     'otp_expired': 'El código ya venció. Pide uno nuevo.',

@@ -88,10 +88,7 @@ class _RecoverAccountPageState extends ConsumerState<RecoverAccountPage> with Re
             ),
             TextButton(
               onPressed: cooldown > 0 ? null : _send,
-              child: Text(
-                cooldown > 0 ? 'Puedes pedir otro código en $cooldown s' : 'Enviar el código de nuevo',
-                textAlign: TextAlign.center,
-              ),
+              child: Text(resendLabel, textAlign: TextAlign.center),
             ),
           ] else
             KeyedSubtree(

@@ -108,6 +108,7 @@ class SupabaseBackend
       phone: m['phone'] as String?,
       phoneVerified: m['phone_verified'] as bool? ?? false,
       emailConfirmed: m['email_confirmed'] as bool? ?? false,
+      emailPending: m['email_pending'] as String?,
       profileComplete: m['profile_complete'] as bool? ?? false,
       cityId: (m['city_id'] as num?)?.toInt(),
       activeRole: AppRole.parse(m['active_role'] as String?),
@@ -184,6 +185,14 @@ class SupabaseBackend
   @override
   Future<void> verifyEmailChange({required String email, required String code}) =>
       _db.auth.verifyOTP(type: OtpType.emailChange, email: email.trim().toLowerCase(), token: code.trim());
+
+  @override
+  Future<void> removeEmail() async {
+    await _db.rpc('remove_my_email');
+    // La sesión guarda una copia del usuario: se actualiza para que el
+    // correo quitado no siga apareciendo.
+    await _db.auth.refreshSession();
+  }
 
   @override
   Future<void> setActiveRole(AppRole role) => _db.rpc('set_active_role', params: {'p_role': role.key});

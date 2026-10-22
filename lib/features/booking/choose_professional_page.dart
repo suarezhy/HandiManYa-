@@ -183,12 +183,7 @@ class _ScheduleSheetState extends ConsumerState<_ScheduleSheet> {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(
-      HySpacing.page,
-      0,
-      HySpacing.page,
-      MediaQuery.viewInsetsOf(context).bottom + HySpacing.lg,
-    ),
+    padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
     child: SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,

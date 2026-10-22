@@ -56,6 +56,9 @@ abstract interface class AccountRepository {
   /// Correo opcional (sirve para recuperar la cuenta): se confirma con un código.
   Future<void> requestEmailChange(String email);
   Future<void> verifyEmailChange({required String email, required String code});
+
+  /// Quita el correo (y un cambio pendiente). Se sigue entrando con el celular.
+  Future<void> removeEmail();
   Future<void> setActiveRole(AppRole role);
   Future<void> completeOnboarding();
   Future<void> requestAccountDeletion();

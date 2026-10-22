@@ -98,7 +98,7 @@ Future<void> showArrivalPinSheet(BuildContext context, ArrivalPin pin) => showMo
   context: context,
   isScrollControlled: true,
   builder: (c) => Padding(
-    padding: const EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, HySpacing.lg),
+    padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(c) + HySpacing.lg),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -229,12 +229,7 @@ class _VerifyArrivalSheetState extends ConsumerState<_VerifyArrivalSheet> {
   Widget build(BuildContext context) {
     final digits = _code.text;
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        HySpacing.page,
-        0,
-        HySpacing.page,
-        MediaQuery.of(context).viewInsets.bottom + HySpacing.lg,
-      ),
+      padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

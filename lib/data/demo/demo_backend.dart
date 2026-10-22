@@ -467,6 +467,7 @@ class DemoBackend
       phone: a.phone,
       phoneVerified: a.phone != null,
       emailConfirmed: a.email.isNotEmpty,
+      emailPending: a.pendingEmail,
       profileComplete: a.fullName.trim().length >= 3 && a.cityId != null && a.termsAccepted,
       cityId: a.cityId,
       activeRole: a.activeRole,
@@ -544,8 +545,10 @@ class DemoBackend
     await _latency();
     final key = email.trim().toLowerCase();
     if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(key)) throw AppError.from('HMY_INVALID_EMAIL');
+    if (key == _me.email) throw AppError.from('HMY_SAME_EMAIL');
     if (_accounts.values.any((a) => a.email == key && a.id != _me.id)) throw AppError.from('email_exists');
     _sendCode('email-change:${_me.id}', purpose: 'email-change', target: key);
+    _me.pendingEmail = key;
   }
 
   @override
@@ -555,6 +558,19 @@ class DemoBackend
     final pending = _checkCode('email-change:${me.id}', code, 'email-change');
     if (pending.target != email.trim().toLowerCase()) throw AppError.from('otp_invalid');
     me.email = pending.target!;
+    me.pendingEmail = null;
+    _emitAuth();
+  }
+
+  @override
+  Future<void> removeEmail() async {
+    await _latency();
+    final me = _me;
+    // Como en Supabase (remove_my_email): sin celular la cuenta quedaría sin
+    // forma de entrar.
+    if (me.phone == null) throw AppError.from('HMY_PHONE_REQUIRED');
+    me.email = '';
+    me.pendingEmail = null;
     _emitAuth();
   }
 
@@ -3093,6 +3109,9 @@ class _Account {
 
   /// Correo confirmado (opcional); vacío si no agregó uno.
   String email;
+
+  /// Correo pedido y todavía sin confirmar.
+  String? pendingEmail;
   String fullName;
   String? phone;
   bool termsAccepted;
