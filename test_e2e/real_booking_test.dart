@@ -557,8 +557,14 @@ void main() {
         expect(log.where((e) => e.targetId == _emp2Id), isNotEmpty);
         final activity = await emp1.myStaffActivity();
         expect(activity.map((a) => a.action), containsAll(['case.reply', 'case.resolved', 'case.escalate']));
-        await emp1Db.from('admin_audit_log').delete().eq('actor_id', _emp1Id);
-        await managerDb.from('admin_audit_log').delete().neq('id', 0);
+        // Sin permiso de borrar: la base lo rechaza (42501) o no borra nada.
+        for (final db in [emp1Db, managerDb, ownerDb]) {
+          try {
+            await db.from('admin_audit_log').delete().neq('id', 0);
+          } on PostgrestException catch (e) {
+            expect(e.code, '42501');
+          }
+        }
         expect((await owner.auditLog()).length, greaterThanOrEqualTo(log.length), reason: 'nadie borra la auditoría');
       });
     },
