@@ -299,9 +299,15 @@ abstract interface class AiControlRepository {
   /// [statuses]: claves de estado (open, pending_approval, completed, ...). Vacío = todos.
   Future<List<AiItem>> aiItems({List<String> statuses = const []});
 
+  /// Un aviso con su origen (agente, regla, registro, hora) y su historial.
+  Future<AiItemDetail> aiItemDetail(int itemId);
+
   /// Aprobar exige [authMethod] confirmado recién (como las recargas).
+  /// Rechazar, descartar y marcar el resultado exigen [note] (queda auditada).
   Future<void> decideAiItem(int itemId, AiDecision decision, {String? note, String? authMethod});
   Future<List<DailyReport>> dailyReports();
   Future<DailyReport> generateDailyReport();
-  Future<int> runMonitors();
+
+  /// "Revisar ahora": agentes con reglas, costos y monitores, en el servidor.
+  Future<AiCheckResult> runAllChecks();
 }

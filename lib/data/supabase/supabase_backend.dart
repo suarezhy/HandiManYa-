@@ -1051,8 +1051,15 @@ class SupabaseBackend
       AiOverview.fromMap(Map<String, dynamic>.from(await _db.rpc('admin_ai_overview') as Map));
 
   @override
-  Future<List<AiAgent>> aiAgents() async =>
-      _rows(await _db.from('ai_agents').select().order('number')).map(AiAgent.fromMap).toList();
+  Future<List<AiAgent>> aiAgents() async => [
+    for (final m in (await _db.rpc('admin_ai_agents') as List?) ?? const [])
+      AiAgent.fromMap(Map<String, dynamic>.from(m as Map)),
+  ];
+
+  @override
+  Future<AiItemDetail> aiItemDetail(int itemId) async => AiItemDetail.fromMap(
+    Map<String, dynamic>.from(await _db.rpc('admin_ai_item_detail', params: {'p_item': itemId}) as Map),
+  );
 
   @override
   Future<List<AiItem>> aiItems({List<String> statuses = const []}) async {
@@ -1080,5 +1087,6 @@ class SupabaseBackend
   }
 
   @override
-  Future<int> runMonitors() async => ((await _db.rpc('admin_run_monitors')) as num).toInt();
+  Future<AiCheckResult> runAllChecks() async =>
+      AiCheckResult.fromMap(Map<String, dynamic>.from(await _db.rpc('admin_run_all_checks') as Map));
 }

@@ -110,6 +110,10 @@ class DemoBackend
       fromAi: false,
       title: 'Recarga esperando verificación hace más de 24 horas (ejemplo)',
       body: 'Recarga de 100 Bs pedida ayer.',
+      evidence: const {'topup_id': 1, 'amount': 100},
+      dedupeKey: 'topup-late:1',
+      targetTable: 'topup_requests',
+      targetId: '1',
       createdAt: DateTime.now().subtract(const Duration(hours: 5)),
     ),
     AiItem(
@@ -121,9 +125,16 @@ class DemoBackend
       fromAi: false,
       title: 'Pedido ¡Ya! sin profesional (ejemplo)',
       body: 'Sugerencia: ampliar el radio o avisar a más profesionales.',
+      dedupeKey: 'ya-unaccepted:demo',
+      targetTable: 'bookings',
+      targetId: 'demo',
       createdAt: DateTime.now().subtract(const Duration(minutes: 20)),
     ),
   ];
+
+  /// Agentes con su última ejecución. En la demostración nada corre solo:
+  /// empiezan sin ejecuciones y "Revisar ahora" las registra, como la base.
+  final _agents = {for (final a in demoAgents) a.key: a};
   final _dailyReports = <DailyReport>[];
   final _confirmedAt = <String, DateTime>{};
   final _biometric = <String>{};
@@ -2157,6 +2168,8 @@ class DemoBackend
     await _latency(150);
     _admin();
     bool open(AiItem i) => i.status.isPending;
+    final dayAgo = DateTime.now().subtract(const Duration(hours: 24));
+    final recent = _agents.values.where((a) => a.lastRunAt != null && a.lastRunAt!.isAfter(dayAgo));
     return AiOverview(
       pendingApproval: _aiItems.where((i) => i.status == AiItemStatus.pendingApproval).length,
       open: _aiItems.where((i) => i.status == AiItemStatus.open || i.status == AiItemStatus.moreInfo).length,
@@ -2168,6 +2181,9 @@ class DemoBackend
       aiCostMonthUsd: 0,
       aiBudgetMonthUsd: 0,
       lastReportDate: _dailyReports.isEmpty ? null : _dailyReports.first.date,
+      lastMonitorRun: _agents['boss']?.lastOkRunAt,
+      runsOk24h: recent.fold(0, (n, a) => n + a.runsOk24h),
+      runsFailed24h: recent.fold(0, (n, a) => n + a.runsFailed24h),
     );
   }
 
@@ -2175,7 +2191,20 @@ class DemoBackend
   Future<List<AiAgent>> aiAgents() async {
     await _latency(100);
     _admin();
-    return demoAgents;
+    final now = DateTime.now();
+    return [
+      for (final a in _agents.values.toList()..sort((a, b) => a.number.compareTo(b.number)))
+        a.copyWith(
+          execution: a.executionAt(now),
+          openItems: _aiItems.where((i) => i.agentKey == a.key && i.status.isPending).length,
+        ),
+    ];
+  }
+
+  void _recordRun(String key, String summary) {
+    final a = _agents[key];
+    if (a == null) return;
+    _agents[key] = a.withRun(at: DateTime.now(), status: 'ok', summary: summary);
   }
 
   @override
@@ -2189,12 +2218,42 @@ class DemoBackend
   }
 
   @override
+  Future<AiItemDetail> aiItemDetail(int itemId) async {
+    await _latency(100);
+    _admin();
+    final i = _aiItems.where((i) => i.id == itemId).firstOrNull;
+    if (i == null) throw AppError.from('HMY_NOT_FOUND');
+    final agent = _agents[i.agentKey];
+    return AiItemDetail(
+      item: i,
+      agentName: agent?.name ?? i.agentKey,
+      agentNumber: agent?.number,
+      decidedByName: i.decidedAt == null ? null : _me.fullName,
+      history: [
+        for (final e in _audit.reversed)
+          if (e.targetTable == 'ai_items' && e.targetId == '$itemId')
+            AiItemEvent(
+              action: e.action,
+              actorName: e.actorName,
+              note: e.details['note'] as String?,
+              createdAt: e.createdAt,
+            ),
+      ],
+    );
+  }
+
+  @override
   Future<void> decideAiItem(int itemId, AiDecision decision, {String? note, String? authMethod}) async {
     await _latency(150);
     _admin();
     final idx = _aiItems.indexWhere((i) => i.id == itemId);
     if (idx < 0) throw AppError.from('HMY_NOT_FOUND');
     final i = _aiItems[idx];
+    final cleanNote = (note ?? '').trim().isEmpty ? null : note!.trim();
+    void requireNote() {
+      if ((cleanNote ?? '').length < 3) throw AppError.from('HMY_NOTE_REQUIRED');
+    }
+
     const closed = {
       AiItemStatus.approved,
       AiItemStatus.rejected,
@@ -2205,12 +2264,14 @@ class DemoBackend
     final AiItemStatus next;
     switch (decision) {
       case AiDecision.approve:
+        if (closed.contains(i.status)) throw AppError.from('HMY_ALREADY_REVIEWED');
         if (i.status != AiItemStatus.pendingApproval) throw AppError.from('HMY_INVALID_STATUS');
         _requireConfirmation(authMethod ?? '');
         next = AiItemStatus.approved;
       case AiDecision.reject || AiDecision.moreInfo || AiDecision.dismiss:
         if (closed.contains(i.status)) throw AppError.from('HMY_ALREADY_REVIEWED');
         if (decision == AiDecision.dismiss && i.needsApproval) throw AppError.from('HMY_INVALID_STATUS');
+        if (decision != AiDecision.moreInfo) requireNote();
         next = switch (decision) {
           AiDecision.reject => AiItemStatus.rejected,
           AiDecision.moreInfo => AiItemStatus.moreInfo,
@@ -2226,23 +2287,17 @@ class DemoBackend
         }.contains(i.status)) {
           throw AppError.from('HMY_ALREADY_REVIEWED');
         }
+        requireNote();
         next = decision == AiDecision.completed ? AiItemStatus.completed : AiItemStatus.failed;
     }
-    _aiItems[idx] = AiItem(
-      id: i.id,
-      agentKey: i.agentKey,
-      kind: i.kind,
-      severity: i.severity,
+    final now = DateTime.now();
+    _aiItems[idx] = i.copyWith(
       status: next,
-      fromAi: i.fromAi,
-      title: i.title,
-      body: i.body,
-      evidence: i.evidence,
-      proposedAction: i.proposedAction,
-      decisionNote: note,
-      createdAt: i.createdAt,
+      decisionNote: cleanNote,
+      decidedAt: i.decidedAt ?? now,
+      completedAt: next == AiItemStatus.completed ? now : null,
     );
-    _log('ai_item.${decision.key}', 'ai_items', '$itemId', {'note': note, 'auth_method': authMethod});
+    _log('ai_item.${decision.key}', 'ai_items', '$itemId', {'note': cleanNote, 'auth_method': authMethod});
   }
 
   @override
@@ -2283,14 +2338,25 @@ class DemoBackend
       },
     );
     _dailyReports.insert(0, report);
+    _recordRun('daily_report', 'Reporte del ${report.date.toIso8601String().substring(0, 10)} (a pedido)');
     return report;
   }
 
+  /// Como admin_run_all_checks: reglas, costos y monitores; el AI Boss al
+  /// final. La demostración no crea avisos nuevos, pero sí registra cada
+  /// ejecución para que el panel muestre solo lo que corrió.
   @override
-  Future<int> runMonitors() async {
+  Future<AiCheckResult> runAllChecks() async {
     await _latency(100);
     _admin();
-    return 0;
+    for (final a in demoAgents) {
+      if (a.status == AgentStatus.rules && a.key != 'daily_report' && a.key != 'boss') {
+        _recordRun(a.key, 'Revisión de demostración; 0 aviso(s) nuevo(s)');
+      }
+    }
+    _recordRun('boss', 'Revisión de demostración; 0 aviso(s) nuevo(s)');
+    _log('ai.run_checks', 'ai_agent_runs', '', {'rules': 0, 'costs': 0, 'monitors': 0});
+    return const AiCheckResult();
   }
 
   void _log(String action, String table, String id, [Map<String, dynamic> details = const {}]) => _audit.insert(

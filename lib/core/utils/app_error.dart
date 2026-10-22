@@ -169,6 +169,7 @@ class AppError implements Exception {
     'HMY_RATE_LIMITED': 'Hiciste muchas solicitudes seguidas. Espera un rato y vuelve a intentar.',
     'HMY_COMMISSION_REQUIRED': 'Escribe un porcentaje o un cargo fijo.',
     'HMY_NAME_REQUIRED': 'Escribe un nombre.',
+    'HMY_NOTE_REQUIRED': 'Escribe una nota corta: queda en la auditoría.',
     'HMY_ALREADY_REVIEWED': 'Esto ya fue revisado. Actualiza la pantalla.',
     'HMY_INVALID_STATUS': 'Esta acción ya no está disponible. Actualiza la pantalla.',
     'HMY_INVALID_PROBLEM': 'Una de las opciones elegidas ya no está disponible. Vuelve a elegir.',
