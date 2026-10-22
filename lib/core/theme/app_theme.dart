@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 import 'tokens.dart';
@@ -39,6 +40,16 @@ abstract final class AppTheme {
       textTheme: text,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       visualDensity: VisualDensity.standard,
+      // Atrás con gesto: en iOS se desliza desde el borde izquierdo; en
+      // Android el gesto atrás predictivo muestra la pantalla anterior
+      // (android:enableOnBackInvokedCallback en AndroidManifest.xml).
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: HyColors.background,
         foregroundColor: HyColors.text,

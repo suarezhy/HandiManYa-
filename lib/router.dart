@@ -171,26 +171,26 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: redirect,
     routes: [
-      GoRoute(path: Routes.splash, builder: (_, _) => const SplashPage()),
-      GoRoute(
+      _route(path: Routes.splash, builder: (_, _) => const SplashPage()),
+      _route(
         path: '/viaje/:token',
         builder: (_, s) => TripSharePage(token: s.pathParameters['token']!),
       ),
-      GoRoute(path: Routes.onboarding, builder: (_, _) => const OnboardingPage()),
-      GoRoute(path: Routes.access, builder: (_, _) => const PhoneAuthPage()),
-      GoRoute(path: Routes.recover, builder: (_, _) => const RecoverAccountPage()),
-      GoRoute(path: Routes.completeProfile, builder: (_, _) => const CompleteProfilePage()),
+      _route(path: Routes.onboarding, builder: (_, _) => const OnboardingPage()),
+      _route(path: Routes.access, builder: (_, _) => const PhoneAuthPage()),
+      _route(path: Routes.recover, builder: (_, _) => const RecoverAccountPage()),
+      _route(path: Routes.completeProfile, builder: (_, _) => const CompleteProfilePage()),
 
       // Cliente
       StatefulShellRoute.indexedStack(
-        builder: (_, _, shell) => AppShell(shell: shell, professional: false),
+        pageBuilder: (_, s, shell) => _page(s, AppShell(shell: shell, professional: false)),
         branches: [
           StatefulShellBranch(
-            routes: [GoRoute(path: Routes.home, builder: (_, _) => const CustomerHomePage())],
+            routes: [_route(path: Routes.home, builder: (_, _) => const CustomerHomePage())],
           ),
           StatefulShellBranch(
             routes: [
-              GoRoute(
+              _route(
                 path: Routes.search,
                 builder: (_, s) => SearchPage(
                   key: ValueKey(s.uri.toString()),
@@ -202,49 +202,49 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: Routes.requests, builder: (_, _) => const MyRequestsPage(asProfessional: false))],
+            routes: [_route(path: Routes.requests, builder: (_, _) => const MyRequestsPage(asProfessional: false))],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: Routes.messages, builder: (_, _) => const ConversationsPage())],
+            routes: [_route(path: Routes.messages, builder: (_, _) => const ConversationsPage())],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: Routes.profile, builder: (_, _) => const ProfilePage())],
+            routes: [_route(path: Routes.profile, builder: (_, _) => const ProfilePage())],
           ),
         ],
       ),
 
       // Profesional
       StatefulShellRoute.indexedStack(
-        builder: (_, _, shell) => AppShell(shell: shell, professional: true),
+        pageBuilder: (_, s, shell) => _page(s, AppShell(shell: shell, professional: true)),
         branches: [
           StatefulShellBranch(
-            routes: [GoRoute(path: Routes.proHome, builder: (_, _) => const ProHomePage())],
+            routes: [_route(path: Routes.proHome, builder: (_, _) => const ProHomePage())],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: Routes.proRequests, builder: (_, _) => const ProJobsPage(incoming: true))],
+            routes: [_route(path: Routes.proRequests, builder: (_, _) => const ProJobsPage(incoming: true))],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: Routes.proJobs, builder: (_, _) => const ProJobsPage(incoming: false))],
+            routes: [_route(path: Routes.proJobs, builder: (_, _) => const ProJobsPage(incoming: false))],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: Routes.proMessages, builder: (_, _) => const ConversationsPage())],
+            routes: [_route(path: Routes.proMessages, builder: (_, _) => const ConversationsPage())],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: Routes.proProfile, builder: (_, _) => const ProfilePage())],
+            routes: [_route(path: Routes.proProfile, builder: (_, _) => const ProfilePage())],
           ),
         ],
       ),
 
       // Pantallas completas
-      GoRoute(
+      _route(
         path: Routes.ya,
         builder: (_, s) => RequestFlowPage(initialCategoryId: int.tryParse(s.uri.queryParameters['categoria'] ?? '')),
       ),
-      GoRoute(
+      _route(
         path: '/profesional/:id',
         builder: (_, s) => ProfessionalProfilePage(id: s.pathParameters['id']!),
         routes: [
-          GoRoute(
+          _route(
             path: 'solicitar',
             builder: (_, s) => RequestFlowPage(
               professionalId: s.pathParameters['id'],
@@ -254,55 +254,74 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ],
       ),
-      GoRoute(
+      _route(
         path: '/servicio/:id',
         builder: (_, s) => RequestFlowPage(initialCategoryId: int.tryParse(s.pathParameters['id'] ?? '')),
       ),
-      GoRoute(
+      _route(
         path: Routes.chooseProfessional,
         builder: (_, s) => ChooseProfessionalPage(args: s.extra as ChooseProfessionalArgs?),
       ),
-      GoRoute(path: Routes.categories, builder: (_, _) => const AllCategoriesPage()),
-      GoRoute(
+      _route(path: Routes.categories, builder: (_, _) => const AllCategoriesPage()),
+      _route(
         path: '/solicitud/:id',
         builder: (_, s) => BookingDetailPage(id: s.pathParameters['id']!),
       ),
-      GoRoute(
+      _route(
         path: '/chat/:id',
         builder: (_, s) => ChatPage(conversationId: s.pathParameters['id']!),
       ),
-      GoRoute(path: Routes.notifications, builder: (_, _) => const NotificationsPage()),
-      GoRoute(path: Routes.editProfile, builder: (_, _) => const EditProfilePage()),
-      GoRoute(path: Routes.security, builder: (_, _) => const SecurityPage()),
-      GoRoute(path: Routes.emergencyGuide, builder: (_, _) => const EmergencyGuidePage()),
-      GoRoute(path: Routes.apply, builder: (_, _) => const ApplicationPage()),
-      GoRoute(path: Routes.wallet, builder: (_, _) => const WalletPage()),
-      GoRoute(path: Routes.support, builder: (_, _) => const SupportPage()),
-      GoRoute(path: Routes.serviceArea, builder: (_, _) => const ServiceAreaPage()),
+      _route(path: Routes.notifications, builder: (_, _) => const NotificationsPage()),
+      _route(path: Routes.editProfile, builder: (_, _) => const EditProfilePage()),
+      _route(path: Routes.security, builder: (_, _) => const SecurityPage()),
+      _route(path: Routes.emergencyGuide, builder: (_, _) => const EmergencyGuidePage()),
+      _route(path: Routes.apply, builder: (_, _) => const ApplicationPage()),
+      _route(path: Routes.wallet, builder: (_, _) => const WalletPage()),
+      _route(path: Routes.support, builder: (_, _) => const SupportPage()),
+      _route(path: Routes.serviceArea, builder: (_, _) => const ServiceAreaPage()),
 
       // Administración
-      GoRoute(path: Routes.adminAi, builder: (_, _) => const AiControlCenterPage()),
-      GoRoute(path: Routes.admin, builder: (_, _) => const AdminHomePage()),
-      GoRoute(path: Routes.adminApplications, builder: (_, _) => const AdminApplicationsPage()),
-      GoRoute(
+      _route(path: Routes.adminAi, builder: (_, _) => const AiControlCenterPage()),
+      _route(path: Routes.admin, builder: (_, _) => const AdminHomePage()),
+      _route(path: Routes.adminApplications, builder: (_, _) => const AdminApplicationsPage()),
+      _route(
         path: '/admin/postulaciones/:id',
         builder: (_, s) => AdminApplicationDetailPage(professionalId: s.pathParameters['id']!),
       ),
-      GoRoute(path: Routes.adminTopups, builder: (_, _) => const AdminTopupsPage()),
-      GoRoute(path: Routes.adminReports, builder: (_, _) => const AdminReportsPage()),
-      GoRoute(path: Routes.adminDisputes, builder: (_, _) => const AdminDisputesPage()),
-      GoRoute(path: Routes.adminTickets, builder: (_, _) => const AdminTicketsPage()),
-      GoRoute(path: Routes.adminUsers, builder: (_, _) => const AdminUsersPage()),
-      GoRoute(path: Routes.adminCommissions, builder: (_, _) => const AdminCommissionsPage()),
-      GoRoute(path: Routes.adminCatalog, builder: (_, _) => const AdminCatalogPage()),
-      GoRoute(
+      _route(path: Routes.adminTopups, builder: (_, _) => const AdminTopupsPage()),
+      _route(path: Routes.adminReports, builder: (_, _) => const AdminReportsPage()),
+      _route(path: Routes.adminDisputes, builder: (_, _) => const AdminDisputesPage()),
+      _route(path: Routes.adminTickets, builder: (_, _) => const AdminTicketsPage()),
+      _route(path: Routes.adminUsers, builder: (_, _) => const AdminUsersPage()),
+      _route(path: Routes.adminCommissions, builder: (_, _) => const AdminCommissionsPage()),
+      _route(path: Routes.adminCatalog, builder: (_, _) => const AdminCatalogPage()),
+      _route(
         path: '/admin/catalogo/:id/opciones',
         builder: (_, s) => AdminProblemsPage(categoryId: int.parse(s.pathParameters['id']!)),
       ),
-      GoRoute(path: Routes.adminAudit, builder: (_, _) => const AdminAuditPage()),
-      GoRoute(path: Routes.adminCosts, builder: (_, _) => const AdminCostsPage()),
+      _route(path: Routes.adminAudit, builder: (_, _) => const AdminAuditPage()),
+      _route(path: Routes.adminCosts, builder: (_, _) => const AdminCostsPage()),
     ],
   );
 });
+
+/// Página Material del propio Flutter para cada ruta.
+///
+/// go_router 18 busca el MaterialApp del paquete material_ui y no reconoce el
+/// de Flutter que usa la app: sin esto arma páginas sin transición, y en iOS
+/// no se puede volver deslizando desde el borde izquierdo (ni hay animación
+/// del gesto atrás predictivo en Android). Con MaterialPage se usan las
+/// transiciones del tema (AppTheme: Cupertino en iOS, predictiva en Android).
+Page<void> _page(GoRouterState state, Widget child) => MaterialPage<void>(
+  key: state.pageKey,
+  name: state.name ?? state.path,
+  arguments: <String, String>{...state.pathParameters, ...state.uri.queryParameters},
+  restorationId: state.pageKey.value,
+  child: child,
+);
+
+/// Una ruta con [_page]: igual que GoRoute(path:, builder:).
+GoRoute _route({required String path, required GoRouterWidgetBuilder builder, List<RouteBase> routes = const []}) =>
+    GoRoute(path: path, pageBuilder: (context, state) => _page(state, builder(context, state)), routes: routes);
 
 const _customerTabs = {Routes.home, Routes.requests, Routes.messages, Routes.profile};

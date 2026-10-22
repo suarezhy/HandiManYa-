@@ -18,6 +18,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/city_picker.dart';
 import '../common/photo_picker.dart';
+import '../common/unsaved_changes.dart';
 import 'choose_professional_page.dart';
 
 enum _Step { category, problems, details, place }
@@ -81,6 +82,14 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
   List<PhotoUpload> _photos = const [];
 
   bool get _isYa => widget.professionalId == null;
+
+  /// Ya hay algo del pedido que se perdería al salir.
+  bool get _dirty =>
+      _index > 0 ||
+      _categoryId != widget.initialCategoryId ||
+      _selected.isNotEmpty ||
+      _photos.isNotEmpty ||
+      [_otherText, _description, _address, _reference].any((c) => c.text.trim().isNotEmpty);
   _Step get _step => _steps[_index];
 
   @override
@@ -250,11 +259,12 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
         .where((c) => c.id == _categoryId)
         .firstOrNull;
     final total = _steps.length;
-    return PopScope(
-      canPop: _index == 0,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) setState(() => _index--);
-      },
+    // Atrás vuelve al paso anterior; en el primero, si ya se eligió o escribió
+    // algo, pregunta antes de salir.
+    return UnsavedChangesScope(
+      dirty: _dirty,
+      stepBack: _index > 0 ? () => setState(() => _index--) : null,
+      message: 'Tu pedido todavía no se envió. Si sales ahora, se pierde lo que elegiste y escribiste.',
       child: Scaffold(
         appBar: AppBar(
           title: Text(

@@ -11,6 +11,7 @@ import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import '../auth/auth_scaffold.dart';
 import '../common/city_picker.dart';
+import '../common/unsaved_changes.dart';
 
 class EditProfilePage extends ConsumerWidget {
   const EditProfilePage({super.key});
@@ -77,8 +78,16 @@ class _FormState extends ConsumerState<_Form> {
   @override
   Widget build(BuildContext context) {
     final a = ref.watch(accountProvider).value ?? widget.account;
+    // Solo el nombre y la ciudad se guardan con "Guardar cambios"; el celular y
+    // el correo se cambian en sus propias hojas.
+    final dirty = _name.text.trim() != a.fullName.trim() || _cityId != a.cityId;
+    return UnsavedChangesScope(dirty: dirty && !_saving, child: _form(a));
+  }
+
+  Widget _form(UserProfile a) {
     return Form(
       key: _formKey,
+      onChanged: () => setState(() {}),
       child: ListView(
         padding: const EdgeInsets.symmetric(vertical: HySpacing.lg),
         children: [

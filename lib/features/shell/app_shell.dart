@@ -16,17 +16,25 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          const _SuspendedBanner(),
-          Expanded(child: shell),
-        ],
-      ),
-      bottomNavigationBar: AppBottomNav(
-        currentIndex: shell.currentIndex,
-        professional: professional,
-        onTap: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
+    // Atrás del sistema (gesto de Android) en otra pestaña vuelve a Inicio en
+    // vez de cerrar la app; en Inicio sí sale.
+    return PopScope(
+      canPop: shell.currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) shell.goBranch(0);
+      },
+      child: Scaffold(
+        body: Column(
+          children: [
+            const _SuspendedBanner(),
+            Expanded(child: shell),
+          ],
+        ),
+        bottomNavigationBar: AppBottomNav(
+          currentIndex: shell.currentIndex,
+          professional: professional,
+          onTap: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
+        ),
       ),
     );
   }

@@ -15,6 +15,7 @@ import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/city_picker.dart';
+import '../common/unsaved_changes.dart';
 import '../legal/legal_texts.dart';
 import 'identity_check_card.dart';
 import 'service_area_page.dart';
@@ -30,12 +31,20 @@ class ApplicationPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Quiero ser profesional'),
-        leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go(Routes.home)),
+        // Igual que el gesto atrás: pregunta si hay cambios sin guardar y, si
+        // se llegó directo a esta pantalla, vuelve al inicio.
+        leading: BackButton(onPressed: () => Navigator.maybePop(context)),
       ),
       body: app.when(
-        loading: () => const LoadingView(),
-        error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(applicationProvider)),
-        data: (a) => a.status.canEdit ? _ApplicationForm(app: a) : _StatusView(app: a),
+        loading: () => const UnsavedChangesScope(dirty: false, homeWhenFirst: true, child: LoadingView()),
+        error: (e, _) => UnsavedChangesScope(
+          dirty: false,
+          homeWhenFirst: true,
+          child: ErrorView(error: e, onRetry: () => ref.invalidate(applicationProvider)),
+        ),
+        data: (a) => a.status.canEdit
+            ? _ApplicationForm(app: a)
+            : UnsavedChangesScope(dirty: false, homeWhenFirst: true, child: _StatusView(app: a)),
       ),
     );
   }
@@ -107,6 +116,21 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
   int _stage = 0;
   final _scroll = ScrollController();
 
+  /// Los datos tal como están guardados (o como llegaron): si cambian, salir
+  /// pregunta antes. Los documentos se suben al momento y no cuentan.
+  late String _savedSnapshot = _snapshot();
+
+  String _snapshot() => [
+    _name.text.trim(),
+    _bio.text.trim(),
+    _years.text.trim(),
+    _price.text.trim(),
+    _primary,
+    _cityId,
+    ([..._categories]..sort()).join(','),
+    ([..._zones]..sort()).join(','),
+  ].join('|');
+
   /// Cambia de etapa y vuelve al principio de la lista.
   void _goTo(int stage) {
     setState(() => _stage = stage);
@@ -146,7 +170,8 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
       showMessage(context, 'Elige al menos una zona donde trabajas.');
       return false;
     }
-    return runGuarded(
+    final snapshot = _snapshot();
+    final ok = await runGuarded(
       context,
       () => ref
           .read(backendProvider)
@@ -162,6 +187,8 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
           ),
       success: quiet ? null : 'Borrador guardado',
     );
+    if (ok && mounted) setState(() => _savedSnapshot = snapshot);
+    return ok;
   }
 
   Future<void> _pickDocument(String docType) async {
@@ -210,13 +237,21 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => UnsavedChangesScope(
+    dirty: _snapshot() != _savedSnapshot,
+    homeWhenFirst: true,
+    message: 'Tu postulación tiene cambios sin guardar. Usa "Guardar borrador" para no perderlos.',
+    child: _form(context),
+  );
+
+  Widget _form(BuildContext context) {
     final categories = ref.watch(categoriesProvider).value ?? const <ServiceCategory>[];
     final ordered = orderCategories(categories, slug: (c) => c.slug, name: (c) => c.name);
     final zones = _cityId == null ? const <Zone>[] : ref.watch(zonesProvider(_cityId!)).value ?? const <Zone>[];
     final text = Theme.of(context).textTheme;
     return Form(
       key: _formKey,
+      onChanged: () => setState(() {}),
       child: ListView(
         key: const Key('application-form'),
         controller: _scroll,
