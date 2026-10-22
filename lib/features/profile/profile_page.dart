@@ -9,6 +9,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/city_picker.dart';
 import '../legal/legal_texts.dart';
+import '../management/management_common.dart';
 import '../safety/safety_sheets.dart';
 import 'profile_photo.dart';
 
@@ -66,16 +67,41 @@ class ProfilePage extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: HySpacing.md),
-                _RoleCard(account: account, onSwitch: switchRole),
-                if (account.isAdmin) ...[
-                  const SizedBox(height: HySpacing.sm),
-                  _Tile(
-                    icon: Icons.admin_panel_settings_outlined,
-                    title: 'Panel de administración',
-                    subtitle: 'Verificaciones, recargas, reportes y más',
-                    onTap: () => context.go(Routes.admin),
-                  ),
-                ],
+                // El equipo (propietario, gerente, empleado) no ve "Quiero ser
+                // profesional" ni promociones: vuelve a su panel desde aquí.
+                if (account.managementRole case final role?)
+                  AppCard(
+                    key: const Key('back-to-panel'),
+                    color: HyColors.navy,
+                    onTap: () {
+                      ref.read(managementCustomerModeProvider.notifier).set(false);
+                      context.go(Routes.panelHome(role));
+                    },
+                    child: Row(
+                      children: [
+                        const Icon(Icons.admin_panel_settings_outlined, color: HyColors.primary, size: 28),
+                        const SizedBox(width: HySpacing.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Volver al ${role.panelTitle}',
+                                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+                              ),
+                              const Text(
+                                'Estás viendo la app como cliente',
+                                style: TextStyle(color: Colors.white70, fontSize: 15),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right, color: Colors.white),
+                      ],
+                    ),
+                  )
+                else
+                  _RoleCard(account: account, onSwitch: switchRole),
                 const SectionHeader(title: 'Cuenta'),
                 _Tile(
                   icon: Icons.place_outlined,

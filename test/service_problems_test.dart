@@ -534,6 +534,7 @@ void main() {
     testWidgets('el administrador agrega una opción y el cliente la ve', (tester) async {
       await _pumpApp(tester);
       await _login(tester, phone: DemoBackend.adminPhone);
+      await _tapText(tester, 'Gestión'); // el catálogo está en Gestión del Panel del Propietario
       await _tapText(tester, 'Catálogo');
       expect(find.text('Plomería'), findsOneWidget);
       await _tap(

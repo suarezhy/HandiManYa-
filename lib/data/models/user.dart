@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'staff.dart';
+
 enum AppRole {
   customer('customer'),
   professional('professional'),
@@ -64,6 +66,8 @@ class UserProfile {
     this.phoneVerified = false,
     this.emailConfirmed = false,
     this.emailPending,
+    this.staffRole,
+    this.staffStatus,
     this.profileComplete = true,
     this.cityId,
     this.activeRole = AppRole.customer,
@@ -91,6 +95,13 @@ class UserProfile {
   /// para recuperar la cuenta hasta que lo confirme.
   final String? emailPending;
 
+  /// Rol de gestión activo: Propietario (= admin), Gerente o Empleado.
+  /// null para clientes y profesionales, y para un miembro suspendido.
+  final StaffRole? staffRole;
+
+  /// Estado del miembro del equipo ('active', 'suspended', 'revoked').
+  final String? staffStatus;
+
   /// Ya puso nombre y ciudad y aceptó los términos (después del código).
   final bool profileComplete;
   final int? cityId;
@@ -116,6 +127,10 @@ class UserProfile {
   bool get isProfessionalMode => activeRole == AppRole.professional && isApprovedProfessional;
   bool get isAdmin => roles.contains(AppRole.admin);
 
+  /// Rol de gestión efectivo: el admin siempre es el propietario.
+  StaffRole? get managementRole => isAdmin ? StaffRole.owner : staffRole;
+  bool get isStaff => managementRole != null;
+
   UserProfile copyWith({
     String? fullName,
     String? Function()? phone,
@@ -134,6 +149,8 @@ class UserProfile {
     phoneVerified: phoneVerified,
     emailConfirmed: emailConfirmed,
     emailPending: emailPending,
+    staffRole: staffRole,
+    staffStatus: staffStatus,
     profileComplete: profileComplete,
     cityId: cityId != null ? cityId() : this.cityId,
     activeRole: activeRole ?? this.activeRole,

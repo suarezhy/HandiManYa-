@@ -11,6 +11,7 @@ import '../models/costs.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
+import '../models/staff.dart';
 import '../models/user.dart';
 import '../models/wallet.dart';
 import '../repositories/repositories.dart';
@@ -33,6 +34,7 @@ class SupabaseBackend
         ProRepository,
         SafetyRepository,
         AdminRepository,
+        StaffRepository,
         AiControlRepository {
   SupabaseBackend(this._db);
 
@@ -101,6 +103,7 @@ class SupabaseBackend
     final m = Map<String, dynamic>.from(results[0] as Map);
     final st = Map<String, dynamic>.from(results[1] as Map? ?? const {});
     final avatar = (results[2] as Map?)?['avatar_path'] as String?;
+    final staff = await _myStaffAccess();
     return UserProfile(
       id: m['id'] as String,
       email: m['email'] as String? ?? '',
@@ -109,6 +112,8 @@ class SupabaseBackend
       phoneVerified: m['phone_verified'] as bool? ?? false,
       emailConfirmed: m['email_confirmed'] as bool? ?? false,
       emailPending: m['email_pending'] as String?,
+      staffRole: staff.role == StaffRole.owner ? null : staff.role,
+      staffStatus: staff.status,
       profileComplete: m['profile_complete'] as bool? ?? false,
       cityId: (m['city_id'] as num?)?.toInt(),
       activeRole: AppRole.parse(m['active_role'] as String?),
@@ -795,9 +800,94 @@ class SupabaseBackend
     }
   }
 
+  /// Rol de gestión. Si el proyecto todavía no tiene la migración de roles,
+  /// la cuenta sigue funcionando como antes (sin Gerente ni Empleado).
   @override
-  Future<AdminDashboard> adminDashboard() async =>
-      AdminDashboard(Map<String, dynamic>.from(await _db.rpc('admin_dashboard') as Map));
+  Future<StaffAccess> myStaffAccess() => _myStaffAccess();
+
+  Future<StaffAccess> _myStaffAccess() async {
+    try {
+      return StaffAccess.fromMap(Map<String, dynamic>.from(await _db.rpc('my_staff_role') as Map));
+    } catch (_) {
+      return StaffAccess.none;
+    }
+  }
+
+  // ------------------------------------------------------------ Equipo
+  List<Map<String, dynamic>> _list(Object? v) => [
+    for (final e in (v as List? ?? const [])) Map<String, dynamic>.from(e as Map),
+  ];
+
+  @override
+  Future<OpsDashboard> opsDashboard() async =>
+      OpsDashboard(Map<String, dynamic>.from(await _db.rpc('ops_dashboard') as Map));
+
+  @override
+  Future<List<OpsCase>> opsCases({String scope = 'mine', bool includeResolved = false}) async => [
+    for (final m in _list(
+      await _db.rpc('ops_cases_list', params: {'p_scope': scope, 'p_include_resolved': includeResolved}),
+    ))
+      OpsCase.fromMap(m),
+  ];
+
+  @override
+  Future<OpsCaseDetail> opsCaseDetail(int caseId) async => OpsCaseDetail.fromMap(
+    Map<String, dynamic>.from(await _db.rpc('ops_case_detail', params: {'p_case': caseId}) as Map),
+  );
+
+  @override
+  Future<void> assignCase(int caseId, String? userId) =>
+      _db.rpc('ops_assign_case', params: {'p_case': caseId, 'p_user': userId});
+
+  @override
+  Future<void> setCaseStatus(int caseId, OpsCaseStatus status, {String? note}) =>
+      _db.rpc('ops_set_case_status', params: {'p_case': caseId, 'p_status': status.key, 'p_note': note});
+
+  @override
+  Future<void> addCaseNote(int caseId, String body) =>
+      _db.rpc('ops_add_note', params: {'p_case': caseId, 'p_body': body});
+
+  @override
+  Future<void> replyCase(int caseId, String message) =>
+      _db.rpc('ops_reply', params: {'p_case': caseId, 'p_message': message});
+
+  @override
+  Future<void> escalateCase(int caseId, String reason, {String? category}) =>
+      _db.rpc('ops_escalate', params: {'p_case': caseId, 'p_reason': reason, 'p_category': category});
+
+  @override
+  Future<void> flagDocument(int documentId, String note) =>
+      _db.rpc('ops_flag_document', params: {'p_document': documentId, 'p_note': note});
+
+  @override
+  Future<List<StaffMember>> staffOverview() async => [
+    for (final m in _list(await _db.rpc('ops_staff_overview'))) StaffMember.fromMap(m),
+  ];
+
+  @override
+  Future<List<StaffActivity>> myStaffActivity() async => [
+    for (final m in _list(await _db.rpc('ops_my_activity'))) StaffActivity.fromMap(m),
+  ];
+
+  @override
+  Future<void> grantStaff(String userId, StaffRole role) =>
+      _db.rpc('owner_grant_staff', params: {'p_user': userId, 'p_role': role.key});
+
+  @override
+  Future<void> setStaffStatus(String userId, String status, {String? reason}) =>
+      _db.rpc('owner_set_staff_status', params: {'p_user': userId, 'p_status': status, 'p_reason': reason});
+
+  @override
+  Future<AdminDashboard> adminDashboard() async {
+    try {
+      return AdminDashboard(Map<String, dynamic>.from(await _db.rpc('owner_dashboard') as Map));
+    } on PostgrestException catch (e) {
+      // Sin la migración 0037 el servidor no tiene owner_dashboard: se usan los
+      // números de siempre y el panel dice "Sin datos" en el resto.
+      if (e.code != 'PGRST202') rethrow;
+      return AdminDashboard(Map<String, dynamic>.from(await _db.rpc('admin_dashboard') as Map));
+    }
+  }
 
   @override
   Future<List<AdminApplication>> adminApplications({String status = 'pending'}) async =>

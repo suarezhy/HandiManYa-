@@ -129,6 +129,14 @@ class AppError implements Exception {
     'HMY_SAME_PHONE': 'Ese ya es tu número.',
     'HMY_INVALID_EMAIL': 'Revisa el correo electrónico. Debe ser como nombre@correo.com.',
     'HMY_SAME_EMAIL': 'Ese ya es tu correo.',
+    'HMY_STAFF_ACCOUNT_REQUIRED':
+        'Esa persona primero tiene que entrar a la app con su celular confirmado. Después puedes darle el rol.',
+    'HMY_STAFF_NOT_ACTIVE': 'Solo puedes asignar casos a miembros activos del equipo.',
+    'HMY_ESCALATE_REQUIRED': 'Este caso no lo puedes cerrar tú: escálalo al gerente.',
+    'HMY_DECISION_REQUIRED': 'Una postulación se cierra al aprobarla o rechazarla.',
+    'HMY_IDENTITY_DECLINED':
+        'La verificación de identidad de esta persona fue rechazada. Solo el propietario puede revisar este caso.',
+    'HMY_INVALID_ROLE': 'Ese rol no existe.',
     'HMY_PHONE_REQUIRED': 'Para quitar el correo, tu cuenta necesita un celular confirmado.',
     'HMY_EMAIL_UNAVAILABLE': 'Todavía no podemos enviar el código a correos. Vuelve a intentar más tarde.',
     'phone_exists': 'Ese número ya tiene una cuenta. Si es tuyo, entra con ese número.',

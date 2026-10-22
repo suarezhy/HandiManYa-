@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'data/models/booking.dart';
+import 'data/models/staff.dart';
 import 'data/models/user.dart';
 import 'data/providers.dart';
 import 'features/auth/complete_profile_page.dart';
@@ -23,6 +24,11 @@ import 'features/booking/my_requests_page.dart';
 import 'features/booking/choose_professional_page.dart';
 import 'features/booking/request_flow_page.dart';
 import 'features/home/all_categories_page.dart';
+import 'features/management/cases_pages.dart';
+import 'features/management/management_common.dart';
+import 'features/management/management_shell.dart';
+import 'features/management/panel_pages.dart';
+import 'features/management/team_page.dart';
 import 'features/home/customer_home_page.dart';
 import 'features/messages/chat_page.dart';
 import 'features/messages/conversations_page.dart';
@@ -85,7 +91,29 @@ abstract final class Routes {
   static const adminAudit = '/admin/auditoria';
   static const adminAi = '/admin/centro-ia';
   static const adminCosts = '/admin/costos';
+  static const ownerManage = '/admin/gestion';
+  static const ownerTeam = '/admin/equipo';
+  static const ownerProfile = '/admin/perfil';
   static String adminApplication(String id) => '/admin/postulaciones/$id';
+
+  static const manager = '/gerente';
+  static const managerCases = '/gerente/casos';
+  static const managerApplications = '/gerente/postulaciones';
+  static const managerTeam = '/gerente/equipo';
+  static const managerProfile = '/gerente/perfil';
+
+  static const employee = '/empleado';
+  static const employeeActivity = '/empleado/actividad';
+  static const employeeProfile = '/empleado/perfil';
+
+  static const staffCases = '/gestion/casos';
+  static String staffCase(int id) => '/gestion/caso/$id';
+
+  static String panelHome(StaffRole role) => switch (role) {
+    StaffRole.owner => admin,
+    StaffRole.manager => manager,
+    StaffRole.employee => employee,
+  };
   static String adminProblems(int categoryId) => '/admin/catalogo/$categoryId/opciones';
 
   static String professional(String id) => '/profesional/$id';
@@ -116,6 +144,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     ..listen(authUserProvider, (_, _) => refresh.ping())
     ..listen(accountProvider, (_, _) => refresh.ping())
     ..listen(onboardingSeenProvider, (_, _) => refresh.ping())
+    ..listen(managementCustomerModeProvider, (_, _) => refresh.ping())
     ..onDispose(refresh.dispose);
 
   String? redirect(BuildContext context, GoRouterState state) {
@@ -144,17 +173,35 @@ final routerProvider = Provider<GoRouter>((ref) {
     // Cuenta nueva: después del código, nombre, ciudad y términos.
     if (!account.profileComplete) return loc == Routes.completeProfile ? null : Routes.completeProfile;
 
-    final homeForRole = account.isAdmin
-        ? Routes.admin
+    final staffRole = account.managementRole;
+    final customerMode = ref.read(managementCustomerModeProvider);
+    final homeForRole = staffRole != null
+        ? Routes.panelHome(staffRole)
         : account.isProfessionalMode
         ? Routes.proHome
         : Routes.home;
-    // La pantalla se oculta a quien no es admin; igual el servidor rechaza sus acciones.
-    if (loc.startsWith(Routes.admin) && !account.isAdmin) return Routes.home;
+    // Cada panel solo para su rol. Ocultar la pantalla no basta: el servidor
+    // vuelve a revisar cada acción (hmy_can, is_admin).
+    if (loc.startsWith(Routes.admin)) {
+      final allowed =
+          staffRole == StaffRole.owner ||
+          (staffRole == StaffRole.manager && _managerAdminRoutes.any((r) => loc == r || loc.startsWith('$r/')));
+      if (!allowed) return homeForRole;
+    }
+    if (loc.startsWith(Routes.manager) && staffRole != StaffRole.manager) return homeForRole;
+    if (loc.startsWith(Routes.employee) && staffRole != StaffRole.employee) return homeForRole;
+    if (loc.startsWith('/gestion/') && staffRole == null) return homeForRole;
     final atEntry = loc == Routes.splash || loc == Routes.completeProfile || Routes.publicRoutes.contains(loc);
     if (atEntry) {
+      // El equipo entra directo a su panel; la intención "quiero ser
+      // profesional" de la bienvenida no aplica.
+      if (staffRole != null) return homeForRole;
       final wantsPro = ref.read(entryIntentProvider) == AppRole.professional;
       if (wantsPro && !account.isApprovedProfessional && account.professionalStatus.canEdit) return Routes.apply;
+      return homeForRole;
+    }
+    // El equipo usa la app de cliente solo si eligió "Cambiar a modo cliente".
+    if (staffRole != null && !customerMode && (_customerTabs.contains(loc) || loc == Routes.search)) {
       return homeForRole;
     }
     if (loc.startsWith('/pro/') && !account.isProfessionalMode) return Routes.home;
@@ -280,9 +327,116 @@ final routerProvider = Provider<GoRouter>((ref) {
       _route(path: Routes.support, builder: (_, _) => const SupportPage()),
       _route(path: Routes.serviceArea, builder: (_, _) => const ServiceAreaPage()),
 
+      // Panel del Propietario
+      StatefulShellRoute.indexedStack(
+        pageBuilder: (_, s, shell) => _page(s, ManagementShell(role: StaffRole.owner, shell: shell)),
+        branches: [
+          StatefulShellBranch(
+            routes: [_route(path: Routes.admin, builder: (_, _) => const AdminHomePage())],
+          ),
+          StatefulShellBranch(
+            routes: [_route(path: Routes.ownerManage, builder: (_, _) => const OwnerManagePage())],
+          ),
+          StatefulShellBranch(
+            routes: [_route(path: Routes.adminAi, builder: (_, _) => const AiControlCenterPage())],
+          ),
+          StatefulShellBranch(
+            routes: [
+              _route(
+                path: Routes.ownerTeam,
+                builder: (_, _) => const TeamPage(role: StaffRole.owner),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              _route(
+                path: Routes.ownerProfile,
+                builder: (_, _) => const StaffProfilePage(role: StaffRole.owner),
+              ),
+            ],
+          ),
+        ],
+      ),
+
+      // Panel del Gerente (sin dinero)
+      StatefulShellRoute.indexedStack(
+        pageBuilder: (_, s, shell) => _page(s, ManagementShell(role: StaffRole.manager, shell: shell)),
+        branches: [
+          StatefulShellBranch(
+            routes: [_route(path: Routes.manager, builder: (_, _) => const ManagerHomePage())],
+          ),
+          StatefulShellBranch(
+            routes: [
+              _route(
+                path: Routes.managerCases,
+                builder: (_, _) => const CasesPage(role: StaffRole.manager, initialScope: 'unassigned'),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [_route(path: Routes.managerApplications, builder: (_, _) => const AdminApplicationsPage())],
+          ),
+          StatefulShellBranch(
+            routes: [
+              _route(
+                path: Routes.managerTeam,
+                builder: (_, _) => const TeamPage(role: StaffRole.manager),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              _route(
+                path: Routes.managerProfile,
+                builder: (_, _) => const StaffProfilePage(role: StaffRole.manager),
+              ),
+            ],
+          ),
+        ],
+      ),
+
+      // Panel del Empleado (solo sus casos)
+      StatefulShellRoute.indexedStack(
+        pageBuilder: (_, s, shell) => _page(s, ManagementShell(role: StaffRole.employee, shell: shell)),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              _route(
+                path: Routes.employee,
+                builder: (_, _) => const CasesPage(role: StaffRole.employee),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [_route(path: Routes.employeeActivity, builder: (_, _) => const EmployeeActivityPage())],
+          ),
+          StatefulShellBranch(
+            routes: [
+              _route(
+                path: Routes.employeeProfile,
+                builder: (_, _) => const StaffProfilePage(role: StaffRole.employee),
+              ),
+            ],
+          ),
+        ],
+      ),
+
+      // Casos del equipo, abiertos desde cualquier panel
+      _route(
+        path: Routes.staffCases,
+        builder: (_, _) => CasesPage(
+          role: ref.read(accountProvider).value?.managementRole ?? StaffRole.employee,
+          initialScope: 'all',
+          inShell: false,
+        ),
+      ),
+      _route(
+        path: '/gestion/caso/:id',
+        builder: (_, s) => CaseDetailPage(caseId: int.parse(s.pathParameters['id']!)),
+      ),
+
       // Administración
-      _route(path: Routes.adminAi, builder: (_, _) => const AiControlCenterPage()),
-      _route(path: Routes.admin, builder: (_, _) => const AdminHomePage()),
       _route(path: Routes.adminApplications, builder: (_, _) => const AdminApplicationsPage()),
       _route(
         path: '/admin/postulaciones/:id',
@@ -323,5 +477,14 @@ Page<void> _page(GoRouterState state, Widget child) => MaterialPage<void>(
 /// Una ruta con [_page]: igual que GoRoute(path:, builder:).
 GoRoute _route({required String path, required GoRouterWidgetBuilder builder, List<RouteBase> routes = const []}) =>
     GoRoute(path: path, pageBuilder: (context, state) => _page(state, builder(context, state)), routes: routes);
+
+/// Lo de /admin que también usa el gerente (el resto es del propietario).
+const _managerAdminRoutes = [
+  Routes.adminApplications,
+  Routes.adminReports,
+  Routes.adminDisputes,
+  Routes.adminTickets,
+  Routes.adminUsers,
+];
 
 const _customerTabs = {Routes.home, Routes.requests, Routes.messages, Routes.profile};

@@ -29,6 +29,69 @@ class AdminDashboard {
   int get availableProfessionals => _i('available_professionals');
   int get users => _i('users');
   int get activeCommissionRules => _i('active_commission_rules');
+
+  // Panel del Propietario (owner_dashboard). Null = el servidor no mandó el
+  // dato (por ejemplo, la migración aún no está aplicada): la app dice "Sin
+  // datos", nunca inventa un cero.
+  int? _n(String k) => (_m[k] as num?)?.toInt();
+  double? _money(String k) => (_m[k] as num?)?.toDouble();
+
+  bool get isOwnerView => _m.containsKey('revenue_month');
+  int? get completedToday => _n('completed_today');
+  int? get cancelledToday => _n('cancelled_today');
+  int? get completedMonth => _n('completed_month');
+  int? get cancelledMonth => _n('cancelled_month');
+  int? get customers => _n('customers');
+  int? get pendingDocuments => _n('pending_documents');
+  int? get flaggedDocuments => _n('flagged_documents');
+  int? get identityInReview => _n('identity_in_review');
+  bool? get identitySandboxOnly => _m['identity_sandbox_only'] as bool?;
+  bool? get identityRequired => _m['identity_required'] as bool?;
+  double? get revenueMonth => _money('revenue_month');
+  double? get commissionMonth => _money('commission_month');
+  double? get walletAvailable => _money('wallet_available');
+  double? get walletReserved => _money('wallet_reserved');
+  double? get pendingTopupsAmount => _money('pending_topups_amount');
+  int? get safetyIncidents => _n('safety_incidents');
+  int? get fraudAlerts => _n('fraud_alerts');
+  int? get urgentCases => _n('urgent_cases');
+  int? get escalatedToOwner => _n('escalated_to_owner');
+  int? get unassignedCases => _n('unassigned_cases');
+  int? get activeManagers => _n('active_managers');
+  int? get activeEmployees => _n('active_employees');
+  int? get aiPending => _n('ai_pending');
+  int? get aiCritical => _n('ai_critical');
+  double? get costsMonthUsd => _money('costs_month_usd');
+  int? get paidVendors => _n('paid_vendors');
+  int? get unreadNotifications => _n('unread_notifications');
+  int? get audit24h => _n('audit_24h');
+
+  List<DemandRow> _rows(String k) => [
+    for (final r in (_m[k] as List? ?? const [])) DemandRow.fromMap(Map<String, dynamic>.from(r as Map)),
+  ];
+
+  bool get hasDemand => _m.containsKey('demand_municipality');
+  List<DemandRow> get demandMunicipality => _rows('demand_municipality');
+  List<DemandRow> get demandDepartment => _rows('demand_department');
+  List<DemandRow> get demandCategory => _rows('demand_category');
+  List<DemandRow> get coverageGaps => _rows('coverage_gaps');
+}
+
+/// Una fila de demanda de los últimos 30 días.
+class DemandRow {
+  const DemandRow({required this.name, this.department, required this.count, this.professionals});
+
+  final String name;
+  final String? department;
+  final int count;
+  final int? professionals;
+
+  factory DemandRow.fromMap(Map<String, dynamic> m) => DemandRow(
+    name: m['name'] as String? ?? '',
+    department: m['department'] as String?,
+    count: (m['count'] as num?)?.toInt() ?? 0,
+    professionals: (m['professionals'] as num?)?.toInt(),
+  );
 }
 
 class AdminApplication {

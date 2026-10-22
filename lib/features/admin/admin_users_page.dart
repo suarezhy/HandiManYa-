@@ -164,7 +164,9 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
                               icon: const Icon(Icons.block, color: HyColors.danger),
                               label: const Text('Suspender', style: TextStyle(color: HyColors.danger)),
                             ),
-                          if (u.professionalStatus == VerificationStatus.approved)
+                          // Ajustar saldo es dinero: solo el propietario.
+                          if (u.professionalStatus == VerificationStatus.approved &&
+                              (ref.watch(accountProvider).value?.isAdmin ?? false))
                             OutlinedButton(onPressed: () => _adjust(u), child: const Text('Ajustar saldo')),
                         ],
                       ),

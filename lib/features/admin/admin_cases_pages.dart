@@ -181,6 +181,7 @@ class _DisputeList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isOwner = ref.watch(accountProvider).value?.isAdmin ?? false;
     return AdminList<AdminDispute>(
       value: ref.watch(adminDisputesProvider(status)),
       onRefresh: () => ref.refresh(adminDisputesProvider(status).future),
@@ -206,7 +207,18 @@ class _DisputeList extends ConsumerWidget {
             const SizedBox(height: HySpacing.xs),
             Text('"${d.reason}"', style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic)),
             if (d.resolution != null) InfoLine(Icons.check, 'Resolución: ${d.resolution}'),
-            if (d.isOpen) ...[
+            // Resolver cambia la comisión: solo el propietario (resolve_dispute
+            // lo vuelve a revisar). El gerente la sigue y la escala.
+            if (d.isOpen && !isOwner)
+              const Padding(
+                padding: EdgeInsets.only(top: HySpacing.sm),
+                child: Text(
+                  'Resolver una disputa afecta la comisión: lo decide el propietario. Escálala desde Casos.',
+                  key: Key('dispute-owner-only'),
+                  style: TextStyle(color: HyColors.textSecondary),
+                ),
+              ),
+            if (d.isOpen && isOwner) ...[
               const SizedBox(height: HySpacing.sm),
               const Text(
                 'Antes de decidir, habla con las dos partes. La decisión se avisa a ambos y queda en la auditoría.',

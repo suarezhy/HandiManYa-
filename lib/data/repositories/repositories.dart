@@ -8,6 +8,7 @@ import '../models/costs.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
+import '../models/staff.dart';
 import '../models/user.dart';
 import '../models/wallet.dart';
 
@@ -310,4 +311,34 @@ abstract interface class AiControlRepository {
 
   /// "Revisar ahora": agentes con reglas, costos y monitores, en el servidor.
   Future<AiCheckResult> runAllChecks();
+}
+
+/// Equipo de gestión: Gerente de Operaciones y Empleados. Cada acción la
+/// vuelve a autorizar el servidor (hmy_can); ocultar pantallas no alcanza.
+abstract interface class StaffRepository {
+  /// Rol y permisos de la cuenta actual, como los decide el servidor.
+  Future<StaffAccess> myStaffAccess();
+
+  Future<OpsDashboard> opsDashboard();
+
+  /// [scope]: 'mine', 'unassigned', 'escalated' o 'all'. El empleado recibe
+  /// solo los suyos.
+  Future<List<OpsCase>> opsCases({String scope = 'mine', bool includeResolved = false});
+  Future<OpsCaseDetail> opsCaseDetail(int caseId);
+  Future<void> assignCase(int caseId, String? userId);
+  Future<void> setCaseStatus(int caseId, OpsCaseStatus status, {String? note});
+  Future<void> addCaseNote(int caseId, String body);
+  Future<void> replyCase(int caseId, String message);
+
+  /// [category]: 'safety', 'fraud' o 'dispute' cuando el caso es eso.
+  Future<void> escalateCase(int caseId, String reason, {String? category});
+  Future<void> flagDocument(int documentId, String note);
+  Future<List<StaffMember>> staffOverview();
+  Future<List<StaffActivity>> myStaffActivity();
+
+  /// Solo el propietario, por el id de una cuenta que ya entró con su celular.
+  Future<void> grantStaff(String userId, StaffRole role);
+
+  /// 'active', 'suspended' o 'revoked'. Suspender o quitar pide un motivo.
+  Future<void> setStaffStatus(String userId, String status, {String? reason});
 }

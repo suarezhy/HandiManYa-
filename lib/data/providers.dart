@@ -30,6 +30,7 @@ abstract interface class AppBackend
         ProRepository,
         SafetyRepository,
         AdminRepository,
+        StaffRepository,
         AiControlRepository {}
 
 class _SupabaseAppBackend extends SupabaseBackend implements AppBackend {

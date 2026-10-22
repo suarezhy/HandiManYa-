@@ -28,7 +28,8 @@ declare
     'share_trip_location','stop_trip_location','trip_location','create_trip_share','my_trip_shares','revoke_trip_share','trip_share_view','hmy_trip_cleanup',
     'hmy_cost_gate','hmy_cost_month','admin_cost_dashboard','admin_set_vendor','run_cost_monitors',
     'hmy_identity_begin','hmy_identity_session','hmy_identity_attach','hmy_identity_session_free','hmy_identity_forget_link','hmy_identity_decision','hmy_identity_pending','my_identity_check','hmy_identity_guard','hmy_id_documents_accepted','hmy_id_documents_guard','run_rule_agents','admin_run_rule_agents','remove_my_email','hmy_staff_role','hmy_can','hmy_can_see_case','my_staff_role','owner_grant_staff','owner_set_staff_status','ops_cases_list','ops_case_detail','ops_assign_case','ops_set_case_status','ops_add_note','ops_reply','ops_escalate','ops_flag_document','ops_dashboard','ops_staff_overview','ops_my_activity','ops_application_basic','hmy_open_case',
-    'hmy_log_agent_run','hmy_agent_run_ok','admin_run_all_checks','admin_ai_agents','admin_ai_item_detail','admin_generate_daily_report'];
+    'hmy_log_agent_run','hmy_agent_run_ok','admin_run_all_checks','admin_ai_agents','admin_ai_item_detail','admin_generate_daily_report',
+    'owner_dashboard'];
   v_missing text;
   v_count int;
   v_failed int := 0;

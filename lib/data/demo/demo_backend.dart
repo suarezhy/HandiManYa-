@@ -13,6 +13,7 @@ import '../models/costs.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
+import '../models/staff.dart';
 import '../models/user.dart';
 import '../models/wallet.dart';
 import '../repositories/repositories.dart';
@@ -37,10 +38,12 @@ class DemoBackend
         ProRepository,
         SafetyRepository,
         AdminRepository,
+        StaffRepository,
         AiControlRepository {
   DemoBackend({this.simulateDelays = true, this.codeCooldown = const Duration(seconds: 60)}) {
     _seed();
     _seedAdmin();
+    _seedStaff();
   }
 
   /// En las pruebas automáticas se apaga para que todo sea inmediato.
@@ -54,6 +57,10 @@ class DemoBackend
   static const customerPhone = '+59171234567';
   static const professionalPhone = '+59176543210';
   static const adminPhone = '+59170000000';
+
+  /// Equipo de demostración (cuentas ficticias, solo en este modo).
+  static const managerPhone = '+59173000001';
+  static const employeePhones = ['+59173000011', '+59173000012', '+59173000013', '+59173000014', '+59173000015'];
   static const customerEmail = 'cliente@demo.bo';
   static const professionalEmail = 'profesional@demo.bo';
   static const adminEmail = 'admin@demo.bo';
@@ -78,6 +85,7 @@ class DemoBackend
   final _reports = <AdminReport>[];
   final _tickets = <AdminTicket>[];
   final _audit = <AuditEntry>[];
+  final _auditActor = _ActorLog();
   final _rules = <CommissionRule>[];
   // Catálogo editable desde el panel. Los profesionales de ejemplo de
   // categorías sensibles se consideran con su documento ya aceptado.
@@ -479,6 +487,8 @@ class DemoBackend
       phoneVerified: a.phone != null,
       emailConfirmed: a.email.isNotEmpty,
       emailPending: a.pendingEmail,
+      staffRole: _staffRoleOf(a.id) == StaffRole.owner ? null : _staffRoleOf(a.id),
+      staffStatus: _staff[a.id]?.status,
       profileComplete: a.fullName.trim().length >= 3 && a.cityId != null && a.termsAccepted,
       cityId: a.cityId,
       activeRole: a.activeRole,
@@ -2362,7 +2372,7 @@ class DemoBackend
   void _log(String action, String table, String id, [Map<String, dynamic> details = const {}]) => _audit.insert(
     0,
     AuditEntry(
-      id: _seq++,
+      id: _auditActor.add(_me.id),
       actorName: _me.fullName,
       action: action,
       targetTable: table,
@@ -2411,13 +2421,115 @@ class DemoBackend
           .length,
       'users': _accounts.length,
       'active_commission_rules': _rules.where((r) => r.isActive).length,
+      ..._ownerExtras(start),
     });
+  }
+
+  /// Lo mismo que owner_dashboard() calcula en el servidor, con los datos de
+  /// la demostración.
+  Map<String, dynamic> _ownerExtras(DateTime today) {
+    final month = DateTime(today.year, today.month);
+    final bookings = _bookings.values.where((b) => b.status != BookingStatus.draft).toList();
+    DateTime? at(_Booking b, BookingStatus s) => b.events.where((e) => e.status == s).map((e) => e.at).lastOrNull;
+    bool since(_Booking b, BookingStatus s, DateTime from) => b.status == s && (at(b, s)?.isAfter(from) ?? false);
+    final completedMonth = bookings.where((b) => since(b, BookingStatus.completed, month));
+    final docs = _pros.values
+        .where((p) => p.status == VerificationStatus.submitted || p.status == VerificationStatus.underReview)
+        .expand((p) => p.docs);
+    final open = _cases.where((c) => c.status != OpsCaseStatus.resolved);
+    final openReports = _reports.where((r) => r.status.isOpen);
+    bool aiOpen(AiItem i) =>
+        i.status == AiItemStatus.open || i.status == AiItemStatus.pendingApproval || i.status == AiItemStatus.moreInfo;
+    final approvedPros = _pros.values.where((p) => p.status == VerificationStatus.approved);
+    final last30 = DateTime.now().subtract(const Duration(days: 30));
+    final recent = bookings.where((b) => b.createdAt.isAfter(last30));
+    List<Map<String, dynamic>> top(Map<String, Map<String, dynamic>> rows) =>
+        (rows.values.toList()..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int))).take(10).toList();
+    final byCity = <String, Map<String, dynamic>>{};
+    final byDept = <String, Map<String, dynamic>>{};
+    final byCat = <String, Map<String, dynamic>>{};
+    for (final b in recent) {
+      final city = DemoData.cities.firstWhere((c) => c.id == b.draft.cityId);
+      final pros = approvedPros.where((p) => p.cityId == city.id).length;
+      byCity.putIfAbsent(
+        city.name,
+        () => {'name': city.name, 'department': city.department, 'count': 0, 'professionals': pros},
+      );
+      byCity[city.name]!['count'] = (byCity[city.name]!['count'] as int) + 1;
+      final dept = city.department ?? 'Sin departamento';
+      byDept.putIfAbsent(dept, () => {'name': dept, 'count': 0});
+      byDept[dept]!['count'] = (byDept[dept]!['count'] as int) + 1;
+      final cat = _catName(b.draft.categoryId);
+      byCat.putIfAbsent(cat, () => {'name': cat, 'count': 0});
+      byCat[cat]!['count'] = (byCat[cat]!['count'] as int) + 1;
+    }
+    final me = _me.id;
+    return {
+      'completed_today': bookings.where((b) => since(b, BookingStatus.completed, today)).length,
+      'cancelled_today': bookings.where((b) => since(b, BookingStatus.cancelled, today)).length,
+      'completed_month': completedMonth.length,
+      'cancelled_month': bookings.where((b) => since(b, BookingStatus.cancelled, month)).length,
+      'customers': _accounts.entries
+          .where((e) => !e.value.roles.contains(AppRole.admin) && !approvedPros.any((p) => p.id == e.key))
+          .length,
+      'pending_documents': docs.where((d) => d.status == DocumentStatus.pending).length,
+      'flagged_documents': docs.where((d) => d.status == DocumentStatus.pending && d.flagNote != null).length,
+      'identity_in_review': _pros.values
+          .expand((p) => p.identity)
+          .where(
+            (i) => const {
+              IdentityStatus.created,
+              IdentityStatus.inProgress,
+              IdentityStatus.inReview,
+              IdentityStatus.resubmitted,
+            }.contains(i.status),
+          )
+          .length,
+      'identity_sandbox_only': true,
+      'identity_required': false,
+      'revenue_month': completedMonth.fold<double>(0, (t, b) => t + (b.finalAmount ?? 0)),
+      'commission_month': completedMonth.fold<double>(0, (t, b) => t + (b.captured ? b.reserved : 0)),
+      'wallet_available': _wallets.values.fold<double>(0, (t, w) => t + w[0]),
+      'wallet_reserved': _wallets.values.fold<double>(0, (t, w) => t + w[1]),
+      'pending_topups_amount': _topups.values
+          .expand((l) => l)
+          .where((t) => t.status == TopupStatus.pending)
+          .fold<double>(0, (t, r) => t + r.amount),
+      'safety_incidents':
+          openReports.where((r) => r.reason == ReportReason.harassment).length +
+          open.where((c) => c.category == 'safety' && c.kind != OpsCaseKind.report).length,
+      'fraud_alerts':
+          openReports.where((r) => r.reason == ReportReason.fraud || r.reason == ReportReason.overcharge).length +
+          open.where((c) => c.category == 'fraud' && c.kind != OpsCaseKind.report).length +
+          _aiItems.where((i) => i.agentKey == 'fraud' && aiOpen(i)).length,
+      'urgent_cases': open.where((c) => c.priority == 'urgent').length,
+      'escalated_to_owner': open.where((c) => c.status == OpsCaseStatus.escalated && c.escalatedTo == 'owner').length,
+      'unassigned_cases': open.where((c) => c.assignedTo == null).length,
+      'active_managers': _staff.values.where((m) => m.role == StaffRole.manager && m.status == 'active').length,
+      'active_employees': _staff.values.where((m) => m.role == StaffRole.employee && m.status == 'active').length,
+      'ai_pending': _aiItems.where(aiOpen).length,
+      'ai_critical': _aiItems
+          .where((i) => aiOpen(i) && (i.severity == AiSeverity.high || i.severity == AiSeverity.critical))
+          .length,
+      'costs_month_usd': 0,
+      'paid_vendors': _vendors.values.where((v) => v.status == VendorStatus.paid).length,
+      'unread_notifications': _notifications.where((n) => n.userId == me && n.value.readAt == null).length,
+      'audit_24h': _audit.where((a) => a.createdAt.isAfter(DateTime.now().subtract(const Duration(hours: 24)))).length,
+      'demand_municipality': top(byCity),
+      'demand_department': top(byDept),
+      'demand_category': top(byCat),
+      'coverage_gaps': top({
+        for (final e in byCity.entries)
+          if (e.value['professionals'] == 0)
+            e.key: {'name': e.value['name'], 'department': e.value['department'], 'count': e.value['count']},
+      }),
+    };
   }
 
   @override
   Future<List<AdminApplication>> adminApplications({String status = 'pending'}) async {
     await _latency(200);
-    _admin();
+    _need('applications.list');
     bool keep(_Pro p) => switch (status) {
       'pending' => p.status == VerificationStatus.submitted || p.status == VerificationStatus.underReview,
       'all' => true,
@@ -2431,7 +2543,7 @@ class DemoBackend
   @override
   Future<AdminApplicationDetail> adminApplicationDetail(String professionalId) async {
     await _latency(200);
-    _admin();
+    _need('applications.list');
     final p = _pros[professionalId];
     if (p == null) throw AppError.from('HMY_NOT_FOUND');
     return AdminApplicationDetail(
@@ -2454,7 +2566,7 @@ class DemoBackend
   @override
   Future<void> reviewApplication(String professionalId, VerificationStatus decision, {String? note}) async {
     await _latency();
-    _admin();
+    _need('applications.decide');
     final p = _pros[professionalId];
     if (p == null) throw AppError.from('HMY_NO_APPLICATION');
     final needsReason =
@@ -2469,6 +2581,14 @@ class DemoBackend
         if (d.status == DocumentStatus.accepted && (d.type == 'ci_anverso' || d.type == 'ci_reverso')) d.type,
     };
     if (approving && idAccepted.length < 2) throw AppError.from('HMY_ID_DOCUMENTS_REQUIRED');
+    // Como en el servidor: el gerente no pasa por alto una verificación real rechazada.
+    final real = p.identity.where((c) => !c.sandbox).toList();
+    if (decision == VerificationStatus.approved &&
+        !_me.roles.contains(AppRole.admin) &&
+        real.isNotEmpty &&
+        real.first.status == IdentityStatus.declined) {
+      throw AppError.from('HMY_IDENTITY_DECLINED');
+    }
     if (approving && _identityRequired && !p.identity.any((c) => !c.sandbox && c.status == IdentityStatus.approved)) {
       throw AppError.from('HMY_IDENTITY_CHECK_REQUIRED');
     }
@@ -2495,7 +2615,7 @@ class DemoBackend
   @override
   Future<void> reviewDocument(int documentId, DocumentStatus status, {String? note}) async {
     await _latency();
-    _admin();
+    _need('documents.review');
     if (status == DocumentStatus.rejected && (note ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
     final doc = _pros.values.expand((p) => p.docs).where((d) => d.id == documentId).firstOrNull;
     if (doc == null) throw AppError.from('HMY_NOT_FOUND');
@@ -2590,7 +2710,7 @@ class DemoBackend
   @override
   Future<List<AdminReport>> adminReports({String status = 'open'}) async {
     await _latency(200);
-    _admin();
+    _need('reports.view');
     return [
       for (final r in _reports)
         if (status == 'all' || (status == 'open' ? r.status.isOpen : r.status.key == status))
@@ -2613,7 +2733,7 @@ class DemoBackend
   @override
   Future<void> reviewReport(int reportId, CaseStatus status, {String? resolution}) async {
     await _latency();
-    _admin();
+    _need('reports.decide');
     final closing = status == CaseStatus.resolved || status == CaseStatus.dismissed;
     if (closing && (resolution ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
     final i = _reports.indexWhere((r) => r.id == reportId);
@@ -2637,7 +2757,7 @@ class DemoBackend
   @override
   Future<List<AdminDispute>> adminDisputes({String status = 'open'}) async {
     await _latency(200);
-    _admin();
+    _need('disputes.view');
     return [
       for (final b in _bookings.values)
         if (b.disputeReason != null && (status == 'all' || (status == 'open') == (b.status == BookingStatus.disputed)))
@@ -2670,7 +2790,7 @@ class DemoBackend
   @override
   Future<List<AdminTicket>> adminTickets({String status = 'open'}) async {
     await _latency(200);
-    _admin();
+    _need('tickets.view');
     return [
       for (final t in _tickets)
         if (status == 'all' || (status == 'open' ? t.status != TicketStatus.closed : t.status.key == status)) t,
@@ -2680,7 +2800,7 @@ class DemoBackend
   @override
   Future<void> updateTicket(int ticketId, TicketStatus status, {String? note}) async {
     await _latency();
-    _admin();
+    _need('tickets.reply');
     final i = _tickets.indexWhere((t) => t.id == ticketId);
     if (i < 0) throw AppError.from('HMY_NOT_FOUND');
     final t = _tickets[i];
@@ -2704,7 +2824,7 @@ class DemoBackend
   @override
   Future<List<AdminUser>> adminUsers(String query) async {
     await _latency(200);
-    _admin();
+    _need('users.view');
     final q = query.trim().toLowerCase();
     final list = [
       for (final a in _accounts.values)
@@ -2732,10 +2852,11 @@ class DemoBackend
   @override
   Future<void> setSuspension(String userId, {required bool suspend, String? reason}) async {
     await _latency();
-    final admin = _admin();
+    final admin = _need('users.suspend');
     final a = _account(userId);
     if (a == null) throw AppError.from('HMY_NOT_FOUND');
     if (a.id == admin.id || a.roles.contains(AppRole.admin)) throw AppError.from('HMY_FORBIDDEN');
+    if (!admin.roles.contains(AppRole.admin) && _staff.containsKey(a.id)) throw AppError.from('HMY_FORBIDDEN');
     if (suspend && (reason ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
     a
       ..suspendedAt = suspend ? (a.suspendedAt ?? DateTime.now()) : null
@@ -3166,6 +3287,539 @@ class DemoBackend
     _identityRequired = required;
     _log('settings.identity_check', 'app_settings', 'identity_check', {'required': required});
   }
+
+  // ================================================================ Equipo (demo)
+  // Igual que 0035_management_roles: el propietario es el admin; gerente y
+  // empleado tienen su fila con estado; cada acción revisa el permiso.
+  final _staff = <String, _Staff>{};
+  final _cases = <_Case>[];
+
+  static const _rolePermissions = <StaffRole, Set<String>>{
+    StaffRole.manager: {
+      'ops.dashboard', 'cases.view_all', 'cases.assign', 'cases.update', 'cases.note', 'cases.reply', //
+      'cases.escalate', 'applications.list', 'applications.decide', 'documents.view', 'documents.review',
+      'documents.flag', 'reports.view', 'reports.decide', 'disputes.view', 'tickets.view', 'tickets.reply',
+      'users.view', 'users.suspend', 'staff.view', 'bookings.monitor',
+    },
+    StaffRole.employee: {
+      'ops.dashboard',
+      'cases.view_own',
+      'cases.update_own',
+      'cases.note',
+      'cases.reply',
+      'cases.escalate',
+      'documents.flag',
+    },
+  };
+
+  void _seedStaff() {
+    final manager = _Account(id: 'demo-gerente', email: 'gerente@demo.bo', fullName: 'Lucía Fernández', cityId: 1)
+      ..phone = managerPhone
+      ..confirmed = true
+      ..onboardingDone = true;
+    _accounts[manager.email] = manager;
+    _staff[manager.id] = _Staff(StaffRole.manager);
+    const names = ['Diego Rojas', 'Paola Quiroga', 'Marco Antezana', 'Elena Vargas', 'Tomás Céspedes'];
+    for (var i = 0; i < employeePhones.length; i++) {
+      final e = _Account(id: 'demo-empleado-${i + 1}', email: 'empleado${i + 1}@demo.bo', fullName: names[i], cityId: 1)
+        ..phone = employeePhones[i]
+        ..confirmed = true
+        ..onboardingDone = true;
+      _accounts[e.email] = e;
+      _staff[e.id] = _Staff(StaffRole.employee);
+    }
+    _syncCases();
+    // Un caso de soporte ya asignado a la primera empleada, para ver el panel.
+    final support = _cases.where((c) => c.kind == OpsCaseKind.support).firstOrNull;
+    if (support != null) {
+      support
+        ..assignedTo = 'demo-empleado-1'
+        ..assignedAt = DateTime.now();
+    }
+  }
+
+  StaffRole? _staffRoleOf(String userId) {
+    final a = _account(userId);
+    if (a == null) return null;
+    if (a.roles.contains(AppRole.admin)) return StaffRole.owner;
+    final st = _staff[userId];
+    if (st == null || st.status != 'active' || a.suspendedAt != null) return null;
+    return st.role;
+  }
+
+  bool _can(String permission) {
+    final role = _staffRoleOf(_me.id);
+    if (role == null) return false;
+    return role == StaffRole.owner || (_rolePermissions[role]?.contains(permission) ?? false);
+  }
+
+  _Account _need(String permission) {
+    if (!_can(permission)) throw AppError.from('HMY_FORBIDDEN');
+    return _me;
+  }
+
+  /// Como los disparadores del servidor: cada ticket, reporte, disputa y
+  /// postulación tiene su caso.
+  void _syncCases() {
+    bool has(OpsCaseKind k, String ref) => _cases.any((c) => c.kind == k && c.refId == ref);
+    for (final t in _tickets) {
+      if (!has(OpsCaseKind.support, '${t.id}') && t.status != TicketStatus.closed) {
+        _cases.add(_Case(_seq++, OpsCaseKind.support, '${t.id}', t.subject, createdAt: t.createdAt));
+      }
+    }
+    for (final r in _reports) {
+      if (!has(OpsCaseKind.report, '${r.id}') && (r.status == CaseStatus.open || r.status == CaseStatus.reviewing)) {
+        final category = switch (r.reason) {
+          ReportReason.harassment => 'safety',
+          ReportReason.fraud || ReportReason.overcharge => 'fraud',
+          _ => 'routine',
+        };
+        _cases.add(
+          _Case(_seq++, OpsCaseKind.report, '${r.id}', 'Reporte: ${r.reason.key}', createdAt: r.createdAt)
+            ..category = category
+            ..priority = category == 'routine' ? 'normal' : 'high',
+        );
+      }
+    }
+    for (final b in _bookings.values) {
+      if (b.disputeReason != null && b.status == BookingStatus.disputed && !has(OpsCaseKind.dispute, b.id)) {
+        _cases.add(
+          _Case(_seq++, OpsCaseKind.dispute, b.id, 'Disputa de un servicio', createdAt: b.disputeAt ?? DateTime.now())
+            ..category = 'dispute'
+            ..priority = 'high',
+        );
+      }
+    }
+    for (final p in _pros.values) {
+      final pending = p.status == VerificationStatus.submitted || p.status == VerificationStatus.underReview;
+      final existing = _cases.where((c) => c.kind == OpsCaseKind.application && c.refId == p.id).firstOrNull;
+      if (pending && existing == null) {
+        _cases.add(
+          _Case(_seq++, OpsCaseKind.application, p.id, 'Postulación: ${p.displayName}', createdAt: p.submittedAt),
+        );
+      } else if (existing != null && !pending && existing.status != OpsCaseStatus.resolved) {
+        existing
+          ..status = OpsCaseStatus.resolved
+          ..resolvedAt = DateTime.now();
+      }
+    }
+  }
+
+  bool _canSee(_Case c) => _can('cases.view_all') || (_can('cases.view_own') && c.assignedTo == _me.id);
+
+  _Case _caseFor(int id, String all, String own) {
+    final c = _cases.where((c) => c.id == id).firstOrNull;
+    if (c == null) throw AppError.from('HMY_NOT_FOUND');
+    final ok = (_can(all) && _can('cases.view_all')) || (_can(own) && c.assignedTo == _me.id);
+    if (!ok) throw AppError.from('HMY_FORBIDDEN');
+    return c;
+  }
+
+  void _note(_Case c, String kind, String body) {
+    c.notes.add(OpsCaseNote(kind: kind, body: body, authorName: _me.fullName, createdAt: DateTime.now()));
+    c.updatedAt = DateTime.now();
+  }
+
+  OpsCase _caseView(_Case c) => OpsCase(
+    id: c.id,
+    kind: c.kind,
+    refId: c.refId,
+    title: c.title,
+    category: c.category,
+    status: c.status,
+    priority: c.priority,
+    assignedTo: c.assignedTo,
+    assignedName: c.assignedTo == null ? null : _account(c.assignedTo!)?.fullName,
+    escalatedTo: c.escalatedTo,
+    firstResponseAt: c.firstResponseAt,
+    resolvedAt: c.resolvedAt,
+    createdAt: c.createdAt,
+  );
+
+  Map<String, dynamic> _caseSource(_Case c) {
+    switch (c.kind) {
+      case OpsCaseKind.support:
+        final t = _tickets.where((t) => '${t.id}' == c.refId).firstOrNull;
+        return t == null
+            ? {}
+            : {
+                'user_name': t.userName,
+                'subject': t.subject,
+                'body': t.body,
+                'status': t.status.key,
+                'last_reply': t.adminNote,
+              };
+      case OpsCaseKind.report:
+        final r = _reports.where((r) => '${r.id}' == c.refId).firstOrNull;
+        return r == null
+            ? {}
+            : {
+                'reporter_name': r.reporterName,
+                'reported_name': r.reportedName,
+                'reason': r.reason.key,
+                'details': r.details,
+                'status': r.status.key,
+              };
+      case OpsCaseKind.dispute:
+        final b = _bookings[c.refId];
+        return b == null
+            ? {}
+            : {
+                'reason': b.disputeReason,
+                'status': b.status == BookingStatus.disputed ? 'open' : 'resolved',
+                'customer_name': _account(b.customerId)?.fullName,
+                'professional_name': b.professionalId == null ? null : _pros[b.professionalId]?.displayName,
+              };
+      case OpsCaseKind.application:
+        final p = _pros[c.refId];
+        return p == null
+            ? {}
+            : {
+                'professional_id': p.id,
+                'display_name': p.displayName,
+                'status': p.status.key,
+                'years_experience': p.years,
+                'documents': [
+                  for (final d in p.docs)
+                    {'id': d.id, 'doc_type': d.type, 'status': d.status.key, 'flag_note': d.flagNote},
+                ],
+              };
+    }
+  }
+
+  @override
+  Future<StaffAccess> myStaffAccess() async {
+    final role = _staffRoleOf(_me.id);
+    if (role == null) return StaffAccess(status: _staff[_me.id]?.status);
+    return StaffAccess(
+      role: role,
+      status: _staff[_me.id]?.status ?? 'active',
+      permissions: _rolePermissions[role] ?? {},
+    );
+  }
+
+  @override
+  Future<OpsDashboard> opsDashboard() async {
+    await _latency(150);
+    _need('ops.dashboard');
+    _syncCases();
+    final me = _me.id;
+    final open = _cases.where((c) => c.status != OpsCaseStatus.resolved);
+    final week = DateTime.now().subtract(const Duration(days: 7));
+    final m = <String, dynamic>{
+      'role': _staffRoleOf(me)?.key,
+      'my_open_cases': open.where((c) => c.assignedTo == me).length,
+      'my_escalated': open.where((c) => c.assignedTo == me && c.status == OpsCaseStatus.escalated).length,
+      'my_resolved_7d': _cases
+          .where((c) => c.assignedTo == me && c.status == OpsCaseStatus.resolved && c.resolvedAt!.isAfter(week))
+          .length,
+    };
+    if (_can('cases.view_all')) {
+      final dash = await adminDashboardCounts();
+      final docs = _pros.values.expand((p) => p.docs);
+      m.addAll({
+        'unassigned_cases': open.where((c) => c.assignedTo == null).length,
+        'escalated_cases': open.where((c) => c.status == OpsCaseStatus.escalated).length,
+        'urgent_cases': open.where((c) => c.priority == 'urgent').length,
+        'pending_documents': docs.where((d) => d.status == DocumentStatus.pending).length,
+        'flagged_documents': docs.where((d) => d.status == DocumentStatus.pending && d.flagNote != null).length,
+        ...dash,
+      });
+    }
+    return OpsDashboard(m);
+  }
+
+  /// Conteos operativos (sin dinero) que comparten el panel del propietario y
+  /// el del gerente.
+  Future<Map<String, int>> adminDashboardCounts() async {
+    final today = DateTime.now();
+    final start = DateTime(today.year, today.month, today.day);
+    final bookings = _bookings.values;
+    return {
+      'pending_applications': _pros.values
+          .where((p) => p.status == VerificationStatus.submitted || p.status == VerificationStatus.underReview)
+          .length,
+      'open_tickets': _tickets.where((t) => t.status != TicketStatus.closed).length,
+      'open_reports': _reports.where((r) => r.status == CaseStatus.open || r.status == CaseStatus.reviewing).length,
+      'open_disputes': bookings.where((b) => b.status == BookingStatus.disputed).length,
+      'active_bookings': bookings
+          .where(
+            (b) => const {
+              BookingStatus.confirmed,
+              BookingStatus.onTheWay,
+              BookingStatus.inProgress,
+              BookingStatus.workFinished,
+            }.contains(b.status),
+          )
+          .length,
+      'bookings_today': bookings.where((b) => b.createdAt.isAfter(start)).length,
+      'available_professionals': _pros.values
+          .where((p) => p.status == VerificationStatus.approved && p.available)
+          .length,
+      'approved_professionals': _pros.values.where((p) => p.status == VerificationStatus.approved).length,
+    };
+  }
+
+  @override
+  Future<List<OpsCase>> opsCases({String scope = 'mine', bool includeResolved = false}) async {
+    await _latency(150);
+    final all = _can('cases.view_all');
+    if (!all && !_can('cases.view_own')) throw AppError.from('HMY_FORBIDDEN');
+    _syncCases();
+    final me = _me.id;
+    int rank(String p) => p == 'urgent' ? 0 : (p == 'high' ? 1 : 2);
+    return [
+      for (final c in _cases)
+        if ((includeResolved || c.status != OpsCaseStatus.resolved) &&
+            (!all || scope == 'mine'
+                ? c.assignedTo == me
+                : scope == 'unassigned'
+                ? c.assignedTo == null
+                : scope == 'escalated'
+                ? c.status == OpsCaseStatus.escalated
+                : true))
+          _caseView(c),
+    ]..sort((a, b) {
+      final r = rank(a.priority).compareTo(rank(b.priority));
+      return r != 0 ? r : a.createdAt.compareTo(b.createdAt);
+    });
+  }
+
+  @override
+  Future<OpsCaseDetail> opsCaseDetail(int caseId) async {
+    await _latency(150);
+    final c = _cases.where((c) => c.id == caseId).firstOrNull;
+    if (c == null || !_canSee(c)) throw AppError.from(c == null ? 'HMY_NOT_FOUND' : 'HMY_FORBIDDEN');
+    return OpsCaseDetail(item: _caseView(c), source: _caseSource(c), notes: List.of(c.notes));
+  }
+
+  @override
+  Future<void> assignCase(int caseId, String? userId) async {
+    await _latency();
+    _need('cases.assign');
+    if (userId != null && !{StaffRole.manager, StaffRole.employee}.contains(_staffRoleOf(userId))) {
+      throw AppError.from('HMY_STAFF_NOT_ACTIVE');
+    }
+    final c = _cases.where((c) => c.id == caseId).firstOrNull;
+    if (c == null) throw AppError.from('HMY_NOT_FOUND');
+    c
+      ..assignedTo = userId
+      ..assignedAt = DateTime.now();
+    _note(c, 'assign', userId == null ? 'Sin asignar' : 'Asignado a ${_account(userId)?.fullName}');
+    if (userId != null) _notify(userId, 'staff', 'Tienes un caso nuevo', c.title);
+    _log('case.assign', 'ops_cases', '$caseId', {'to': userId});
+  }
+
+  @override
+  Future<void> setCaseStatus(int caseId, OpsCaseStatus status, {String? note}) async {
+    await _latency();
+    if (status == OpsCaseStatus.escalated) throw AppError.from('HMY_INVALID_STATUS');
+    final c = _caseFor(caseId, 'cases.update', 'cases.update_own');
+    final manager = _can('cases.update');
+    if (!manager) {
+      if (status == OpsCaseStatus.resolved &&
+          (!{OpsCaseKind.support, OpsCaseKind.report}.contains(c.kind) || c.category != 'routine')) {
+        throw AppError.from('HMY_ESCALATE_REQUIRED');
+      }
+      if (c.status == OpsCaseStatus.escalated) throw AppError.from('HMY_FORBIDDEN');
+    }
+    if (status == OpsCaseStatus.resolved && c.kind == OpsCaseKind.application) {
+      throw AppError.from('HMY_DECISION_REQUIRED');
+    }
+    final text = (note ?? '').trim();
+    if (status == OpsCaseStatus.resolved && text.isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    c
+      ..status = status
+      ..escalatedTo = status == OpsCaseStatus.resolved ? c.escalatedTo : null
+      ..resolvedAt = status == OpsCaseStatus.resolved ? DateTime.now() : null;
+    if (c.kind == OpsCaseKind.support) {
+      final i = _tickets.indexWhere((t) => '${t.id}' == c.refId);
+      if (i >= 0) {
+        final t = _tickets[i];
+        _tickets[i] = AdminTicket(
+          id: t.id,
+          userName: t.userName,
+          bookingId: t.bookingId,
+          subject: t.subject,
+          body: t.body,
+          status: switch (status) {
+            OpsCaseStatus.resolved => TicketStatus.closed,
+            OpsCaseStatus.open => TicketStatus.open,
+            _ => TicketStatus.inProgress,
+          },
+          adminNote: t.adminNote,
+          createdAt: t.createdAt,
+        );
+      }
+    } else if (c.kind == OpsCaseKind.report) {
+      final i = _reports.indexWhere((r) => '${r.id}' == c.refId);
+      if (i >= 0) {
+        final r = _reports[i];
+        _reports[i] = AdminReport(
+          id: r.id,
+          reporterName: r.reporterName,
+          reportedId: r.reportedId,
+          reportedName: r.reportedName,
+          bookingId: r.bookingId,
+          reason: r.reason,
+          details: r.details,
+          status: status == OpsCaseStatus.resolved ? CaseStatus.resolved : CaseStatus.reviewing,
+          resolution: status == OpsCaseStatus.resolved ? text : r.resolution,
+          createdAt: r.createdAt,
+          reportsAgainst: r.reportsAgainst,
+        );
+      }
+    }
+    _note(c, 'status', text.isEmpty ? status.key : '${status.key}: $text');
+    _log('case.${status.key}', 'ops_cases', '$caseId', {'kind': c.kind.key, 'note': ?(text.isEmpty ? null : text)});
+  }
+
+  @override
+  Future<void> addCaseNote(int caseId, String body) async {
+    await _latency();
+    final c = _caseFor(caseId, 'cases.note', 'cases.note');
+    if (body.trim().length < 2) throw AppError.from('HMY_REASON_REQUIRED');
+    _note(c, 'note', body.trim());
+    _log('case.note', 'ops_cases', '$caseId');
+  }
+
+  @override
+  Future<void> replyCase(int caseId, String message) async {
+    await _latency();
+    final c = _caseFor(caseId, 'cases.reply', 'cases.reply');
+    if (c.kind != OpsCaseKind.support) throw AppError.from('HMY_INVALID_STATUS');
+    final text = message.trim();
+    if (text.length < 2) throw AppError.from('HMY_REASON_REQUIRED');
+    final i = _tickets.indexWhere((t) => '${t.id}' == c.refId);
+    if (i >= 0) {
+      final t = _tickets[i];
+      _tickets[i] = AdminTicket(
+        id: t.id,
+        userName: t.userName,
+        bookingId: t.bookingId,
+        subject: t.subject,
+        body: t.body,
+        status: t.status == TicketStatus.open ? TicketStatus.inProgress : t.status,
+        adminNote: text,
+        createdAt: t.createdAt,
+      );
+      final user = _accounts.values.where((a) => a.fullName == t.userName).firstOrNull;
+      if (user != null) _notify(user.id, 'support', 'Respuesta de soporte', text);
+    }
+    c
+      ..firstResponseAt ??= DateTime.now()
+      ..status = c.status == OpsCaseStatus.open ? OpsCaseStatus.inProgress : c.status;
+    _note(c, 'reply', text);
+    _log('case.reply', 'ops_cases', '$caseId');
+  }
+
+  @override
+  Future<void> escalateCase(int caseId, String reason, {String? category}) async {
+    await _latency();
+    final c = _caseFor(caseId, 'cases.escalate', 'cases.escalate');
+    if (reason.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    if (category != null && !const {'safety', 'fraud', 'dispute'}.contains(category)) {
+      throw AppError.from('HMY_INVALID_STATUS');
+    }
+    final to = _staffRoleOf(_me.id) == StaffRole.employee ? 'manager' : 'owner';
+    c
+      ..status = OpsCaseStatus.escalated
+      ..escalatedTo = to
+      ..category = category ?? c.category
+      ..priority = const {'safety', 'fraud'}.contains(category ?? c.category) ? 'urgent' : 'high';
+    _note(c, 'escalate', 'Escalado a ${to == 'owner' ? 'propietario' : 'gerente'}: ${reason.trim()}');
+    _log('case.escalate', 'ops_cases', '$caseId', {'to': to, 'category': ?category, 'reason': reason.trim()});
+  }
+
+  @override
+  Future<void> flagDocument(int documentId, String note) async {
+    await _latency();
+    _need('documents.flag');
+    if (note.trim().length < 3) throw AppError.from('HMY_REASON_REQUIRED');
+    final pro = _pros.values.where((p) => p.docs.any((d) => d.id == documentId)).firstOrNull;
+    if (pro == null) throw AppError.from('HMY_NOT_FOUND');
+    final c = _cases.where((c) => c.kind == OpsCaseKind.application && c.refId == pro.id).firstOrNull;
+    if (!_can('cases.view_all') && c?.assignedTo != _me.id) throw AppError.from('HMY_FORBIDDEN');
+    pro.docs.firstWhere((d) => d.id == documentId).flagNote = note.trim();
+    if (c != null) _note(c, 'flag', note.trim());
+    _log('document.flag', 'professional_documents', '$documentId', {'professional': pro.id, 'note': note.trim()});
+  }
+
+  @override
+  Future<List<StaffMember>> staffOverview() async {
+    await _latency(150);
+    _need('staff.view');
+    final week = DateTime.now().subtract(const Duration(days: 7));
+    return [
+      for (final e in _staff.entries)
+        StaffMember(
+          userId: e.key,
+          fullName: _account(e.key)?.fullName ?? '',
+          role: e.value.role,
+          status: e.value.status,
+          statusReason: e.value.reason,
+          openCases: _cases.where((c) => c.assignedTo == e.key && c.status != OpsCaseStatus.resolved).length,
+          resolved7d: _cases
+              .where((c) => c.assignedTo == e.key && c.status == OpsCaseStatus.resolved && c.resolvedAt!.isAfter(week))
+              .length,
+          avgFirstResponseMin: () {
+            final times = [
+              for (final c in _cases)
+                if (c.assignedTo == e.key && c.firstResponseAt != null)
+                  c.firstResponseAt!.difference(c.assignedAt ?? c.createdAt).inMinutes,
+            ];
+            return times.isEmpty ? null : (times.reduce((a, b) => a + b) / times.length).round();
+          }(),
+        ),
+    ];
+  }
+
+  @override
+  Future<List<StaffActivity>> myStaffActivity() async {
+    await _latency(100);
+    if (_staffRoleOf(_me.id) == null) throw AppError.from('HMY_FORBIDDEN');
+    return [
+      for (final a in _audit)
+        if (_auditActor.of(a.id) == _me.id)
+          StaffActivity(action: a.action, targetTable: a.targetTable, targetId: a.targetId, createdAt: a.createdAt),
+    ];
+  }
+
+  @override
+  Future<void> grantStaff(String userId, StaffRole role) async {
+    await _latency();
+    final owner = _admin();
+    if (role == StaffRole.owner) throw AppError.from('HMY_INVALID_ROLE');
+    final a = _account(userId);
+    if (a == null || a.phone == null || a.suspendedAt != null) throw AppError.from('HMY_STAFF_ACCOUNT_REQUIRED');
+    if (a.id == owner.id || a.roles.contains(AppRole.admin)) throw AppError.from('HMY_FORBIDDEN');
+    _staff[userId] = _Staff(role);
+    _log('staff.grant', 'staff_members', userId, {'role': role.key});
+  }
+
+  @override
+  Future<void> setStaffStatus(String userId, String status, {String? reason}) async {
+    await _latency();
+    _admin();
+    if (!const {'active', 'suspended', 'revoked'}.contains(status)) throw AppError.from('HMY_INVALID_STATUS');
+    if (status != 'active' && (reason ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    final st = _staff[userId];
+    if (st == null) throw AppError.from('HMY_NOT_FOUND');
+    st
+      ..status = status
+      ..reason = status == 'active' ? null : reason!.trim();
+    var released = 0;
+    if (status != 'active') {
+      for (final c in _cases.where((c) => c.assignedTo == userId && c.status != OpsCaseStatus.resolved)) {
+        c.assignedTo = null;
+        released++;
+      }
+    }
+    _log('staff.$status', 'staff_members', userId, {
+      'reason': ?reason?.trim(),
+      'released_cases': ?(released == 0 ? null : released),
+    });
+  }
 }
 
 class _Account {
@@ -3212,6 +3866,9 @@ class _Doc {
   final Uint8List? bytes;
   DocumentStatus status = DocumentStatus.pending;
   String? note;
+
+  /// Marca de un miembro del equipo: falta o es dudoso (no lo acepta ni lo rechaza).
+  String? flagNote;
 }
 
 class _Pro {
@@ -3360,4 +4017,46 @@ class _Note {
 
   final AppNotification value;
   final String userId;
+}
+
+class _Staff {
+  _Staff(this.role);
+
+  final StaffRole role;
+  String status = 'active';
+  String? reason;
+}
+
+class _Case {
+  _Case(this.id, this.kind, this.refId, this.title, {DateTime? createdAt}) : createdAt = createdAt ?? DateTime.now();
+
+  final int id;
+  final OpsCaseKind kind;
+  final String refId;
+  final String title;
+  String category = 'routine';
+  OpsCaseStatus status = OpsCaseStatus.open;
+  String priority = 'normal';
+  String? assignedTo;
+  DateTime? assignedAt;
+  String? escalatedTo;
+  DateTime? firstResponseAt;
+  DateTime? resolvedAt;
+  final DateTime createdAt;
+  DateTime updatedAt = DateTime.now();
+  final List<OpsCaseNote> notes = [];
+}
+
+/// Quién hizo cada entrada de la auditoría (la entrada guarda el nombre).
+class _ActorLog {
+  final _actors = <int, String>{};
+  var _next = 1;
+
+  int add(String actorId) {
+    final id = _next++;
+    _actors[id] = actorId;
+    return id;
+  }
+
+  String? of(int id) => _actors[id];
 }

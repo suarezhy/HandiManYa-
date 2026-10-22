@@ -131,7 +131,10 @@ void main() {
     testWidgets('el administrador entra a su panel y abre cada sección (letra x$scale)', (tester) async {
       await _pumpApp(tester, textScale: scale);
       await _login(tester, professional: false, phone: DemoBackend.adminPhone);
-      expect(find.text('Panel de administración'), findsOneWidget);
+      expect(find.byKey(const Key('panel-title-owner')), findsOneWidget);
+      expect(find.byKey(const Key('owner-summary')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('panel-nav-Gestión')));
+      await tester.pumpAndSettle();
       for (final section in [
         'Postulaciones',
         'Recargas',
