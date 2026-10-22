@@ -38,8 +38,11 @@ class AiControlCenterPage extends ConsumerWidget {
     child: Scaffold(
       appBar: AppBar(
         title: const Text('Centro de Control IA'),
+        // Con 320 px no caben las cuatro: se desplazan desde el borde
+        // izquierdo y la pestaña elegida se trae a la vista.
         bottom: const TabBar(
           isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: [
             Tab(text: 'Estado general'),
             Tab(text: 'Decisiones'),
