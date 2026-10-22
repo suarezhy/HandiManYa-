@@ -13,7 +13,7 @@ declare
     'departments','disputes','identity_checks','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
     'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
-    'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets'];
+    'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets','staff_members','ops_cases','ops_case_notes'];
   v_buckets jsonb := '{"avatars":true,"portfolio":true,"booking-photos":false,"chat-images":false,"payment-qr":false,"professional-documents":false,"topup-proofs":false}';
   v_functions text[] := array['handle_new_user','create_booking','create_ya_request','claim_ya_request','ya_eligible_professionals',
     'accept_booking','cancel_booking','confirm_completion','booking_detail','can_see_booking_address','set_booking_approx_point',
@@ -27,7 +27,7 @@ declare
     'mark_arrived','verify_arrival_pin','admin_verify_arrival','booking_arrival','hmy_arrival_gate','hmy_arrival_pin',
     'share_trip_location','stop_trip_location','trip_location','create_trip_share','my_trip_shares','revoke_trip_share','trip_share_view','hmy_trip_cleanup',
     'hmy_cost_gate','hmy_cost_month','admin_cost_dashboard','admin_set_vendor','run_cost_monitors',
-    'hmy_identity_begin','hmy_identity_session','hmy_identity_attach','hmy_identity_session_free','hmy_identity_forget_link','hmy_identity_decision','hmy_identity_pending','my_identity_check','hmy_identity_guard','hmy_id_documents_accepted','hmy_id_documents_guard','run_rule_agents','admin_run_rule_agents','remove_my_email'];
+    'hmy_identity_begin','hmy_identity_session','hmy_identity_attach','hmy_identity_session_free','hmy_identity_forget_link','hmy_identity_decision','hmy_identity_pending','my_identity_check','hmy_identity_guard','hmy_id_documents_accepted','hmy_id_documents_guard','run_rule_agents','admin_run_rule_agents','remove_my_email','hmy_staff_role','hmy_can','hmy_can_see_case','my_staff_role','owner_grant_staff','owner_set_staff_status','ops_cases_list','ops_case_detail','ops_assign_case','ops_set_case_status','ops_add_note','ops_reply','ops_escalate','ops_flag_document','ops_dashboard','ops_staff_overview','ops_my_activity','ops_application_basic','hmy_open_case'];
   v_missing text;
   v_count int;
   v_failed int := 0;
