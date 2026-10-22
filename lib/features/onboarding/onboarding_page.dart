@@ -25,7 +25,7 @@ class _Slide {
 const _slides = [
   _Slide(
     'assets/images/onboarding_1.jpg',
-    696 / 697,
+    570 / 568,
     'Profesionales de confianza cerca de ti',
     'Plomeros, electricistas, albañiles, limpieza y mucho más en toda Bolivia. Todos verificados.',
     Icons.verified_user_outlined,
