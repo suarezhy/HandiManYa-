@@ -193,8 +193,15 @@ void main() {
 
     await tester.tap(find.text('Decisiones'));
     await tester.pumpAndSettle();
-    expect(find.text('Recomendación de IA'), findsOneWidget);
-    expect(find.text('Dato verificado'), findsWidgets);
+    // Cada aviso es corto; el origen se abre en "Ver detalles".
+    expect(find.text('Ver detalles'), findsWidgets);
+    final req = (await backend.aiItems(statuses: ['pending_approval'])).single;
+    await tester.ensureVisible(find.byKey(Key('ai-item-details-${req.id}')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(Key('ai-item-details-${req.id}')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Recomendación de un modelo de IA'), findsOneWidget);
+    expect(find.textContaining('Aprobar (con código)'), findsOneWidget);
     await tester.ensureVisible(find.text('Aprobar'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Aprobar'));
@@ -216,10 +223,20 @@ void main() {
     await tester.ensureVisible(find.text('Reporte diario'));
     await tester.tap(find.text('Reporte diario'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Generate now'));
-    await tester.tap(find.text('Generate now'));
+    await tester.ensureVisible(find.text('Generar el de ayer ahora'));
+    await tester.tap(find.text('Generar el de ayer ahora'));
     await tester.pumpAndSettle();
-    expect(find.text('Top priorities today'), findsOneWidget);
+    expect(find.text('Prioridades del día'), findsOneWidget);
+    expect(find.textContaining('Reporte del '), findsOneWidget);
+    expect(find.textContaining('Hora de Miami'), findsWidgets);
+    for (final t in ['Operaciones', 'Finanzas', 'Seguridad', 'Profesionales y clientes', 'Rendimiento de IA']) {
+      expect(find.text(t), findsOneWidget, reason: t);
+    }
+    expect(find.text('Comisiones cobradas'), findsOneWidget);
+    expect(find.text('Servicios completados'), findsOneWidget);
+    expect(find.text('Sin dato'), findsWidgets, reason: 'lo que no se midió no sale como cero');
+    expect(find.byKey(const Key('daily-report-stale')), findsNothing, reason: 'es el de ayer');
+    expect(find.textContaining('Top priorities'), findsNothing);
   });
 
   Future<DemoAppBackend> pumpCenter(WidgetTester tester, Size size) async {
@@ -256,9 +273,13 @@ void main() {
     final backend = await pumpCenter(tester, const Size(390, 844));
     await tester.tap(find.text('Decisiones'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('ai-item-2')));
+    await tester.ensureVisible(find.byKey(const Key('ai-item-details-2')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('ai-item-2')));
+    await tester.tap(find.byKey(const Key('ai-item-details-2')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('ai-item-open-2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('ai-item-open-2')));
     await tester.pumpAndSettle();
     expect(find.text('Origen del aviso'), findsOneWidget);
     expect(find.textContaining('8. Billetera y pagos'), findsOneWidget);

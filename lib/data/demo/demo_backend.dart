@@ -2326,12 +2326,23 @@ class DemoBackend
     final dash = await adminDashboard();
     final topups = _topups.values.expand((l) => l).where((t) => t.status == TopupStatus.pending);
     final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1));
+    bool yesterday(DateTime d) => !d.isBefore(day) && d.isBefore(day.add(const Duration(days: 1)));
+    final captures = _ledger.values
+        .expand((l) => l)
+        .where((l) => l.type == LedgerType.commissionCapture && yesterday(l.createdAt));
     final report = DailyReport(
-      date: DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1)),
+      date: day,
       timezone: 'America/New_York',
       generatedAt: now,
       data: {
-        'today': {'bookings_created': dash.bookingsToday, 'commission_revenue_bs': 0},
+        'timezone_label': 'Hora de Miami',
+        'snapshot_at': now.toUtc().toIso8601String(),
+        // Solo lo que la demostración sabe contar; lo demás sale "Sin dato".
+        'today': {
+          'commission_revenue_bs': captures.fold<double>(0, (a, l) => a - (l.availableDelta + l.reservedDelta)),
+          'commissions_captured': captures.length,
+        },
         'previous_day': const <String, dynamic>{},
         'current': {
           'bookings_pending': dash.activeBookings,
@@ -2342,12 +2353,12 @@ class DemoBackend
           'decisions_pending': _aiItems.where((i) => i.status == AiItemStatus.pendingApproval).length,
         },
         'priorities': [
-          if (dash.pendingApplications > 0) 'Review ${dash.pendingApplications} professional application(s).',
-          if (topups.isNotEmpty) 'Verify ${topups.length} pending recharge(s).',
+          if (topups.isNotEmpty) 'Verificar ${topups.length} recarga(s) pendiente(s).',
+          if (dash.pendingApplications > 0) 'Revisar ${dash.pendingApplications} postulación(es) de profesionales.',
           if (_aiItems.any((i) => i.status == AiItemStatus.pendingApproval))
-            'Decide the items waiting for your approval.',
+            'Decidir los pedidos que esperan tu aprobación.',
         ],
-        'unavailable': const ['Demo mode: sample data only'],
+        'unavailable': const ['Modo demostración: datos de ejemplo', 'Gastos operativos: todavía no se registran'],
       },
     );
     _dailyReports.insert(0, report);
@@ -3759,6 +3770,7 @@ class DemoBackend
         StaffMember(
           userId: e.key,
           fullName: _account(e.key)?.fullName ?? '',
+          phoneMasked: maskPhone(_account(e.key)?.phone),
           role: e.value.role,
           status: e.value.status,
           statusReason: e.value.reason,

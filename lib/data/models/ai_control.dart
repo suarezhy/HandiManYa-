@@ -311,6 +311,17 @@ class AiItem {
   /// Prefijo de dedupe_key: identifica la regla que creó el aviso.
   String? get rule => dedupeKey?.split(':').first;
 
+  /// El detalle repite el título (las alertas de costos viejas eran
+  /// "Costos: " + el mismo mensaje): se muestra una sola vez.
+  bool get bodyRepeatsTitle {
+    final b = (body ?? '').trim();
+    return b.isEmpty || title.contains(b);
+  }
+
+  /// Intentos frenados y cobrado, contados en cost_usage cuando se revisó (desde 0040).
+  int? get blockedAttempts => (evidence['blocked_attempts'] as num?)?.toInt();
+  double? get chargedUsd => (evidence['charged_usd'] as num?)?.toDouble();
+
   bool get needsApproval => kind == 'approval_request';
 
   String get kindLabel => switch (kind) {
@@ -517,3 +528,40 @@ class DailyReport {
     data: Map<String, dynamic>.from(m['data'] as Map),
   );
 }
+
+/// La evidencia de un aviso en palabras: las claves conocidas con su nombre
+/// en español; las demás tal cual. El mensaje ya se muestra como detalle.
+List<(String, String)> aiEvidenceLines(Map<String, dynamic> evidence) => [
+  for (final e in evidence.entries)
+    if (e.key != 'message' && e.value != null)
+      switch (e.key) {
+        'blocked_attempts' => ('Intentos frenados este mes', '${e.value}'),
+        'charged_usd' => (
+          'Cobrado este mes',
+          (num.tryParse('${e.value}') ?? 0) == 0 ? 'Nada (US\$ 0)' : 'US\$ ${e.value}',
+        ),
+        'counted_at' => (
+          'Contado',
+          DateTime.tryParse('${e.value}') == null ? '${e.value}' : _dt(DateTime.parse('${e.value}').toLocal()),
+        ),
+        'vendor' => ('Servicio', '${e.value}'),
+        'level' => (
+          'Nivel',
+          switch ('${e.value}') {
+            'blocked' => 'Frenado (no se usa ni se cobra)',
+            'near_cap' => 'Cerca del tope mensual',
+            'near_free_limit' => 'Cerca del límite gratis',
+            _ => '${e.value}',
+          },
+        ),
+        'professional_id' || 'user_id' || 'customer_id' => ('Cuenta', '${e.value}'),
+        'booking_id' => ('Pedido', '${e.value}'),
+        'amount' => ('Monto', 'Bs ${e.value}'),
+        'count' => ('Cantidad', '${e.value}'),
+        _ => (e.key.replaceAll('_', ' '), e.value is Map || e.value is List ? '${e.value}' : '${e.value}'),
+      },
+];
+
+String _dt(DateTime d) =>
+    '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
+    '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';

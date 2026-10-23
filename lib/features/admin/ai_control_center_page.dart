@@ -9,6 +9,8 @@ import '../../data/models/ai_control.dart';
 import '../../data/models/booking.dart';
 import '../../data/providers.dart';
 import '../security/confirm_identity.dart';
+import 'admin_costs_page.dart' show costDashboardProvider;
+import 'ai_daily_report.dart';
 
 final aiOverviewProvider = FutureProvider<AiOverview>((ref) => ref.watch(backendProvider).aiOverview());
 final aiAgentsProvider = FutureProvider<List<AiAgent>>((ref) => ref.watch(backendProvider).aiAgents());
@@ -51,7 +53,7 @@ class AiControlCenterPage extends ConsumerWidget {
           ],
         ),
       ),
-      body: const TabBarView(children: [_OverviewTab(), _DecisionsTab(), _AgentsTab(), _ReportTab()]),
+      body: const TabBarView(children: [_OverviewTab(), _DecisionsTab(), _AgentsTab(), DailyReportTab()]),
     ),
   );
 }
@@ -362,6 +364,29 @@ Future<bool> _decide(BuildContext context, WidgetRef ref, AiItem item, AiDecisio
     if (c == null) return false;
     method = c.serverMethod;
   } else if (d.needsNote) {
+    // Cerrar un aviso no se deshace: se confirma antes de pedir la nota.
+    if (d == AiDecision.reject || d == AiDecision.dismiss || d == AiDecision.failed) {
+      final ok = await confirmDialog(
+        context,
+        title: switch (d) {
+          AiDecision.reject => '¿Rechazar este pedido?',
+          AiDecision.failed => '¿Marcar como fallido?',
+          _ => '¿Descartar este aviso?',
+        },
+        message: switch (d) {
+          AiDecision.reject => 'No se hará lo que propone. El pedido queda cerrado y no se puede reabrir.',
+          AiDecision.failed => 'El aviso queda cerrado como fallido y no se puede reabrir.',
+          _ => 'El aviso se cierra sin hacer nada y no se puede reabrir. Si el problema sigue, avisará de nuevo el mes siguiente o con datos nuevos.',
+        },
+        confirm: switch (d) {
+          AiDecision.reject => 'Sí, rechazar',
+          AiDecision.failed => 'Sí, marcar fallido',
+          _ => 'Sí, descartar',
+        },
+        destructive: true,
+      );
+      if (!ok || !context.mounted) return false;
+    }
     note = await promptText(
       context,
       title: switch (d) {
@@ -434,6 +459,7 @@ class _DecisionButtons extends ConsumerWidget {
   }
 }
 
+/// Un aviso en pocas líneas; el origen y la evidencia se abren en "Ver detalles".
 class _ItemCard extends ConsumerWidget {
   const _ItemCard({required this.item});
 
@@ -442,11 +468,11 @@ class _ItemCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pending = item.status.isPending;
+    final evidence = aiEvidenceLines(item.evidence);
     return Padding(
       padding: const EdgeInsets.only(bottom: HySpacing.sm),
       child: AppCard(
         key: Key('ai-item-${item.id}'),
-        onTap: () => _openItem(context, item.id),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -455,35 +481,117 @@ class _ItemCard extends ConsumerWidget {
               runSpacing: 4,
               children: [
                 _Chip(item.severity.label, _tone(item.severity)),
-                _Chip(item.kindLabel, StatusTone.neutral),
-                _Chip(
-                  item.fromAi ? 'Recomendación de IA' : 'Dato verificado',
-                  item.fromAi ? StatusTone.info : StatusTone.success,
-                ),
                 _Chip(item.status.label, pending ? StatusTone.warning : StatusTone.neutral),
               ],
             ),
             const SizedBox(height: HySpacing.xs),
             Text(item.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-            if ((item.body ?? '').isNotEmpty) Text(item.body!, style: const TextStyle(fontSize: 15)),
+            if (!item.bodyRepeatsTitle)
+              Text(
+                item.body!,
+                key: Key('ai-item-body-${item.id}'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 15),
+              ),
+            if (item.blockedAttempts != null)
+              Text(
+                '${item.blockedAttempts} intento(s) frenado(s) este mes · '
+                '${(item.chargedUsd ?? 0) == 0 ? 'sin cobro' : 'cobrado US\$ ${item.chargedUsd}'}',
+                key: Key('ai-item-cost-${item.id}'),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             Text(
-              '${_agentLabel(ref, item.agentKey)} · ${aiRuleLabel(item.rule)} · '
-              '${Fmt.dateTime(item.createdAt.toLocal())}',
+              '${_agentLabel(ref, item.agentKey)} · ${Fmt.dateTime(item.createdAt.toLocal())}',
               style: const TextStyle(color: HyColors.textMuted, fontSize: 13),
             ),
-            if ((item.decisionNote ?? '').isNotEmpty)
-              Text('Nota: ${item.decisionNote}', style: const TextStyle(color: HyColors.textSecondary, fontSize: 13)),
-            const Text(
-              'Toca para ver el origen y el historial.',
-              style: TextStyle(color: HyColors.textMuted, fontSize: 12),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: Key('ai-item-details-${item.id}'),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: HySpacing.xs),
+                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                title: const Text('Ver detalles', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                children: [
+                  _DetailRow('Agente', _agentLabel(ref, item.agentKey)),
+                  _DetailRow('Regla', aiRuleLabel(item.rule)),
+                  _DetailRow('Tipo', item.kindLabel),
+                  _DetailRow(
+                    'Fuente',
+                    item.fromAi
+                        ? 'Recomendación de un modelo de IA (no es un hecho)'
+                        : 'Regla sobre datos reales (sin IA)',
+                  ),
+                  _DetailRow('Gravedad', item.severity.label),
+                  _DetailRow('Creado', Fmt.dateTime(item.createdAt.toLocal())),
+                  if (item.bodyRepeatsTitle && (item.body ?? '').isNotEmpty && item.body != item.title)
+                    _DetailRow('Detalle', item.body!),
+                  for (final (k, v) in evidence) _DetailRow(k, v),
+                  if (item.rule == 'cost') _LiveCostRow(vendorKey: item.targetId),
+                  _DetailRow('Qué puedes hacer', _actionsText(item)),
+                  if ((item.decisionNote ?? '').isNotEmpty) _DetailRow('Nota', item.decisionNote!),
+                  TextButton.icon(
+                    key: Key('ai-item-open-${item.id}'),
+                    onPressed: () => _openItem(context, item.id),
+                    icon: const Icon(Icons.history),
+                    label: const Text('Ver origen e historial'),
+                  ),
+                ],
+              ),
             ),
-            if (pending || item.status == AiItemStatus.approved) ...[
-              const SizedBox(height: HySpacing.xs),
-              _DecisionButtons(item: item),
-            ],
+            if (pending || item.status == AiItemStatus.approved) _DecisionButtons(item: item),
           ],
         ),
       ),
+    );
+  }
+}
+
+String _actionsText(AiItem i) {
+  if (i.status == AiItemStatus.approved) return 'Marcarlo como hecho cuando esté resuelto.';
+  if (!i.status.isPending) return 'Ninguna: ya está cerrado. Queda en el historial.';
+  if (i.needsApproval) return 'Aprobar (con código), rechazar o pedir más información. Aprobar no ejecuta nada solo.';
+  return 'Marcar "Ya lo resolví", descartar o pedir más información. Nada se ejecuta solo.';
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow(this.label, this.value);
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Text.rich(
+      TextSpan(
+        children: [
+          TextSpan(
+            text: '$label: ',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          TextSpan(text: value),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Para una alerta de costos: los números de este momento, del panel de costos.
+class _LiveCostRow extends ConsumerWidget {
+  const _LiveCostRow({required this.vendorKey});
+
+  final String? vendorKey;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final v = ref.watch(costDashboardProvider).value?.vendors.where((v) => v.key == vendorKey).firstOrNull;
+    if (v == null) return const SizedBox.shrink();
+    return _DetailRow(
+      'Ahora',
+      '${v.blocked} intento(s) frenado(s) este mes · '
+          '${v.costSoFarUsd == 0 ? 'sin cobro' : 'cobrado US\$ ${v.costSoFarUsd.toStringAsFixed(2)}'} (${v.name})',
     );
   }
 }
@@ -556,7 +664,7 @@ class _ItemDetailView extends StatelessWidget {
         ),
         const SizedBox(height: HySpacing.xs),
         Text(i.title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-        if ((i.body ?? '').isNotEmpty) Text(i.body!),
+        if (!i.bodyRepeatsTitle) Text(i.body!),
         const SizedBox(height: HySpacing.sm),
         AppCard(
           child: Column(
@@ -577,8 +685,8 @@ class _ItemDetailView extends StatelessWidget {
                 i.targetTable == null ? 'Sin registro' : '${aiTargetLabel(i.targetTable)} ${i.targetId ?? ''}'.trim(),
               ),
               row('Creado', Fmt.dateTime(i.createdAt.toLocal())),
-              if (i.evidence.isNotEmpty)
-                row('Evidencia', i.evidence.entries.map((e) => '${e.key}: ${e.value}').join(' · ')),
+              for (final (k, v) in aiEvidenceLines(i.evidence)) row(k, v),
+              if (i.rule == 'cost') _LiveCostRow(vendorKey: i.targetId),
             ],
           ),
         ),
@@ -766,147 +874,6 @@ class _AgentCard extends StatelessWidget {
           Text('Fase ${a.phase}${a.addedByClaude ? ' · Agregado por Claude' : ''}', style: small),
         ],
       ),
-    );
-  }
-}
-
-/// El reporte diario es para el dueño y va en inglés (montos en bolivianos).
-class _ReportTab extends ConsumerWidget {
-  const _ReportTab();
-
-  static const _labels = {
-    'commission_revenue_bs': 'Commission revenue (Bs)',
-    'commissions_captured': 'Commissions collected',
-    'recharges_requested': 'Recharges requested',
-    'recharges_requested_bs': 'Recharges requested (Bs)',
-    'recharges_approved': 'Recharges approved',
-    'recharges_approved_bs': 'Recharges approved (Bs)',
-    'bookings_created': 'Bookings created',
-    'bookings_completed': 'Bookings completed',
-    'bookings_cancelled': 'Bookings cancelled',
-    'disputes_opened': 'Disputes opened',
-    'new_customers': 'New users',
-    'new_applications': 'New pro applications',
-    'professionals_approved': 'Pros approved',
-    'complaints': 'Complaints and tickets',
-    'poor_reviews': 'Reviews of 1–2 stars',
-    'bookings_pending': 'Bookings waiting',
-    'bookings_in_progress': 'Bookings in progress',
-    'disputes_open': 'Open disputes',
-    'verifications_pending': 'Pending verifications',
-    'recharges_pending': 'Pending recharges',
-    'recharges_pending_bs': 'Pending recharges (Bs)',
-    'complaints_open': 'Open complaints',
-    'alerts_open': 'Open alerts',
-    'alerts_critical': 'Critical alerts',
-    'security_alerts_open': 'Security and fraud alerts',
-    'quality_alerts_open': 'Quality alerts',
-    'decisions_pending': 'Decisions waiting for you',
-    'agent_runs_ok': 'Agent runs OK',
-    'agent_runs_failed': 'Agent runs failed',
-    'ai_cost_usd': 'AI cost (US\$)',
-    'database_size_mb': 'Database size (MB)',
-  };
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final reports = ref.watch(dailyReportsProvider);
-    return ListView(
-      padding: bottomSafePadding(context),
-      children: [
-        PageBody(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: HySpacing.sm),
-              const Text(
-                'Sent every day at 6:00 AM Miami time. Real data only.',
-                style: TextStyle(color: HyColors.textSecondary),
-              ),
-              const SizedBox(height: HySpacing.sm),
-              SecondaryButton(
-                label: 'Generate now',
-                icon: Icons.summarize_outlined,
-                onPressed: () async {
-                  final ok = await runGuarded(context, () => ref.read(backendProvider).generateDailyReport());
-                  if (ok) ref.invalidate(dailyReportsProvider);
-                },
-              ),
-              const SizedBox(height: HySpacing.md),
-              ...switch (reports) {
-                AsyncData(:final value) when value.isEmpty => [
-                  const EmptyState(icon: Icons.article_outlined, title: 'No reports yet'),
-                ],
-                AsyncData(:final value) => [_ReportView(report: value.first)],
-                AsyncError(:final error) => [
-                  ErrorView(error: error, onRetry: () => ref.invalidate(dailyReportsProvider)),
-                ],
-                _ => [const LoadingView()],
-              },
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ReportView extends StatelessWidget {
-  const _ReportView({required this.report});
-
-  final DailyReport report;
-
-  @override
-  Widget build(BuildContext context) {
-    final r = report;
-    Widget section(String title, Map<String, dynamic> data, {Map<String, dynamic>? previous}) => AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          for (final e in data.entries)
-            if (e.value is num)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(_ReportTab._labels[e.key] ?? e.key)),
-                    Text('${e.value}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                    if (previous != null && previous[e.key] is num)
-                      Text(
-                        '  (prev. ${previous[e.key]})',
-                        style: const TextStyle(color: HyColors.textMuted, fontSize: 13),
-                      ),
-                  ],
-                ),
-              ),
-        ],
-      ),
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text('Report for ${Fmt.date(r.date)} (${r.timezone})', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: HySpacing.sm),
-        AppCard(
-          color: HyColors.primarySoft,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Top priorities today', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-              if (r.priorities.isEmpty) const Text('Nothing urgent.'),
-              for (var i = 0; i < r.priorities.length; i++) Text('${i + 1}. ${r.priorities[i]}'),
-            ],
-          ),
-        ),
-        const SizedBox(height: HySpacing.sm),
-        section('Yesterday (compared with the day before)', r.today, previous: r.previousDay),
-        const SizedBox(height: HySpacing.sm),
-        section('Right now', r.current),
-        const SizedBox(height: HySpacing.sm),
-        if (r.unavailable.isNotEmpty)
-          InfoBanner(icon: Icons.info_outline, text: 'Not available yet: ${r.unavailable.join('; ')}.'),
-      ],
     );
   }
 }

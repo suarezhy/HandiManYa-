@@ -322,7 +322,9 @@ class _AddStaffPageState extends ConsumerState<AddStaffPage> {
     setState(() => _busy = false);
     if (!ok) return _search(_query.text, now: true);
     refreshOps(ref);
-    Navigator.of(context).pop();
+    // go y no pop: si la sesión se refresca justo después del código, el router
+    // volvería a abrir esta pantalla desde la ruta anterior.
+    context.go(Routes.ownerTeam);
   }
 
   @override
