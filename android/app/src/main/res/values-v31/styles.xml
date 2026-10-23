@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ siempre muestra su propia pantalla de arranque (ícono
+         centrado sobre un color). En vez del ícono de la app se muestra el
+         logo completo, del mismo tamaño y en el mismo lugar que en SplashPage,
+         sobre el mismo fondo: al pasar a Flutter no cambia nada en pantalla.
+         El logo entra en el círculo de 192 dp que Android deja ver. -->
+    <style name="LaunchTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+    </style>
+    <style name="NormalTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+</resources>
