@@ -12,8 +12,8 @@ insert into auth.users (id, phone, phone_confirmed_at, raw_user_meta_data) value
 insert into public.user_roles (user_id, role) values ('00000000-0000-0000-0000-0000099f0001', 'admin');
 
 select test.login('00000000-0000-0000-0000-0000099f0001');
-select public.owner_grant_staff('00000000-0000-0000-0000-0000099f0002', 'manager');
-select public.owner_grant_staff('00000000-0000-0000-0000-0000099f0003', 'employee');
+select test.grant('00000000-0000-0000-0000-0000099f0001', '00000000-0000-0000-0000-0000099f0002', 'manager');
+select test.grant('00000000-0000-0000-0000-0000099f0001', '00000000-0000-0000-0000-0000099f0003', 'employee');
 
 -- Solo el propietario lo abre.
 select test.login('00000000-0000-0000-0000-0000099f0002');

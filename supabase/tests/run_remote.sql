@@ -35,5 +35,8 @@ end $$;
 \ir 99d_management_roles_tests.sql
 \ir 99e_truthful_agents_tests.sql
 \ir 99f_owner_dashboard_tests.sql
+\ir 99g_owner_finance_tests.sql
+\ir 99h_team_directory_tests.sql
+\ir 99i_ai_reports_es_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'

@@ -68,6 +68,16 @@ delete from public.verification_events where actor_id in (select id from e2e_ids
    or professional_id in (select id from e2e_ids);
 delete from public.admin_audit_log where actor_id in (select id from e2e_ids);
 delete from public.otp_sends where user_id in (select id from e2e_ids);
+-- Finanzas (0038): conciliaciones y cuentas de cobro de las cuentas de prueba.
+do $$ begin
+  if to_regclass('public.receiving_accounts') is not null then
+    update public.topup_requests set bank_checked_by = null where bank_checked_by in (select id from e2e_ids);
+    update public.topup_requests set bank_account_id = null
+     where bank_account_id in (select id from public.receiving_accounts where created_by in (select id from e2e_ids));
+    delete from public.receiving_accounts where created_by in (select id from e2e_ids);
+    update public.receiving_accounts set updated_by = null where updated_by in (select id from e2e_ids);
+  end if;
+end $$;
 
 delete from auth.users where id in (select id from e2e_ids);
 

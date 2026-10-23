@@ -29,7 +29,9 @@ declare
     'hmy_cost_gate','hmy_cost_month','admin_cost_dashboard','admin_set_vendor','run_cost_monitors',
     'hmy_identity_begin','hmy_identity_session','hmy_identity_attach','hmy_identity_session_free','hmy_identity_forget_link','hmy_identity_decision','hmy_identity_pending','my_identity_check','hmy_identity_guard','hmy_id_documents_accepted','hmy_id_documents_guard','run_rule_agents','admin_run_rule_agents','remove_my_email','hmy_staff_role','hmy_can','hmy_can_see_case','my_staff_role','owner_grant_staff','owner_set_staff_status','ops_cases_list','ops_case_detail','ops_assign_case','ops_set_case_status','ops_add_note','ops_reply','ops_escalate','ops_flag_document','ops_dashboard','ops_staff_overview','ops_my_activity','ops_application_basic','hmy_open_case',
     'hmy_log_agent_run','hmy_agent_run_ok','admin_run_all_checks','admin_ai_agents','admin_ai_item_detail','admin_generate_daily_report',
-    'owner_dashboard'];
+    'owner_dashboard',
+    'hmy_mask_account','hmy_require_strong_confirmation','owner_finance_summary','owner_finance_transactions','owner_topups_reconciliation','owner_reconcile_topup','owner_receiving_accounts','owner_save_receiving_account','owner_set_receiving_account','owner_finance_audit',
+    'hmy_mask_phone','owner_staff_candidates'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -133,7 +135,13 @@ begin
     (not has_table_privilege('authenticated', 'public.cost_vendors', 'UPDATE') and not has_table_privilege('authenticated', 'public.cost_usage', 'INSERT'), 'costos: la app no cambia proveedores ni registra uso directamente'),
     ((select count(*) from public.cost_vendors where status = 'paid' and not paid_authorized) = 0, 'costos: ningún proveedor cobra sin autorización'),
     (not has_table_privilege('authenticated', 'public.identity_checks', 'INSERT') and not has_function_privilege('authenticated', 'public.hmy_identity_decision(text, text, jsonb, text, boolean)', 'EXECUTE'), 'identidad: solo el servidor guarda resultados de Didit'),
-    (exists (select 1 from pg_trigger where tgname = 'professional_profiles_identity_guard'), 'identidad: aprobar puede exigir una verificación real (nunca del sandbox)')
+    (exists (select 1 from pg_trigger where tgname = 'professional_profiles_identity_guard'), 'identidad: aprobar puede exigir una verificación real (nunca del sandbox)'),
+    (not has_table_privilege('authenticated', 'public.receiving_accounts', 'SELECT') and not has_table_privilege('anon', 'public.receiving_accounts', 'SELECT')
+     and not has_table_privilege('authenticated', 'public.receiving_accounts', 'INSERT'), 'finanzas: las cuentas de cobro solo se leen y cambian por las funciones del propietario'),
+    (not has_function_privilege('authenticated', 'public.hmy_require_strong_confirmation(text, text)', 'EXECUTE'), 'finanzas: la confirmación fuerte solo la usan las funciones'),
+    (not has_column_privilege('authenticated', 'public.topup_requests', 'bank_status', 'UPDATE'), 'finanzas: nadie cambia el estado bancario de una recarga directamente'),
+    (to_regprocedure('public.owner_grant_staff(uuid, text)') is null and to_regprocedure('public.owner_grant_staff(uuid, text, text)') is not null,
+     'equipo: dar un rol exige confirmación del propietario')
   ) as v(ok, what) loop
     raise notice '%  %', case when r.ok then 'ok -' else 'FALLA -' end, r.what;
     if not r.ok then v_failed := v_failed + 1; end if;
@@ -144,7 +152,7 @@ begin
 end $$;
 do $$ begin
   if to_regclass('cron.job') is not null then
-    raise notice 'Tareas programadas: %', (select string_agg(jobname || ' (' || schedule || ')', ', ') from cron.job where jobname like 'hmy-%');
+    raise notice 'Tareas programadas: %', (select string_agg(jobname || ' (' || schedule || ', ' || case when active then 'activa' else 'apagada' end || ')', ', ') from cron.job where jobname like 'hmy-%');
   else
     raise notice 'Tareas programadas: pg_cron no está instalado';
   end if;

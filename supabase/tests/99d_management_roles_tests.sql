@@ -13,6 +13,25 @@ insert into auth.users (id, phone, phone_confirmed_at, raw_user_meta_data) value
   ('00000000-0000-0000-0000-00000099d007', null, null, '{"full_name": "Sin Celular"}');
 insert into public.user_roles (user_id, role) values ('00000000-0000-0000-0000-00000099d001', 'admin');
 
+-- Dar un rol o reactivar exige un código nuevo del propietario (0039). Cada
+-- llamada simula un inicio de sesión con código distinto, dentro de los 5 min.
+create function test.otp(p_user uuid) returns void language plpgsql as $$
+declare v_n int := coalesce(nullif(current_setting('test.otp_n', true), '')::int, 0) + 1;
+begin
+  perform set_config('test.otp_n', v_n::text, false);
+  if v_n = 1 then perform set_config('test.otp_base', extract(epoch from now())::bigint::text, false); end if;
+  perform set_config('request.jwt.claims', json_build_object(
+    'sub', p_user, 'role', 'authenticated',
+    'amr', json_build_array(json_build_object('method', 'otp',
+                            'timestamp', current_setting('test.otp_base')::bigint - v_n)))::text, false);
+  execute 'set role authenticated';
+end $$;
+create function test.grant(p_owner uuid, p_user uuid, p_role text) returns void language plpgsql as $$
+begin
+  perform test.otp(p_owner);
+  perform public.owner_grant_staff(p_user, p_role, 'otp');
+end $$;
+
 -- Nada en la migración dio roles.
 select test.eq((select count(*)::int from public.staff_members
                 where user_id::text not like '00000000-0000-0000-0000-00000099d%'), 0,
@@ -20,22 +39,22 @@ select test.eq((select count(*)::int from public.staff_members
 
 -- Solo el propietario da roles.
 select test.login('00000000-0000-0000-0000-00000099d005');
-select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d005', 'manager')$$, 'HMY_FORBIDDEN');
+select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d005', 'manager', 'otp')$$, 'HMY_FORBIDDEN');
 select test.eq(public.hmy_staff_role(), null::text, 'roles: un cliente no tiene rol de gestión');
 select test.expect_error('select public.ops_dashboard()', 'HMY_FORBIDDEN');
 select test.expect_error($$select public.ops_cases_list('all')$$, 'HMY_FORBIDDEN');
 
 select test.login('00000000-0000-0000-0000-00000099d001');
 select test.eq(public.hmy_staff_role(), 'owner', 'roles: el admin es el propietario');
-select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d002', 'owner')$$, 'HMY_INVALID_ROLE');
-select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d001', 'manager')$$, 'HMY_FORBIDDEN');
-select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d007', 'employee')$$,
+select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d002', 'owner', 'otp')$$, 'HMY_INVALID_ROLE');
+select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d001', 'manager', 'otp')$$, 'HMY_FORBIDDEN');
+select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d007', 'employee', 'otp')$$,
                          'HMY_STAFF_ACCOUNT_REQUIRED');
-select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-0000000999ff', 'employee')$$,
+select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-0000000999ff', 'employee', 'otp')$$,
                          'HMY_STAFF_ACCOUNT_REQUIRED');
-select public.owner_grant_staff('00000000-0000-0000-0000-00000099d002', 'manager');
-select public.owner_grant_staff('00000000-0000-0000-0000-00000099d003', 'employee');
-select public.owner_grant_staff('00000000-0000-0000-0000-00000099d004', 'employee');
+select test.grant('00000000-0000-0000-0000-00000099d001', '00000000-0000-0000-0000-00000099d002', 'manager');
+select test.grant('00000000-0000-0000-0000-00000099d001', '00000000-0000-0000-0000-00000099d003', 'employee');
+select test.grant('00000000-0000-0000-0000-00000099d001', '00000000-0000-0000-0000-00000099d004', 'employee');
 select test.logout();
 select test.eq((select count(*)::int from public.admin_audit_log where action = 'staff.grant'
                 and target_id like '00000000-0000-0000-0000-00000099d%'), 3, 'roles: cada rol dado queda en la auditoría');
@@ -46,7 +65,7 @@ select ('00000000-0000-0000-0000-0000009e' || lpad(g::text, 4, '0'))::uuid, '591
        jsonb_build_object('full_name', 'Empleado Extra ' || g)
 from generate_series(1, 4) g;
 select test.login('00000000-0000-0000-0000-00000099d001');
-select public.owner_grant_staff(('00000000-0000-0000-0000-0000009e' || lpad(g::text, 4, '0'))::uuid, 'employee')
+select test.grant('00000000-0000-0000-0000-00000099d001', ('00000000-0000-0000-0000-0000009e' || lpad(g::text, 4, '0'))::uuid, 'employee')
 from generate_series(1, 4) g;
 select test.eq((select count(*)::int from public.staff_members where role = 'employee' and status = 'active'
                 and (user_id::text like '00000000-0000-0000-0000-00000099d%' or user_id::text like '00000000-0000-0000-0000-0000009e%')),
@@ -55,8 +74,8 @@ select test.eq((select count(*)::int from public.staff_members where role = 'emp
 -- El gerente no puede dar ni cambiar roles.
 select test.login('00000000-0000-0000-0000-00000099d002');
 select test.eq(public.hmy_staff_role(), 'manager', 'roles: gerente');
-select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d005', 'employee')$$, 'HMY_FORBIDDEN');
-select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d003', 'manager')$$, 'HMY_FORBIDDEN');
+select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d005', 'employee', 'otp')$$, 'HMY_FORBIDDEN');
+select test.expect_error($$select public.owner_grant_staff('00000000-0000-0000-0000-00000099d003', 'manager', 'otp')$$, 'HMY_FORBIDDEN');
 select test.expect_error($$select public.owner_set_staff_status('00000000-0000-0000-0000-00000099d003', 'suspended', 'x')$$, 'HMY_FORBIDDEN');
 select test.expect_error($$insert into public.staff_members (user_id, role, granted_by) values
   ('00000000-0000-0000-0000-00000099d005', 'manager', auth.uid())$$, 'permission denied');
@@ -314,7 +333,10 @@ select test.logout();
 select test.eq((select assigned_to from public.ops_cases where id = (select id from t_case where name = 'horario')), null::uuid,
                'suspensión: sus casos vuelven a la bandeja');
 select test.login('00000000-0000-0000-0000-00000099d001');
-select public.owner_set_staff_status('00000000-0000-0000-0000-00000099d004', 'active', null);
+select test.expect_error($$select public.owner_set_staff_status('00000000-0000-0000-0000-00000099d004', 'active', null)$$,
+                         'HMY_CONFIRMATION_REQUIRED');
+select test.otp('00000000-0000-0000-0000-00000099d001');
+select public.owner_set_staff_status('00000000-0000-0000-0000-00000099d004', 'active', null, 'otp');
 select public.owner_set_staff_status('00000000-0000-0000-0000-00000099d004', 'revoked', 'Ya no trabaja con nosotros');
 select test.login('00000000-0000-0000-0000-00000099d004');
 select test.eq(public.hmy_staff_role(), null::text, 'revocado: sin acceso');
