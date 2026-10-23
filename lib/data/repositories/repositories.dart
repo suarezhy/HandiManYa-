@@ -179,6 +179,10 @@ abstract interface class ProRepository {
   Future<void> submitApplication();
 
   Future<Wallet> wallet();
+
+  /// Comisión y reserva de un pedido, antes de aceptarlo. null: el servidor
+  /// todavía no tiene 0043.
+  Future<CommissionPreview?> commissionPreview(String bookingId);
   Future<List<LedgerEntry>> ledger();
   Future<List<TopupMethod>> topupMethods();
   Future<List<TopupRequest>> topups();
@@ -390,6 +394,10 @@ abstract interface class FinanceRepository {
 
   /// Recargas por estado y mes de acreditación (null = todos los meses).
   Future<FinanceList<ReconcileTopup>> financeTopups(TopupFilter filter, {DateTime? month, String query = ''});
+
+  /// Comisiones pendientes de cobro (solo propietario). null: el servidor
+  /// todavía no tiene 0043.
+  Future<FinanceList<CommissionDebt>?> commissionDebts();
 
   /// Marca si una recarga acreditada aparece en el extracto del banco.
   /// Conciliar pide la referencia del banco. [authMethod]: código recién.

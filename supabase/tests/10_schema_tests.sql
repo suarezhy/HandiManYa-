@@ -211,8 +211,8 @@ select test.eq((select available from public.wallets), 100.00::numeric, 'recarga
 select test.eq(public.accept_booking((select v from t_ids where k = 'b1'))::text, 'confirmed', 'el profesional acepta');
 select test.expect_error(format('select public.accept_booking(%L)', (select v from t_ids where k = 'b1')), 'HMY_INVALID_TRANSITION');
 do $$ begin
-  perform test.eq((select available from public.wallets), 90.00::numeric, 'aceptar reserva la comisión (disponible)');
-  perform test.eq((select reserved from public.wallets), 10.00::numeric, 'aceptar reserva la comisión (reservado)');
+  perform test.eq((select available from public.wallets), 85.00::numeric, 'aceptar reserva la comisión completa (disponible, 0043)');
+  perform test.eq((select reserved from public.wallets), 15.00::numeric, 'aceptar reserva la comisión completa (reservado, 0043)');
   perform test.eq((select count(*)::int from public.booking_addresses), 1, 'dirección visible después de aceptar');
   perform test.eq((select count(*)::int from public.conversations), 1, 'se abre el chat al confirmar');
 end $$;
@@ -276,7 +276,7 @@ insert into t_ids select 'b2', public.create_booking('00000000-0000-0000-0000-00
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000b1');
 select public.accept_booking((select v from t_ids where k = 'b2'));
-select test.eq((select reserved from public.wallets), 10.00::numeric, 'segunda reserva retenida');
+select test.eq((select reserved from public.wallets), 15.00::numeric, 'segunda reserva retenida (comisión completa)');
 select test.expect_error(format('select public.cancel_booking(%L, %L)', (select v from t_ids where k = 'b2'), ''), 'HMY_REASON_REQUIRED');
 select public.cancel_booking((select v from t_ids where k = 'b2'), 'Emergencia familiar');
 select test.eq((select reserved from public.wallets), 0.00::numeric, 'cancelar libera la reserva');
@@ -305,7 +305,7 @@ select test.expect_error(format('select public.confirm_completion(%L)', (select 
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000b1');
 select test.expect_error(format('select public.update_job_progress(%L, %L)', (select v from t_ids where k = 'b3'), 'work_finished'), 'HMY_INVALID_TRANSITION');
-select test.eq((select reserved from public.wallets), 10.00::numeric, 'la reserva se mantiene durante la disputa');
+select test.eq((select reserved from public.wallets), 15.00::numeric, 'la reserva se mantiene durante la disputa');
 select test.logout();
 select test.login('00000000-0000-0000-0000-00000000000a');
 select test.eq(public.resolve_dispute((select v from t_ids where k = 'b3'), 'cancelled', 'Se reembolsa por trabajo incompleto')::text, 'cancelled', 'el admin resuelve la disputa');

@@ -150,9 +150,10 @@ Mi billetera
 
 Comisión
 • La comisión, la reserva y el saldo mínimo los define la administración por servicio y ciudad, y se muestran antes de que aceptes un trabajo.
-• Al aceptar un trabajo se reserva un monto de tu saldo.
-• La comisión se cobra cuando el trabajo se completa (o al aceptar, si así lo indica la regla).
-• Si el trabajo se cancela, la reserva vuelve a tu saldo disponible.
+• Al aceptar un trabajo se reserva de tu saldo la comisión completa (si todavía no hay precio, la reserva mínima del servicio).
+• La comisión se cobra cuando el trabajo se completa, según el precio final. Si es menor que lo reservado, la diferencia vuelve a tu saldo.
+• Si el trabajo se cancela, la reserva vuelve entera a tu saldo disponible.
+• Si al completar no alcanza tu saldo, lo que falta queda como comisión pendiente: no puedes aceptar trabajos nuevos hasta pagarla, y se descuenta de tu próxima recarga.
 • El pago del cliente por el servicio es todo tuyo: lo recibes directamente en efectivo o por QR.
 
 Historial de movimientos

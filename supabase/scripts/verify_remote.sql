@@ -33,7 +33,7 @@ declare
     'hmy_mask_account','hmy_require_strong_confirmation','owner_finance_summary','owner_finance_transactions','owner_topups_reconciliation','owner_reconcile_topup','owner_receiving_accounts','owner_save_receiving_account','owner_set_receiving_account','owner_finance_audit',
     'hmy_mask_phone','owner_staff_candidates',
     'hmy_booking_row','ops_bookings','ops_booking_detail','ops_open_booking_case','admin_people','ops_risk_items','owner_wallets',
-    'owner_finance_ledger','owner_finance_topups'];
+    'owner_finance_ledger','owner_finance_topups','commission_preview','owner_commission_debts','owner_demand_bookings'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -143,6 +143,10 @@ begin
      and not has_table_privilege('authenticated', 'public.receiving_accounts', 'INSERT'), 'finanzas: las cuentas de cobro solo se leen y cambian por las funciones del propietario'),
     (not has_function_privilege('authenticated', 'public.hmy_require_strong_confirmation(text, text)', 'EXECUTE'), 'finanzas: la confirmación fuerte solo la usan las funciones'),
     (not has_column_privilege('authenticated', 'public.topup_requests', 'bank_status', 'UPDATE'), 'finanzas: nadie cambia el estado bancario de una recarga directamente'),
+    (not has_function_privilege('authenticated', 'public._commission_collect_debts(uuid)', 'EXECUTE')
+     and exists (select 1 from pg_trigger where tgname = 'wallet_ledger_collect_debts')
+     and (select count(*) from public.commission_rules where capture_at <> 'completed') = 0,
+     'comisión: se reserva al aceptar y se cobra al completar; lo pendiente se cobra de la próxima recarga'),
     (to_regprocedure('public.owner_grant_staff(uuid, text)') is null and to_regprocedure('public.owner_grant_staff(uuid, text, text)') is not null,
      'equipo: dar un rol exige confirmación del propietario')
   ) as v(ok, what) loop

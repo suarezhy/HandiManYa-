@@ -55,7 +55,10 @@ class WalletPage extends ConsumerWidget {
                   ),
                   const SizedBox(height: HySpacing.sm),
                   const InfoBanner(
-                    text: 'Al aceptar un trabajo reservamos la comisión de tu saldo. Se cobra cuando el trabajo se completa y se devuelve si se cancela.',
+                    text:
+                        'Antes de aceptar ves la comisión. Al aceptar reservamos la comisión completa de tu saldo; '
+                        'se cobra cuando el trabajo se completa y se devuelve si se cancela. Si falta saldo al '
+                        'completar, queda pendiente y se descuenta de tu próxima recarga.',
                   ),
                   if (pending.isNotEmpty) ...[
                     const SectionHeader(title: 'Recargas en revisión'),

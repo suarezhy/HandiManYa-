@@ -204,7 +204,7 @@ class AdminCommissionsPage extends ConsumerWidget {
               ),
               InfoLine(
                 Icons.lock_clock_outlined,
-                'Reserva al aceptar: ${Fmt.bs(r.reserveAmount)} · ${r.captureAt.label}',
+                'Reserva mínima al aceptar: ${Fmt.bs(r.reserveAmount)} · se cobra al completar',
               ),
               InfoLine(Icons.account_balance_wallet_outlined, 'Saldo mínimo para aceptar: ${Fmt.bs(r.minBalance)}'),
             ],
@@ -240,7 +240,6 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
   late final _min = TextEditingController(text: _fmt(widget.rule?.minBalance));
   late int? _category = widget.rule?.categoryId;
   late int? _city = widget.rule?.cityId;
-  late CommissionMilestone _capture = widget.rule?.captureAt ?? CommissionMilestone.completed;
   late bool _active = widget.rule?.isActive ?? true;
   bool _saving = false;
 
@@ -278,7 +277,7 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
       fixedFee: _num(_fixed.text),
       reserveAmount: _num(_reserve.text) ?? 0,
       minBalance: _num(_min.text) ?? 0,
-      captureAt: _capture,
+      captureAt: CommissionMilestone.completed,
       isActive: _active,
     );
     final ok = await runGuarded(
@@ -398,11 +397,11 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
                 ],
               ),
               const SizedBox(height: HySpacing.sm),
-              DropdownButtonFormField<CommissionMilestone>(
-                initialValue: _capture,
-                decoration: const InputDecoration(labelText: 'Cuándo se cobra'),
-                items: [for (final m in CommissionMilestone.values) DropdownMenuItem(value: m, child: Text(m.label))],
-                onChanged: (v) => setState(() => _capture = v ?? _capture),
+              const InfoBanner(
+                icon: Icons.info_outline,
+                text:
+                    'Al aceptar se reserva la comisión completa (o esta reserva, si es mayor). Se cobra al completar '
+                    'y vuelve al saldo si se cancela. Si falta saldo, queda pendiente y se cobra de la próxima recarga.',
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

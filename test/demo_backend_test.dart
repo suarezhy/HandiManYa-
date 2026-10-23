@@ -42,7 +42,17 @@ void main() {
     // Antes de aceptar, el profesional no ve la dirección exacta.
     expect((await backend.detail(id)).address, isNull);
 
+    // Y sí ve la comisión y lo que se reservará (0043): la comisión completa.
+    final preview = (await backend.commissionPreview(id))!;
+    expect(preview.hasRule, isTrue);
+    expect(preview.reserve, preview.expected, reason: 'se reserva la comisión completa');
+    expect(preview.canAccept, isTrue);
+    await asCustomer();
+    await expectLater(backend.commissionPreview(id), throwsA(isA<AppError>()));
+    await asPro();
+
     await backend.accept(id, isOffer: true);
+    expect((await backend.wallet()).reserved, preview.reserve);
     final confirmed = await backend.detail(id);
     expect(confirmed.status, BookingStatus.confirmed);
     expect(confirmed.address, isNotNull);

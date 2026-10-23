@@ -1378,6 +1378,34 @@ class SupabaseBackend
   ];
 
   @override
+  Future<FinanceList<CommissionDebt>?> commissionDebts() async {
+    try {
+      final m = _obj(await _db.rpc('owner_commission_debts'));
+      return FinanceList(
+        [
+          for (final r in (m['items'] as List? ?? const []))
+            CommissionDebt.fromMap(Map<String, dynamic>.from(r as Map)),
+        ],
+        total: (m['total'] as num?)?.toInt() ?? 0,
+        sumBs: (m['sum_bs'] as num?)?.toDouble() ?? 0,
+      );
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+      return null;
+    }
+  }
+
+  @override
+  Future<CommissionPreview?> commissionPreview(String bookingId) async {
+    try {
+      return CommissionPreview.fromMap(_obj(await _db.rpc('commission_preview', params: {'p_booking': bookingId})));
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+      return null;
+    }
+  }
+
+  @override
   Future<FinanceList<FinanceTransaction>> financeLedger({
     String? kind,
     DateTime? month,

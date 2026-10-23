@@ -57,6 +57,9 @@ DateTime? _monthOf(String? key) {
   return DateTime(int.parse(p[0]), int.parse(p[1]));
 }
 
+final commissionDebtsProvider = FutureProvider<FinanceList<CommissionDebt>?>(
+  (ref) => ref.watch(backendProvider).commissionDebts(),
+);
 final financeAuditProvider = FutureProvider<List<FinanceAuditEntry>>(
   (ref) => ref.watch(backendProvider).financeAudit(),
 );
@@ -68,6 +71,7 @@ void _refreshFinance(WidgetRef ref) => ref
   ..invalidate(financeTopupsProvider)
   ..invalidate(financeLedgerProvider)
   ..invalidate(financeAuditProvider)
+  ..invalidate(commissionDebtsProvider)
   ..invalidate(adminDashboardProvider);
 
 String _monthKey(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
@@ -224,7 +228,7 @@ class _FinanceSummaryView extends StatelessWidget {
           padding: EdgeInsets.only(top: HySpacing.xs),
           child: Text(
             'Lo único que gana la plataforma es la comisión que se cobra de la billetera del profesional: '
-            'se reserva al aceptar y se cobra al completar, o al aceptar si la regla lo indica. '
+            'se reserva completa al aceptar, se cobra al completar y vuelve al saldo si se cancela. '
             'Lo que el cliente paga por el trabajo (en efectivo o QR) lo recibe el profesional y no pasa por aquí.',
             style: note,
           ),
@@ -310,6 +314,7 @@ class _FinanceSummaryView extends StatelessWidget {
               detail: Fmt.bs(s.topupsPendingBs),
               onTap: () => go(Routes.adminTopups),
             ),
+            const _DebtsStat(),
             PanelStat(
               'Acreditadas sin conciliar',
               s.topupsUnverifiedTotal,
@@ -1156,6 +1161,94 @@ class _ReceivingAccountFormPageState extends ConsumerState<ReceivingAccountFormP
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Comisiones que faltó cobrar al completar (0043).
+class _DebtsStat extends ConsumerWidget {
+  const _DebtsStat();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final d = ref.watch(commissionDebtsProvider);
+    final l = d.value;
+    return PanelStat(
+      'Comisiones pendientes',
+      l?.total,
+      key: const Key('fin-card-debts'),
+      tone: (l?.total ?? 0) > 0 ? StatusTone.danger : StatusTone.neutral,
+      detail: switch (d) {
+        AsyncData(value: null) => 'Se activa con el nuevo cobro de comisiones',
+        AsyncData(value: final l?) => '${Fmt.bs(l.sumBs)} · se cobran de la próxima recarga',
+        AsyncError() => 'No se pudo cargar',
+        _ => null,
+      },
+      onTap: l == null
+          ? null
+          : () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CommissionDebtsPage())),
+    );
+  }
+}
+
+class CommissionDebtsPage extends ConsumerWidget {
+  const CommissionDebtsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(commissionDebtsProvider);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Comisiones pendientes')),
+      body: AdminList<CommissionDebt>(
+        value: value.whenData((l) => l?.items ?? const []),
+        onRefresh: () => ref.refresh(commissionDebtsProvider.future),
+        emptyIcon: Icons.check_circle_outline,
+        emptyTitle: 'No hay comisiones pendientes.',
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (value.value case final l?) _FinanceCountLine(l, noun: ('pendiente', 'pendientes')),
+            const Padding(
+              padding: EdgeInsets.only(bottom: HySpacing.sm),
+              child: InfoBanner(
+                text:
+                    'Faltó saldo al completar estos trabajos. El profesional no acepta trabajos nuevos hasta pagar, '
+                    'y se descuenta solo de su próxima recarga; cada cobro queda en Movimientos.',
+              ),
+            ),
+          ],
+        ),
+        itemBuilder: (context, d) => AppCard(
+          key: Key('debt-${d.bookingId}'),
+          padding: const EdgeInsets.symmetric(horizontal: HySpacing.md, vertical: HySpacing.sm),
+          onTap: () => context.push(Routes.opsBooking(d.bookingId)),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(d.professionalName ?? 'Profesional', style: const TextStyle(fontWeight: FontWeight.w800)),
+                    Text(
+                      [
+                        'Pedido ${d.bookingCode}',
+                        if (d.completedAt != null) Fmt.dateTime(d.completedAt!),
+                        if (d.captured != null) 'cobrado ${Fmt.bs(d.captured!)}',
+                      ].join(' · '),
+                      style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                Fmt.bs(d.amount),
+                style: const TextStyle(fontWeight: FontWeight.w800, color: HyColors.danger),
+              ),
+              const Icon(Icons.chevron_right, color: HyColors.textMuted),
+            ],
+          ),
         ),
       ),
     );

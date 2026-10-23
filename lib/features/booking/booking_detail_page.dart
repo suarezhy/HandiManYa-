@@ -9,6 +9,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/booking.dart';
+import '../../data/models/wallet.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/photo_picker.dart';
@@ -453,6 +454,47 @@ class _Ack extends StatelessWidget {
 }
 
 /// Barra inferior con las acciones posibles según rol y estado.
+final _commissionPreviewProvider = FutureProvider.autoDispose.family<CommissionPreview?, String>(
+  (ref, id) => ref.watch(backendProvider).commissionPreview(id),
+);
+
+/// Antes de aceptar: cuánto es la comisión y cuánto se reserva de la billetera.
+class _CommissionLine extends ConsumerWidget {
+  const _CommissionLine({required this.bookingId});
+
+  final String bookingId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = ref.watch(_commissionPreviewProvider(bookingId)).value;
+    if (p == null) return const SizedBox.shrink();
+    String text;
+    Color color = HyColors.textSecondary;
+    if (!p.hasRule) {
+      text = 'Este servicio no tiene comisión.';
+    } else if (p.pendingDebt > 0) {
+      text = 'Tienes una comisión pendiente de ${Fmt.bs(p.pendingDebt)}. Recarga tu saldo para aceptar trabajos.';
+      color = HyColors.danger;
+    } else {
+      final how = p.ratePercent != null && p.expected > 0
+          ? 'Comisión: ${Fmt.bs(p.expected)} (${p.ratePercent!.toStringAsFixed(p.ratePercent! % 1 == 0 ? 0 : 1)} % del precio)'
+          : 'Comisión: ${Fmt.bs(p.expected > 0 ? p.expected : p.reserve)}';
+      text =
+          '$how. Al aceptar se reservan ${Fmt.bs(p.reserve)} de tu saldo y se cobra al completar; '
+          'si se cancela, vuelve a tu saldo.';
+      if (!p.canAccept) {
+        text = '$text Necesitas ${Fmt.bs(p.needed)} disponibles para aceptar.';
+        color = HyColors.danger;
+      }
+    }
+    return Padding(
+      key: const Key('commission-preview'),
+      padding: const EdgeInsets.only(bottom: HySpacing.xs),
+      child: Text(text, style: TextStyle(color: color, fontSize: 13)),
+    );
+  }
+}
+
 class _Actions extends ConsumerStatefulWidget {
   const _Actions({required this.b});
 
@@ -747,6 +789,9 @@ class _ActionsState extends ConsumerState<_Actions> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (!b.viewerIsCustomer &&
+                        (s == BookingStatus.requested || (s == BookingStatus.awaitingResponse && b.isOffer)))
+                      _CommissionLine(bookingId: b.id),
                     ...primary,
                     if (primary.isNotEmpty && secondary.isNotEmpty) const SizedBox(height: HySpacing.xs),
                     if (secondary.isNotEmpty)

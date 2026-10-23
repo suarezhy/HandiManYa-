@@ -441,3 +441,35 @@ enum TopupFilter {
     _ => t.isCredited && t.bankStatus.key == key,
   };
 }
+
+/// Comisión que faltó cobrar al completar un trabajo (0043). Se cobra sola de
+/// la próxima recarga del profesional; mientras tanto no acepta trabajos.
+class CommissionDebt {
+  const CommissionDebt({
+    required this.bookingId,
+    required this.bookingCode,
+    required this.professionalId,
+    required this.amount,
+    this.professionalName,
+    this.captured,
+    this.completedAt,
+  });
+
+  final String bookingId;
+  final String bookingCode;
+  final String professionalId;
+  final String? professionalName;
+  final double amount;
+  final double? captured;
+  final DateTime? completedAt;
+
+  factory CommissionDebt.fromMap(Map<String, dynamic> m) => CommissionDebt(
+    bookingId: m['booking_id'] as String,
+    bookingCode: m['booking_code'] as String,
+    professionalId: m['professional_id'] as String,
+    professionalName: m['professional_name'] as String?,
+    amount: (m['amount'] as num).toDouble(),
+    captured: (m['captured'] as num?)?.toDouble(),
+    completedAt: m['completed_at'] == null ? null : DateTime.parse(m['completed_at'] as String).toLocal(),
+  );
+}

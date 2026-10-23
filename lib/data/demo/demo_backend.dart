@@ -897,12 +897,16 @@ class DemoBackend
         );
   }
 
+  /// Como 0043: se reserva la comisión completa (la regla de la demostración
+  /// es un cargo fijo), nunca menos que la reserva mínima.
+  static double get _reserveFull => _commissionFee > _reserveAmount ? _commissionFee : _reserveAmount;
+
   void _reserve(_Booking b) {
     final pro = b.professionalId!;
     if (!_wallets.containsKey(pro)) return; // profesionales de ejemplo sin billetera simulada
-    if (_wallets[pro]![0] < _reserveAmount) throw AppError.from('HMY_INSUFFICIENT_BALANCE');
-    _post(pro, LedgerType.commissionReserve, -_reserveAmount, _reserveAmount, 'Reserva de comisión ${b.code}');
-    b.reserved = _reserveAmount;
+    if (_wallets[pro]![0] < _reserveFull) throw AppError.from('HMY_INSUFFICIENT_BALANCE');
+    _post(pro, LedgerType.commissionReserve, -_reserveFull, _reserveFull, 'Reserva de comisión ${b.code}');
+    b.reserved = _reserveFull;
   }
 
   void _capture(_Booking b) {
@@ -2545,7 +2549,11 @@ class DemoBackend
       'identity_sandbox_only': true,
       'identity_required': false,
       'revenue_month': completedMonth.fold<double>(0, (t, b) => t + (b.finalAmount ?? 0)),
-      'commission_month': completedMonth.fold<double>(0, (t, b) => t + (b.captured ? b.reserved : 0)),
+      // Como Finanzas (0043): cobros del libro por fecha de cobro.
+      'commission_month': _ledger.values
+          .expand((l) => l)
+          .where((l) => l.type == LedgerType.commissionCapture && !l.createdAt.isBefore(month))
+          .fold<double>(0, (t, l) => t - (l.availableDelta + l.reservedDelta)),
       'wallet_available': _wallets.values.fold<double>(0, (t, w) => t + w[0]),
       'wallet_reserved': _wallets.values.fold<double>(0, (t, w) => t + w[1]),
       'pending_topups_amount': _topups.values
@@ -4369,6 +4377,33 @@ class DemoBackend
       rows.take(100).toList(),
       total: rows.length,
       sumBs: rows.fold(0.0, (s, t) => s + (t.entryType == 'commission_capture' ? t.platformRevenue : t.availableDelta)),
+    );
+  }
+
+  @override
+  Future<FinanceList<CommissionDebt>?> commissionDebts() async {
+    await _latency(100);
+    _admin();
+    // La regla de la demostración es un cargo fijo que se reserva completo:
+    // nunca falta saldo al completar.
+    return const FinanceList(<CommissionDebt>[], total: 0, sumBs: 0);
+  }
+
+  @override
+  Future<CommissionPreview?> commissionPreview(String bookingId) async {
+    await _latency(80);
+    final b = _get(bookingId);
+    final me = _me.id;
+    if (b.professionalId != me && !b.offers.contains(me)) {
+      throw AppError.from('HMY_FORBIDDEN');
+    }
+    return CommissionPreview(
+      hasRule: true,
+      fixedFee: _commissionFee,
+      expected: _commissionFee,
+      reserve: _reserveFull,
+      minBalance: _reserveAmount,
+      available: _wallets[me]?[0],
     );
   }
 

@@ -143,3 +143,49 @@ class ProDashboard {
     earningsMonth: _d(m['earnings_month']),
   );
 }
+
+/// Lo que verá el profesional antes de aceptar (commission_preview, 0043).
+class CommissionPreview {
+  const CommissionPreview({
+    required this.hasRule,
+    required this.expected,
+    required this.reserve,
+    required this.minBalance,
+    this.ratePercent,
+    this.fixedFee,
+    this.available,
+    this.pendingDebt = 0,
+  });
+
+  final bool hasRule;
+  final double? ratePercent;
+  final double? fixedFee;
+
+  /// Comisión esperada con el precio que se conoce ahora.
+  final double expected;
+
+  /// Lo que se reserva al aceptar (la comisión completa o la reserva mínima).
+  final double reserve;
+  final double minBalance;
+  final double? available;
+  final double pendingDebt;
+
+  /// Saldo que necesita para aceptar.
+  double get needed => reserve > minBalance ? reserve : minBalance;
+
+  bool get canAccept => pendingDebt <= 0 && (available ?? 0) >= needed;
+
+  factory CommissionPreview.fromMap(Map<String, dynamic> m) {
+    double? d(String k) => (m[k] as num?)?.toDouble();
+    return CommissionPreview(
+      hasRule: m['has_rule'] == true,
+      ratePercent: d('rate_percent'),
+      fixedFee: d('fixed_fee'),
+      expected: d('expected') ?? 0,
+      reserve: d('reserve') ?? 0,
+      minBalance: d('min_balance') ?? 0,
+      available: d('available'),
+      pendingDebt: d('pending_debt') ?? 0,
+    );
+  }
+}
