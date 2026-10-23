@@ -238,6 +238,7 @@ IconData caseKindIcon(OpsCaseKind k) => switch (k) {
   OpsCaseKind.application => Icons.badge_outlined,
   OpsCaseKind.dispute => Icons.gavel_outlined,
   OpsCaseKind.report => Icons.flag_outlined,
+  OpsCaseKind.booking => Icons.receipt_long_outlined,
 };
 
 /// Recarga todo lo del equipo después de una acción.

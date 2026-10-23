@@ -42,10 +42,12 @@ class _CasesPageState extends ConsumerState<CasesPage> {
   late String _scope = widget.role == StaffRole.employee ? 'mine' : widget.initialScope;
   bool _resolved = false;
 
-  static const _scopes = [
+  List<(String, String)> get _scopes => [
     ('mine', 'Míos'),
+    ('urgent', 'Urgentes'),
     ('unassigned', 'Sin asignar'),
     ('escalated', 'Escalados'),
+    if (widget.role == StaffRole.owner) ('escalated_owner', 'Escalados a ti'),
     ('all', 'Todos'),
   ];
 
@@ -361,7 +363,9 @@ class _CaseBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = d.item;
     final canAct = _isManager || _mine;
-    final employeeLimited = role == StaffRole.employee && (!c.isRoutine || c.kind == OpsCaseKind.dispute);
+    // Como ops_set_case_status: el empleado cierra solo soporte y reportes de rutina.
+    final employeeLimited =
+        role == StaffRole.employee && (!c.isRoutine || c.kind == OpsCaseKind.dispute || c.kind == OpsCaseKind.booking);
     return ListView(
       padding: bottomSafePadding(context),
       children: [
@@ -512,6 +516,25 @@ class _CaseBody extends ConsumerWidget {
           _Field('Motivo', s('reason') ?? ''),
           if (role != StaffRole.owner)
             const InfoBanner(text: 'Resolver una disputa cambia el cobro de la comisión: lo decide el propietario.'),
+        ];
+      case OpsCaseKind.booking:
+        return [
+          _Field('Pedido', s('code') ?? ''),
+          _Field('Estado del pedido', BookingStatus.parse(s('booking_status')).label),
+          if (s('category_name') != null) _Field('Servicio', s('category_name')!),
+          if (s('city_name') != null) _Field('Ciudad', s('city_name')!),
+          _Field('Cliente', s('customer_name') ?? ''),
+          _Field('Profesional', s('professional_name') ?? '—'),
+          if (role != StaffRole.employee && s('booking_id') != null)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                key: const Key('case-open-booking'),
+                onPressed: () => context.push(Routes.opsBooking(s('booking_id')!)),
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('Ver el pedido completo'),
+              ),
+            ),
         ];
       case OpsCaseKind.application:
         return [

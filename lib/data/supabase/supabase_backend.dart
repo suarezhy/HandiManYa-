@@ -9,6 +9,7 @@ import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/costs.dart';
+import '../models/drilldown.dart';
 import '../models/finance.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
@@ -41,6 +42,7 @@ class SupabaseBackend
         SafetyRepository,
         AdminRepository,
         StaffRepository,
+        DrilldownRepository,
         AiControlRepository,
         FinanceRepository {
   SupabaseBackend(this._db);
@@ -835,7 +837,15 @@ class SupabaseBackend
       await _db.rpc('ops_cases_list', params: {'p_scope': scope, 'p_include_resolved': includeResolved}),
     ))
       OpsCase.fromMap(m),
-  ];
+  ].where(_inScope(scope)).toList();
+
+  // Un servidor sin 0041 trata 'urgent' y 'escalated_owner' como 'all': la app
+  // filtra igual, para no mostrar casos que no corresponden a la tarjeta.
+  static bool Function(OpsCase) _inScope(String scope) => switch (scope) {
+    'urgent' => (c) => c.priority == 'urgent',
+    'escalated_owner' => (c) => c.status == OpsCaseStatus.escalated && c.escalatedTo == 'owner',
+    _ => (_) => true,
+  };
 
   @override
   Future<OpsCaseDetail> opsCaseDetail(int caseId) async => OpsCaseDetail.fromMap(
@@ -1235,6 +1245,58 @@ class SupabaseBackend
   Future<AiCheckResult> runAllChecks() async =>
       AiCheckResult.fromMap(Map<String, dynamic>.from(await _db.rpc('admin_run_all_checks') as Map));
 
+  // ---------------------------------------------------------------- Detalle del panel
+  Map<String, dynamic> _obj(Object? v) => Map<String, dynamic>.from(v as Map);
+
+  Listed<T> _listed<T>(Object? v, T Function(Map<String, dynamic>) f) {
+    final m = _obj(v);
+    final items = [for (final x in (m['items'] as List? ?? const [])) f(Map<String, dynamic>.from(x as Map))];
+    return Listed(items, (m['total'] as num?)?.toInt() ?? items.length);
+  }
+
+  @override
+  Future<Listed<OpsBooking>> opsBookings(BookingFilter filter, {String query = ''}) async => _listed(
+    await _db.rpc('ops_bookings', params: {'p_filter': filter.key, 'p_query': query.trim().isEmpty ? null : query}),
+    OpsBooking.fromMap,
+  );
+
+  @override
+  Future<OpsBookingDetail> opsBookingDetail(String bookingId) async =>
+      OpsBookingDetail.fromMap(_obj(await _db.rpc('ops_booking_detail', params: {'p_booking': bookingId})));
+
+  @override
+  Future<int> openBookingCase(String bookingId, String reason, {String category = 'routine'}) async => (await _db.rpc(
+    'ops_open_booking_case',
+    params: {'p_booking': bookingId, 'p_reason': reason, 'p_category': category},
+  ) as num).toInt();
+
+  @override
+  Future<Listed<PersonRow>> adminPeople(PeopleFilter filter, {String query = ''}) async {
+    try {
+      return _listed(
+        await _db.rpc('admin_people', params: {'p_filter': filter.key, 'p_query': query.trim().isEmpty ? null : query}),
+        PersonRow.fromMap,
+      );
+    } on PostgrestException catch (e) {
+      // Sin 0041, "Todos" sigue funcionando con la búsqueda de siempre.
+      if (e.code != 'PGRST202' || filter != PeopleFilter.all) rethrow;
+      final users = await adminUsers(query);
+      return Listed([for (final u in users) PersonRow(user: u)], users.length);
+    }
+  }
+
+  @override
+  Future<Listed<RiskItem>> riskItems(RiskKind kind) async =>
+      _listed(await _db.rpc('ops_risk_items', params: {'p_kind': kind.key}), RiskItem.fromMap);
+
+  @override
+  Future<WalletList> ownerWallets({String query = '', WalletSort sort = WalletSort.available}) async =>
+      WalletList.fromMap(
+        _obj(
+          await _db.rpc('owner_wallets', params: {'p_query': query.trim().isEmpty ? null : query, 'p_sort': sort.key}),
+        ),
+      );
+
   // ---------------------------------------------------------------- Finanzas y Bancos
   @override
   Future<FinanceSummary> financeSummary({DateTime? month}) async => FinanceSummary.fromMap(
@@ -1247,9 +1309,17 @@ class SupabaseBackend
   );
 
   @override
-  Future<List<FinanceTransaction>> financeTransactions({String? kind, int? before, int limit = 50}) async => [
+  Future<List<FinanceTransaction>> financeTransactions({
+    String? kind,
+    int? before,
+    int limit = 50,
+    String? professionalId,
+  }) async => [
     for (final m in _rows(
-      await _db.rpc('owner_finance_transactions', params: {'p_kind': kind, 'p_before': before, 'p_limit': limit}),
+      await _db.rpc(
+        'owner_finance_transactions',
+        params: {'p_kind': kind, 'p_before': before, 'p_limit': limit, 'p_professional': professionalId},
+      ),
     ))
       FinanceTransaction.fromMap(m),
   ];

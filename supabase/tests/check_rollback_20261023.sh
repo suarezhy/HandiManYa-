@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Prueba local del plan de reversión de 0038 a 0040 (nunca se conecta a Supabase).
+# Prueba local del plan de reversión de 0038 a 0041 (nunca se conecta a Supabase).
 # 1. Base A: migraciones hasta 0037, con datos de prueba (los archivos de prueba
 #    10 a 99c, sin deshacer).
-# 2. Base B: copia de A, más 0038 a 0040, más supabase/scripts/rollback_20261023.sql.
+# 2. Base B: copia de A, más 0038 a 0041 (con un caso de pedido), más supabase/scripts/rollback_20261023.sql.
 # 3. El esquema y los datos de B tienen que ser iguales a los de A, salvo lo
 #    que el script deja a propósito (los mismos filtros que la prueba de 0034 a 0037).
 # Uso: PGHOST=... PGPORT=... PGUSER=postgres supabase/tests/check_rollback_20261023.sh
@@ -21,6 +21,11 @@ for t in tests/[1-9]*_tests.sql; do
 done
 psql -q -d postgres -c "create database hmy_rc_b template hmy_rc_a"
 for f in migrations/2026102300[34]*00_*.sql; do run hmy_rc_b "$f"; done
+# Un caso abierto desde un pedido, con su nota: la reversión lo quita.
+psql -v ON_ERROR_STOP=1 -q -X -d hmy_rc_b -c "with c as (insert into public.ops_cases (kind, ref_id, title)
+  select 'booking', id::text, 'Revisar el pedido ' || code from public.bookings limit 1 returning id)
+  insert into public.ops_case_notes (case_id, author_id, kind, body)
+  select c.id, (select id from auth.users limit 1), 'note', 'Prueba' from c" >/dev/null
 run hmy_rc_b scripts/rollback_20261023.sql
 
 dump() {
@@ -44,5 +49,5 @@ data() {
 fail=0
 diff <(dump hmy_rc_a) <(dump hmy_rc_b) || { echo 'El esquema no volvió a 0037.'; fail=1; }
 diff <(data hmy_rc_a) <(data hmy_rc_b) || { echo 'Los datos cambiaron.'; fail=1; }
-[ "$fail" = 0 ] && echo 'PRUEBA DE REVERSIÓN 0038-0040: el esquema y los datos volvieron a 0037.'
+[ "$fail" = 0 ] && echo 'PRUEBA DE REVERSIÓN 0038-0041: el esquema y los datos volvieron a 0037.'
 exit "$fail"

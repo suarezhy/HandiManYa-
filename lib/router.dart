@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'data/models/booking.dart';
+import 'data/models/drilldown.dart';
 import 'data/models/staff.dart';
 import 'data/models/user.dart';
 import 'data/providers.dart';
@@ -17,6 +18,7 @@ import 'features/admin/admin_services_pages.dart';
 import 'features/admin/admin_home_page.dart';
 import 'features/admin/admin_money_pages.dart';
 import 'features/admin/admin_users_page.dart';
+import 'features/admin/drilldown_pages.dart';
 import 'features/admin/finance_pages.dart';
 import 'features/admin/ai_control_center_page.dart';
 import 'features/booking/booking_detail_page.dart';
@@ -98,6 +100,17 @@ abstract final class Routes {
   static const adminFinanceMovements = '/admin/finanzas/movimientos';
   static const adminFinanceAudit = '/admin/finanzas/historial';
   static const ownerTeamAdd = '/admin/equipo/agregar';
+  static const adminFinanceWallets = '/admin/finanzas/billeteras';
+
+  /// Lo que hay detrás de cada número del panel.
+  static const opsBookings = '/admin/pedidos';
+  static String opsBookingsFiltered(BookingFilter f) => '$opsBookings?filtro=${f.key}';
+  static String opsBooking(String id) => '/admin/pedidos/$id';
+  static const adminRisk = '/admin/riesgos';
+  static String adminRiskOf(RiskKind k) => '$adminRisk?tipo=${k.key}';
+  static const adminAiDecisions = '/admin/decisiones-ia';
+  static String adminUsersFiltered(PeopleFilter f) => '$adminUsers?filtro=${f.key}';
+  static String staffCasesScope(String scope) => '$staffCases?alcance=$scope';
   static const ownerManage = '/admin/gestion';
   static const ownerTeam = '/admin/equipo';
   static const ownerProfile = '/admin/perfil';
@@ -432,9 +445,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Casos del equipo, abiertos desde cualquier panel
       _route(
         path: Routes.staffCases,
-        builder: (_, _) => CasesPage(
+        builder: (_, s) => CasesPage(
           role: ref.read(accountProvider).value?.managementRole ?? StaffRole.employee,
-          initialScope: 'all',
+          initialScope: s.uri.queryParameters['alcance'] ?? 'all',
           inShell: false,
         ),
       ),
@@ -453,7 +466,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       _route(path: Routes.adminReports, builder: (_, _) => const AdminReportsPage()),
       _route(path: Routes.adminDisputes, builder: (_, _) => const AdminDisputesPage()),
       _route(path: Routes.adminTickets, builder: (_, _) => const AdminTicketsPage()),
-      _route(path: Routes.adminUsers, builder: (_, _) => const AdminUsersPage()),
+      _route(
+        path: Routes.adminUsers,
+        builder: (_, s) => AdminUsersPage(initialFilter: PeopleFilter.parse(s.uri.queryParameters['filtro'])),
+      ),
       _route(path: Routes.adminCommissions, builder: (_, _) => const AdminCommissionsPage()),
       _route(path: Routes.adminCatalog, builder: (_, _) => const AdminCatalogPage()),
       _route(
@@ -466,9 +482,35 @@ final routerProvider = Provider<GoRouter>((ref) {
       _route(path: Routes.adminFinance, builder: (_, _) => const FinancePage()),
       _route(path: Routes.adminFinanceAccounts, builder: (_, _) => const ReceivingAccountsPage()),
       _route(path: Routes.adminFinanceReconcile, builder: (_, _) => const FinanceReconcilePage()),
-      _route(path: Routes.adminFinanceMovements, builder: (_, _) => const FinanceMovementsPage()),
+      _route(
+        path: Routes.adminFinanceMovements,
+        builder: (_, s) => FinanceMovementsPage(initialKind: s.uri.queryParameters['tipo']),
+      ),
       _route(path: Routes.adminFinanceAudit, builder: (_, _) => const FinanceAuditPage()),
       _route(path: Routes.ownerTeamAdd, builder: (_, _) => const AddStaffPage()),
+      _route(
+        path: Routes.adminFinanceWallets,
+        builder: (_, s) => OwnerWalletsPage(
+          initialSort: s.uri.queryParameters['orden'] == 'reservado' ? WalletSort.reserved : WalletSort.available,
+        ),
+      ),
+      // Detalle de los números del panel (el gerente usa pedidos y riesgos).
+      _route(
+        path: Routes.opsBookings,
+        builder: (_, s) => OpsBookingsPage(initialFilter: BookingFilter.parse(s.uri.queryParameters['filtro'])),
+      ),
+      _route(
+        path: '/admin/pedidos/:id',
+        builder: (_, s) => OpsBookingDetailPage(bookingId: s.pathParameters['id']!),
+      ),
+      _route(
+        path: Routes.adminRisk,
+        builder: (_, s) => RiskItemsPage(initialKind: RiskKind.parse(s.uri.queryParameters['tipo'])),
+      ),
+      _route(
+        path: Routes.adminAiDecisions,
+        builder: (_, s) => AiDecisionsPage(highOnly: s.uri.queryParameters['gravedad'] == 'alta'),
+      ),
     ],
   );
 });
@@ -494,6 +536,8 @@ GoRoute _route({required String path, required GoRouterWidgetBuilder builder, Li
 
 /// Lo de /admin que también usa el gerente (el resto es del propietario).
 const _managerAdminRoutes = [
+  Routes.opsBookings,
+  Routes.adminRisk,
   Routes.adminApplications,
   Routes.adminReports,
   Routes.adminDisputes,

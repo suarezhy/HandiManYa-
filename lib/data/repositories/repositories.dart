@@ -5,6 +5,7 @@ import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/costs.dart';
+import '../models/drilldown.dart';
 import '../models/finance.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
@@ -322,8 +323,8 @@ abstract interface class StaffRepository {
 
   Future<OpsDashboard> opsDashboard();
 
-  /// [scope]: 'mine', 'unassigned', 'escalated' o 'all'. El empleado recibe
-  /// solo los suyos.
+  /// [scope]: 'mine', 'unassigned', 'escalated', 'escalated_owner', 'urgent'
+  /// o 'all'. El empleado recibe solo los suyos.
   Future<List<OpsCase>> opsCases({String scope = 'mine', bool includeResolved = false});
   Future<OpsCaseDetail> opsCaseDetail(int caseId);
   Future<void> assignCase(int caseId, String? userId);
@@ -357,8 +358,14 @@ abstract interface class FinanceRepository {
   Future<FinanceSummary> financeSummary({DateTime? month});
 
   /// Libro de las billeteras, del más nuevo al más viejo. [kind]: tipo de
-  /// movimiento (topup, commission_capture, ...); [before]: para paginar.
-  Future<List<FinanceTransaction>> financeTransactions({String? kind, int? before, int limit = 50});
+  /// movimiento (topup, commission_capture, ...); [before]: para paginar;
+  /// [professionalId]: solo los de esa billetera.
+  Future<List<FinanceTransaction>> financeTransactions({
+    String? kind,
+    int? before,
+    int limit = 50,
+    String? professionalId,
+  });
 
   /// [bankStatus]: sin_verificar, conciliada, no_encontrada, pendiente o todas.
   Future<List<ReconcileTopup>> topupsForReconciliation(String bankStatus);
@@ -387,4 +394,19 @@ abstract interface class FinanceRepository {
   /// Enlace temporal para ver un QR guardado.
   Future<String?> receivingQrUrl(String path);
   Future<List<FinanceAuditEntry>> financeAudit({int limit = 100});
+}
+
+/// Lo que hay detrás de cada número del panel (0041). El servidor decide
+/// quién ve qué: pedidos y personas, propietario y gerente (montos solo el
+/// propietario); billeteras, solo el propietario.
+abstract interface class DrilldownRepository {
+  Future<Listed<OpsBooking>> opsBookings(BookingFilter filter, {String query = ''});
+  Future<OpsBookingDetail> opsBookingDetail(String bookingId);
+
+  /// Abre (o devuelve el abierto) un caso para revisar el pedido.
+  /// [category]: 'routine', 'safety' o 'fraud'.
+  Future<int> openBookingCase(String bookingId, String reason, {String category = 'routine'});
+  Future<Listed<PersonRow>> adminPeople(PeopleFilter filter, {String query = ''});
+  Future<Listed<RiskItem>> riskItems(RiskKind kind);
+  Future<WalletList> ownerWallets({String query = '', WalletSort sort = WalletSort.available});
 }

@@ -154,7 +154,7 @@ end $$;
 -- Movimientos de las billeteras (con referencias)
 -- ---------------------------------------------------------------------------
 create function public.owner_finance_transactions(p_kind text default null, p_before bigint default null,
-                                                  p_limit int default 50)
+                                                  p_limit int default 50, p_professional uuid default null)
 returns table (id bigint, professional_id uuid, professional_name text, entry_type text,
                available_delta numeric, reserved_delta numeric, booking_code text, topup_id bigint,
                topup_bank_status text, reference text, note text, created_at timestamptz)
@@ -171,6 +171,7 @@ begin
   left join public.bookings b on b.id = l.booking_id
   left join public.topup_requests t on t.id = l.topup_id
   where (p_kind is null or l.entry_type::text = p_kind)
+    and (p_professional is null or l.professional_id = p_professional)
     and (p_before is null or l.id < p_before)
   order by l.id desc
   limit least(greatest(coalesce(p_limit, 50), 1), 200);
@@ -367,7 +368,7 @@ end $$;
 revoke execute on function public.hmy_mask_account(text) from public, anon, authenticated;
 revoke execute on function public.hmy_require_strong_confirmation(text, text) from public, anon, authenticated;
 revoke execute on function public.owner_finance_summary(date) from public, anon;
-revoke execute on function public.owner_finance_transactions(text, bigint, int) from public, anon;
+revoke execute on function public.owner_finance_transactions(text, bigint, int, uuid) from public, anon;
 revoke execute on function public.owner_topups_reconciliation(text) from public, anon;
 revoke execute on function public.owner_reconcile_topup(bigint, text, text, int, text) from public, anon;
 revoke execute on function public.owner_receiving_accounts() from public, anon;
@@ -375,7 +376,7 @@ revoke execute on function public.owner_save_receiving_account(int, text, text, 
   from public, anon;
 revoke execute on function public.owner_set_receiving_account(int, boolean, text, text) from public, anon;
 revoke execute on function public.owner_finance_audit(int) from public, anon;
-grant execute on function public.owner_finance_summary(date), public.owner_finance_transactions(text, bigint, int),
+grant execute on function public.owner_finance_summary(date), public.owner_finance_transactions(text, bigint, int, uuid),
   public.owner_topups_reconciliation(text), public.owner_reconcile_topup(bigint, text, text, int, text),
   public.owner_receiving_accounts(),
   public.owner_save_receiving_account(int, text, text, text, text, text, text, text, text, text),

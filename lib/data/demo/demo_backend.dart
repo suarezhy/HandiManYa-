@@ -11,6 +11,7 @@ import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/costs.dart';
+import '../models/drilldown.dart';
 import '../models/finance.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
@@ -41,6 +42,7 @@ class DemoBackend
         SafetyRepository,
         AdminRepository,
         StaffRepository,
+        DrilldownRepository,
         AiControlRepository,
         FinanceRepository {
   DemoBackend({this.simulateDelays = true, this.codeCooldown = const Duration(seconds: 60)}) {
@@ -850,6 +852,7 @@ class DemoBackend
     if (to != BookingStatus.onTheWay) _trips.remove(b.id);
     b.status = to;
     b.events.add(BookingEvent(status: to, note: note, at: DateTime.now()));
+    b.actors[b.events.length - 1] = actorId;
     if (to == BookingStatus.confirmed) {
       _reserve(b);
       final c = _Conversation(
@@ -2427,8 +2430,8 @@ class DemoBackend
       'open_disputes': _bookings.values.where((b) => b.status == BookingStatus.disputed).length,
       'open_reports': _reports.where((r) => r.status.isOpen).length,
       'open_tickets': _tickets.where((t) => t.status != TicketStatus.closed).length,
-      'bookings_today': _bookings.values.where((b) => b.createdAt.isAfter(start)).length,
-      'active_bookings': _bookings.values.where((b) => b.status.isActive).length,
+      'bookings_today': _bookings.values.where((b) => _bookingIn(b, BookingFilter.today)).length,
+      'active_bookings': _bookings.values.where((b) => _bookingIn(b, BookingFilter.active)).length,
       'approved_professionals': _pros.values.where((p) => p.status == VerificationStatus.approved).length,
       'available_professionals': _pros.values
           .where((p) => p.status == VerificationStatus.approved && p.available)
@@ -2483,8 +2486,8 @@ class DemoBackend
       'cancelled_today': bookings.where((b) => since(b, BookingStatus.cancelled, today)).length,
       'completed_month': completedMonth.length,
       'cancelled_month': bookings.where((b) => since(b, BookingStatus.cancelled, month)).length,
-      'customers': _accounts.entries
-          .where((e) => !e.value.roles.contains(AppRole.admin) && !approvedPros.any((p) => p.id == e.key))
+      'customers': _accounts.values
+          .where((a) => !a.roles.contains(AppRole.admin) && !approvedPros.any((p) => p.id == a.id))
           .length,
       'pending_documents': docs.where((d) => d.status == DocumentStatus.pending).length,
       'flagged_documents': docs.where((d) => d.status == DocumentStatus.pending && d.flagNote != null).length,
@@ -3485,6 +3488,20 @@ class DemoBackend
                 'customer_name': _account(b.customerId)?.fullName,
                 'professional_name': b.professionalId == null ? null : _pros[b.professionalId]?.displayName,
               };
+      case OpsCaseKind.booking:
+        final b = _bookings[c.refId];
+        return b == null
+            ? {}
+            : {
+                'booking_id': b.id,
+                'code': b.code,
+                'booking_status': b.status.key,
+                'mode': b.draft.mode.key,
+                'customer_name': _account(b.customerId)?.fullName,
+                'professional_name': b.professionalId == null ? null : _pros[b.professionalId]?.displayName,
+                'category_name': _catName(b.draft.categoryId),
+                'city_name': _cityName(b.draft.cityId),
+              };
       case OpsCaseKind.application:
         final p = _pros[c.refId];
         return p == null
@@ -3547,8 +3564,6 @@ class DemoBackend
   /// Conteos operativos (sin dinero) que comparten el panel del propietario y
   /// el del gerente.
   Future<Map<String, int>> adminDashboardCounts() async {
-    final today = DateTime.now();
-    final start = DateTime(today.year, today.month, today.day);
     final bookings = _bookings.values;
     return {
       'pending_applications': _pros.values
@@ -3557,17 +3572,8 @@ class DemoBackend
       'open_tickets': _tickets.where((t) => t.status != TicketStatus.closed).length,
       'open_reports': _reports.where((r) => r.status == CaseStatus.open || r.status == CaseStatus.reviewing).length,
       'open_disputes': bookings.where((b) => b.status == BookingStatus.disputed).length,
-      'active_bookings': bookings
-          .where(
-            (b) => const {
-              BookingStatus.confirmed,
-              BookingStatus.onTheWay,
-              BookingStatus.inProgress,
-              BookingStatus.workFinished,
-            }.contains(b.status),
-          )
-          .length,
-      'bookings_today': bookings.where((b) => b.createdAt.isAfter(start)).length,
+      'active_bookings': bookings.where((b) => _bookingIn(b, BookingFilter.active)).length,
+      'bookings_today': bookings.where((b) => _bookingIn(b, BookingFilter.today)).length,
       'available_professionals': _pros.values
           .where((p) => p.status == VerificationStatus.approved && p.available)
           .length,
@@ -3592,6 +3598,10 @@ class DemoBackend
                 ? c.assignedTo == null
                 : scope == 'escalated'
                 ? c.status == OpsCaseStatus.escalated
+                : scope == 'escalated_owner'
+                ? c.status == OpsCaseStatus.escalated && c.escalatedTo == 'owner'
+                : scope == 'urgent'
+                ? c.priority == 'urgent'
                 : true))
           _caseView(c),
     ]..sort((a, b) {
@@ -3911,6 +3921,314 @@ class DemoBackend
 
   BankStatus _bankOf(int topupId) => _bankChecks[topupId]?.status ?? BankStatus.unverified;
 
+  // ---------------------------------------------------------------- Detalle del panel
+  /// Las mismas definiciones que ops_bookings y owner_dashboard (0037, 0041).
+  bool _bookingIn(_Booking b, BookingFilter f) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final month = DateTime(now.year, now.month);
+    DateTime? at(BookingStatus s) => b.events.where((e) => e.status == s).map((e) => e.at).lastOrNull;
+    bool since(BookingStatus s, DateTime from) => b.status == s && (at(s)?.isAfter(from) ?? false);
+    if (b.status == BookingStatus.draft) return false;
+    return switch (f) {
+      BookingFilter.today => !b.createdAt.isBefore(today),
+      BookingFilter.active => b.status != BookingStatus.completed && b.status != BookingStatus.cancelled,
+      BookingFilter.completedToday => since(BookingStatus.completed, today),
+      BookingFilter.cancelledToday => since(BookingStatus.cancelled, today),
+      BookingFilter.completedMonth => since(BookingStatus.completed, month),
+      BookingFilter.cancelledMonth => since(BookingStatus.cancelled, month),
+      BookingFilter.recent => b.createdAt.isAfter(now.subtract(const Duration(days: 30))),
+    };
+  }
+
+  OpsBooking _opsBooking(_Booking b) {
+    final money = _me.roles.contains(AppRole.admin);
+    DateTime? at(BookingStatus s) => b.events.where((e) => e.status == s).map((e) => e.at).lastOrNull;
+    final openCase = _cases
+        .where(
+          (c) =>
+              (c.kind == OpsCaseKind.booking || c.kind == OpsCaseKind.dispute) &&
+              c.refId == b.id &&
+              c.status != OpsCaseStatus.resolved,
+        )
+        .firstOrNull;
+    return OpsBooking(
+      id: b.id,
+      code: b.code,
+      status: b.status,
+      mode: b.draft.mode,
+      categoryName: _catName(b.draft.categoryId),
+      cityName: _cityName(b.draft.cityId),
+      zoneName: b.draft.zoneId == null ? null : _zoneName(b.draft.zoneId!),
+      customerName: _account(b.customerId)?.fullName ?? '',
+      professionalName: b.professionalId == null ? null : _pros[b.professionalId]?.displayName,
+      scheduledStart: b.draft.scheduledStart,
+      acceptedAt: at(BookingStatus.confirmed),
+      completedAt: b.status == BookingStatus.completed ? at(BookingStatus.completed) : null,
+      cancelledAt: b.status == BookingStatus.cancelled ? at(BookingStatus.cancelled) : null,
+      cancelReason: b.status == BookingStatus.cancelled ? b.events.last.note : null,
+      paymentMethod: b.paidWith,
+      createdAt: b.createdAt,
+      hasDispute: b.status == BookingStatus.disputed,
+      openCaseId: openCase?.id,
+      finalAmount: money ? b.finalAmount : null,
+      quoteAmount: money ? b.quoteAmount : null,
+      commissionReserved: money ? b.reserved : null,
+      commissionCaptured: money && b.captured ? b.reserved : null,
+    );
+  }
+
+  @override
+  Future<Listed<OpsBooking>> opsBookings(BookingFilter filter, {String query = ''}) async {
+    await _latency(150);
+    _need('bookings.monitor');
+    _syncCases();
+    final q = _norm(query.trim());
+    final list = [
+      for (final b in _bookings.values)
+        if (_bookingIn(b, filter) &&
+            (q.isEmpty ||
+                b.code.toLowerCase().contains(q) ||
+                _norm(_account(b.customerId)?.fullName ?? '').contains(q) ||
+                _norm(b.professionalId == null ? '' : _pros[b.professionalId]?.displayName ?? '').contains(q)))
+          _opsBooking(b),
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return Listed(list.take(100).toList(), list.length);
+  }
+
+  @override
+  Future<OpsBookingDetail> opsBookingDetail(String bookingId) async {
+    await _latency(150);
+    _need('bookings.monitor');
+    _syncCases();
+    final b = _bookings[bookingId];
+    if (b == null) throw AppError.from('HMY_NOT_FOUND');
+    String? actor(int i) {
+      final id = b.actors[i];
+      if (id == null) return i == 0 ? 'cliente' : null;
+      if (id == b.customerId) return 'cliente';
+      if (id == b.professionalId) return 'profesional';
+      return 'equipo';
+    }
+
+    final reportIds = {
+      for (final r in _reports)
+        if (r.bookingId == b.id) '${r.id}',
+    };
+    final ticketIds = {
+      for (final t in _tickets)
+        if (t.bookingId == b.id) '${t.id}',
+    };
+    return OpsBookingDetail(
+      booking: _opsBooking(b),
+      description: b.draft.description,
+      events: [
+        for (var i = 0; i < b.events.length; i++)
+          OpsBookingEvent(
+            from: i == 0 ? null : b.events[i - 1].status,
+            to: b.events[i].status,
+            note: b.events[i].note,
+            actor: actor(i),
+            at: b.events[i].at,
+          ),
+      ],
+      cases: [
+        for (final c in _cases)
+          if (((c.kind == OpsCaseKind.booking || c.kind == OpsCaseKind.dispute) && c.refId == b.id) ||
+              (c.kind == OpsCaseKind.report && reportIds.contains(c.refId)) ||
+              (c.kind == OpsCaseKind.support && ticketIds.contains(c.refId)))
+            _caseView(c),
+      ],
+      disputeStatus: b.disputeReason == null ? null : (b.status == BookingStatus.disputed ? 'open' : 'resolved'),
+      disputeReason: b.disputeReason,
+      disputeResolution: b.disputeResolution,
+    );
+  }
+
+  @override
+  Future<int> openBookingCase(String bookingId, String reason, {String category = 'routine'}) async {
+    await _latency();
+    if (!_can('bookings.monitor') || !_can('cases.update')) throw AppError.from('HMY_FORBIDDEN');
+    if (reason.trim().length < 5) throw AppError.from('HMY_REASON_REQUIRED');
+    if (!const {'routine', 'safety', 'fraud'}.contains(category)) throw AppError.from('HMY_INVALID_STATUS');
+    final b = _bookings[bookingId];
+    if (b == null) throw AppError.from('HMY_NOT_FOUND');
+    var c = _cases.where((c) => c.kind == OpsCaseKind.booking && c.refId == b.id).firstOrNull;
+    if (c != null && c.status != OpsCaseStatus.resolved) return c.id;
+    if (c == null) {
+      c = _Case(_seq++, OpsCaseKind.booking, b.id, 'Revisar el pedido ${b.code}');
+      _cases.add(c);
+    }
+    c
+      ..status = OpsCaseStatus.open
+      ..resolvedAt = null
+      ..escalatedTo = null
+      ..category = category
+      ..priority = category == 'routine' ? 'normal' : 'urgent';
+    _note(c, 'note', 'Caso abierto desde el pedido: ${reason.trim()}');
+    _log('case.open_booking', 'ops_cases', '${c.id}', {
+      'booking': b.id,
+      'code': b.code,
+      'category': category,
+      'reason': reason.trim(),
+    });
+    return c.id;
+  }
+
+  @override
+  Future<Listed<PersonRow>> adminPeople(PeopleFilter filter, {String query = ''}) async {
+    await _latency(200);
+    _need('users.view');
+    final q = _norm(query.trim());
+    const reviewing = {
+      IdentityStatus.created,
+      IdentityStatus.inProgress,
+      IdentityStatus.inReview,
+      IdentityStatus.resubmitted,
+    };
+    final rows = <PersonRow>[];
+    for (final a in _accounts.values) {
+      final pro = _pros[a.id];
+      final approved = pro?.status == VerificationStatus.approved;
+      final match = switch (filter) {
+        PeopleFilter.all => true,
+        PeopleFilter.customers => !a.roles.contains(AppRole.admin) && !approved,
+        PeopleFilter.professionals => approved,
+        PeopleFilter.available => approved && pro!.available,
+        PeopleFilter.identity => pro?.identity.any((i) => reviewing.contains(i.status)) ?? false,
+        PeopleFilter.suspended => a.suspendedAt != null,
+      };
+      if (!match) continue;
+      if (q.isNotEmpty &&
+          !_norm(a.fullName).contains(q) &&
+          !a.email.toLowerCase().contains(q) &&
+          !(a.phone ?? '').contains(query.trim())) {
+        continue;
+      }
+      rows.add(
+        PersonRow(
+          user: AdminUser(
+            id: a.id,
+            fullName: a.fullName,
+            email: a.email.isEmpty ? null : a.email,
+            phone: a.phone,
+            cityName: a.cityId == null ? null : _cityName(a.cityId!),
+            roles: {...a.roles},
+            professionalStatus: pro?.status,
+            suspendedAt: a.suspendedAt,
+            suspensionReason: a.suspensionReason,
+            reportsAgainst: _reports.where((r) => r.reportedId == a.id).length,
+          ),
+          isAvailable: pro?.available,
+          identityStatus: pro?.identity.lastOrNull?.status,
+        ),
+      );
+    }
+    rows.sort((a, b) => (b.user.isSuspended ? 1 : 0).compareTo(a.user.isSuspended ? 1 : 0));
+    return Listed(rows.take(100).toList(), rows.length);
+  }
+
+  @override
+  Future<Listed<RiskItem>> riskItems(RiskKind kind) async {
+    await _latency(150);
+    _need('reports.view');
+    _syncCases();
+    final ai = _me.roles.contains(AppRole.admin);
+    bool reasonMatch(ReportReason r) => kind == RiskKind.safety
+        ? r == ReportReason.harassment
+        : (r == ReportReason.fraud || r == ReportReason.overcharge);
+    final items = <(int, RiskItem)>[
+      for (final r in _reports)
+        if (r.status.isOpen && reasonMatch(r.reason))
+          (
+            0,
+            RiskItem(
+              source: 'report',
+              id: '${r.id}',
+              title: 'Reporte por ${r.reason.label.toLowerCase()}',
+              reason: r.reason.key,
+              detail: r.details,
+              status: r.status == CaseStatus.reviewing ? 'reviewing' : 'open',
+              severity: 'high',
+              person: r.reportedName,
+              personId: r.reportedId,
+              caseId: _cases.where((c) => c.kind == OpsCaseKind.report && c.refId == '${r.id}').firstOrNull?.id,
+              createdAt: r.createdAt,
+            ),
+          ),
+      for (final c in _cases)
+        if (c.status != OpsCaseStatus.resolved && c.category == kind.key && c.kind != OpsCaseKind.report)
+          (
+            c.priority == 'urgent' ? 0 : 1,
+            RiskItem(
+              source: 'case',
+              id: '${c.id}',
+              title: c.title,
+              status: c.status.key,
+              severity: c.priority == 'urgent' ? 'critical' : (c.priority == 'high' ? 'high' : 'medium'),
+              person: c.assignedTo == null ? null : _account(c.assignedTo!)?.fullName,
+              caseId: c.id,
+              createdAt: c.createdAt,
+            ),
+          ),
+      if (ai && kind == RiskKind.fraud)
+        for (final i in _aiItems)
+          if (i.agentKey == 'fraud' &&
+              (i.status == AiItemStatus.open ||
+                  i.status == AiItemStatus.pendingApproval ||
+                  i.status == AiItemStatus.moreInfo))
+            (
+              i.severity == AiSeverity.high || i.severity == AiSeverity.critical ? 0 : 1,
+              RiskItem(
+                source: 'ai',
+                id: '${i.id}',
+                title: i.title,
+                status: i.status.key,
+                severity: i.severity.name,
+                createdAt: i.createdAt,
+              ),
+            ),
+    ]..sort((a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : b.$2.createdAt.compareTo(a.$2.createdAt));
+    return Listed([for (final (_, i) in items) i], items.length);
+  }
+
+  @override
+  Future<WalletList> ownerWallets({String query = '', WalletSort sort = WalletSort.available}) async {
+    await _latency(150);
+    _admin();
+    final q = _norm(query.trim());
+    final rows = [
+      for (final e in _wallets.entries)
+        if (q.isEmpty || _norm(_nameOf(e.key)).contains(q))
+          OwnerWallet(
+            professionalId: e.key,
+            name: _nameOf(e.key),
+            cityName: _pros[e.key] == null ? null : _cityName(_pros[e.key]!.cityId),
+            available: e.value[0],
+            reserved: e.value[1],
+            lastMovementAt: _ledger[e.key]
+                ?.map((l) => l.createdAt)
+                .fold<DateTime?>(null, (m, d) => m == null || d.isAfter(m) ? d : m),
+            pendingTopups: (_topups[e.key] ?? const []).where((t) => t.status == TopupStatus.pending).length,
+          ),
+    ];
+    int byDate(OwnerWallet a, OwnerWallet b) =>
+        (b.lastMovementAt ?? DateTime(2000)).compareTo(a.lastMovementAt ?? DateTime(2000));
+    rows.sort(
+      (a, b) => switch (sort) {
+        WalletSort.available => b.available != a.available ? b.available.compareTo(a.available) : byDate(a, b),
+        WalletSort.reserved => b.reserved != a.reserved ? b.reserved.compareTo(a.reserved) : byDate(a, b),
+        WalletSort.recent => byDate(a, b),
+      },
+    );
+    return WalletList(
+      items: rows.take(100).toList(),
+      total: _wallets.length,
+      available: _wallets.values.fold<double>(0, (t, w) => t + w[0]),
+      reserved: _wallets.values.fold<double>(0, (t, w) => t + w[1]),
+    );
+  }
+
   @override
   Future<FinanceSummary> financeSummary({DateTime? month}) async {
     await _latency(200);
@@ -3969,23 +4287,29 @@ class DemoBackend
   }
 
   @override
-  Future<List<FinanceTransaction>> financeTransactions({String? kind, int? before, int limit = 50}) async {
+  Future<List<FinanceTransaction>> financeTransactions({
+    String? kind,
+    int? before,
+    int limit = 50,
+    String? professionalId,
+  }) async {
     await _latency(150);
     _admin();
     final list = [
       for (final e in _ledger.entries)
-        for (final l in e.value)
-          if ((kind == null || l.type.key == kind) && (before == null || l.id < before))
-            FinanceTransaction(
-              id: l.id,
-              professionalId: e.key,
-              professionalName: _nameOf(e.key),
-              entryType: l.type.key,
-              availableDelta: l.availableDelta,
-              reservedDelta: l.reservedDelta,
-              note: l.note,
-              createdAt: l.createdAt,
-            ),
+        if (professionalId == null || e.key == professionalId)
+          for (final l in e.value)
+            if ((kind == null || l.type.key == kind) && (before == null || l.id < before))
+              FinanceTransaction(
+                id: l.id,
+                professionalId: e.key,
+                professionalName: _nameOf(e.key),
+                entryType: l.type.key,
+                availableDelta: l.availableDelta,
+                reservedDelta: l.reservedDelta,
+                note: l.note,
+                createdAt: l.createdAt,
+              ),
     ]..sort((a, b) => b.id.compareTo(a.id));
     return list.take(limit).toList();
   }
@@ -4366,6 +4690,9 @@ class _Booking {
   BookingStatus status = BookingStatus.draft;
   List<String> problems = const [];
   final List<BookingEvent> events = [];
+
+  /// Quién hizo cada cambio (por posición en [events]), como booking_events.actor_id.
+  final Map<int, String> actors = {};
   Set<String> _offers = {};
   int offersCount = 0;
   double? quoteAmount;

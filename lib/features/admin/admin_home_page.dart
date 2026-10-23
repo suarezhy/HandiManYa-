@@ -7,6 +7,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/admin.dart';
 import '../../data/models/booking.dart';
+import '../../data/models/drilldown.dart';
 import '../../data/models/staff.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
@@ -122,33 +123,58 @@ class _Summary extends StatelessWidget {
         const SectionHeader(title: 'Pedidos de hoy'),
         PanelGrid(
           children: [
-            PanelStat('Pedidos de hoy', d.bookingsToday),
-            PanelStat('Activos ahora', d.activeBookings),
-            PanelStat('Completados hoy', d.completedToday),
-            PanelStat('Cancelados hoy', d.cancelledToday, tone: StatusTone.warning),
+            PanelStat(
+              'Pedidos de hoy',
+              d.bookingsToday,
+              key: const Key('owner-stat-bookings-today'),
+              onTap: () => go(Routes.opsBookingsFiltered(BookingFilter.today)),
+            ),
+            PanelStat(
+              'Activos ahora',
+              d.activeBookings,
+              onTap: () => go(Routes.opsBookingsFiltered(BookingFilter.active)),
+            ),
+            PanelStat(
+              'Completados hoy',
+              d.completedToday,
+              onTap: () => go(Routes.opsBookingsFiltered(BookingFilter.completedToday)),
+            ),
+            PanelStat(
+              'Cancelados hoy',
+              d.cancelledToday,
+              tone: StatusTone.warning,
+              onTap: () => go(Routes.opsBookingsFiltered(BookingFilter.cancelledToday)),
+            ),
           ],
         ),
         const SectionHeader(title: 'Atención urgente'),
         PanelGrid(
           children: [
-            PanelStat('Casos urgentes', d.urgentCases, tone: StatusTone.danger, onTap: () => go(Routes.staffCases)),
+            PanelStat(
+              'Casos urgentes',
+              d.urgentCases,
+              tone: StatusTone.danger,
+              key: const Key('owner-stat-urgent'),
+              onTap: () => go(Routes.staffCasesScope('urgent')),
+            ),
             PanelStat(
               'Escalados a ti',
               d.escalatedToOwner,
               tone: StatusTone.danger,
-              onTap: () => go(Routes.staffCases),
+              onTap: () => go(Routes.staffCasesScope('escalated_owner')),
             ),
             PanelStat(
               'Incidentes de seguridad',
               d.safetyIncidents,
               tone: StatusTone.danger,
-              onTap: () => go(Routes.adminReports),
+              key: const Key('owner-stat-safety'),
+              onTap: () => go(Routes.adminRiskOf(RiskKind.safety)),
             ),
             PanelStat(
               'Alertas de fraude',
               d.fraudAlerts,
               tone: StatusTone.danger,
-              onTap: () => go(Routes.adminReports),
+              onTap: () => go(Routes.adminRiskOf(RiskKind.fraud)),
             ),
             PanelStat(
               'Disputas abiertas',
@@ -162,9 +188,22 @@ class _Summary extends StatelessWidget {
         const SectionHeader(title: 'Personas y verificación'),
         PanelGrid(
           children: [
-            PanelStat('Clientes', d.customers),
-            PanelStat('Profesionales aprobados', d.approvedProfessionals),
-            PanelStat('Disponibles ahora', d.availableProfessionals),
+            PanelStat(
+              'Clientes',
+              d.customers,
+              key: const Key('owner-stat-customers'),
+              onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.customers)),
+            ),
+            PanelStat(
+              'Profesionales aprobados',
+              d.approvedProfessionals,
+              onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.professionals)),
+            ),
+            PanelStat(
+              'Disponibles ahora',
+              d.availableProfessionals,
+              onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.available)),
+            ),
             PanelStat(
               'Postulaciones pendientes',
               d.pendingApplications,
@@ -177,17 +216,45 @@ class _Summary extends StatelessWidget {
               tone: StatusTone.brand,
               onTap: () => go(Routes.adminApplications),
             ),
-            PanelStat('Identidad en revisión', d.identityInReview, tone: StatusTone.brand),
+            PanelStat(
+              'Identidad en revisión',
+              d.identityInReview,
+              tone: StatusTone.brand,
+              onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.identity)),
+            ),
           ],
         ),
         const SectionHeader(title: 'Dinero (solo propietario)'),
         PanelGrid(
           minTileWidth: 170,
           children: [
-            PanelStat('Pagado por trabajos este mes', null, display: _bs(d.revenueMonth)),
-            PanelStat('Comisión cobrada este mes', null, display: _bs(d.commissionMonth)),
-            PanelStat('Saldos disponibles', null, display: _bs(d.walletAvailable)),
-            PanelStat('Saldos reservados', null, display: _bs(d.walletReserved)),
+            PanelStat(
+              'Pagado por trabajos este mes',
+              null,
+              display: _bs(d.revenueMonth),
+              key: const Key('owner-stat-revenue'),
+              onTap: () => go(Routes.opsBookingsFiltered(BookingFilter.completedMonth)),
+            ),
+            PanelStat(
+              'Comisión cobrada este mes',
+              null,
+              display: _bs(d.commissionMonth),
+              key: const Key('owner-stat-commission'),
+              onTap: () => go('${Routes.adminFinanceMovements}?tipo=commission_capture'),
+            ),
+            PanelStat(
+              'Saldos disponibles',
+              null,
+              display: _bs(d.walletAvailable),
+              key: const Key('owner-stat-wallets'),
+              onTap: () => go(Routes.adminFinanceWallets),
+            ),
+            PanelStat(
+              'Saldos reservados',
+              null,
+              display: _bs(d.walletReserved),
+              onTap: () => go('${Routes.adminFinanceWallets}?orden=reservado'),
+            ),
             PanelStat(
               'Recargas pendientes${d.pendingTopupsAmount != null ? ' (${Fmt.bs(d.pendingTopupsAmount!)})' : ''}',
               d.pendingTopups,
@@ -234,20 +301,26 @@ class _Summary extends StatelessWidget {
         const SectionHeader(title: 'Equipo, Centro IA y control'),
         PanelGrid(
           children: [
-            PanelStat('Gerentes activos', d.activeManagers),
-            PanelStat('Empleados activos', d.activeEmployees),
+            PanelStat('Gerentes activos', d.activeManagers, onTap: () => context.go(Routes.ownerTeam)),
+            PanelStat('Empleados activos', d.activeEmployees, onTap: () => context.go(Routes.ownerTeam)),
             PanelStat(
               'Casos sin asignar',
               d.unassignedCases,
               tone: StatusTone.brand,
-              onTap: () => go(Routes.staffCases),
+              onTap: () => go(Routes.staffCasesScope('unassigned')),
             ),
-            PanelStat('Pendientes del Centro IA', d.aiPending, tone: StatusTone.brand, onTap: () => go(Routes.adminAi)),
+            PanelStat(
+              'Pendientes del Centro IA',
+              d.aiPending,
+              tone: StatusTone.brand,
+              onTap: () => go(Routes.adminAiDecisions),
+            ),
             PanelStat(
               'Alertas IA altas o críticas',
               d.aiCritical,
               tone: StatusTone.danger,
-              onTap: () => go(Routes.adminAi),
+              key: const Key('owner-stat-ai-high'),
+              onTap: () => go('${Routes.adminAiDecisions}?gravedad=alta'),
             ),
             PanelStat(
               'Costos del mes',

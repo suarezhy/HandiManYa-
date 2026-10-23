@@ -34,8 +34,10 @@ final reconcileTopupsProvider = FutureProvider.family<List<ReconcileTopup>, Stri
 final receivingAccountsProvider = FutureProvider<List<ReceivingAccount>>(
   (ref) => ref.watch(backendProvider).receivingAccounts(),
 );
-final financeTransactionsProvider = FutureProvider.family<List<FinanceTransaction>, String?>(
-  (ref, kind) => ref.watch(backendProvider).financeTransactions(kind: kind, limit: 100),
+
+/// (tipo, profesional): los dos opcionales.
+final financeTransactionsProvider = FutureProvider.family<List<FinanceTransaction>, (String?, String?)>(
+  (ref, k) => ref.watch(backendProvider).financeTransactions(kind: k.$1, professionalId: k.$2, limit: 100),
 );
 final financeAuditProvider = FutureProvider<List<FinanceAuditEntry>>(
   (ref) => ref.watch(backendProvider).financeAudit(),
@@ -985,14 +987,21 @@ class _ReceivingAccountFormPageState extends ConsumerState<ReceivingAccountFormP
 
 // ============================================================ Movimientos
 class FinanceMovementsPage extends ConsumerStatefulWidget {
-  const FinanceMovementsPage({super.key});
+  const FinanceMovementsPage({super.key, this.initialKind, this.professionalId, this.professionalName});
+
+  /// Tipo con el que abre (por ejemplo 'commission_capture' desde el panel).
+  final String? initialKind;
+
+  /// Solo los movimientos de esta billetera.
+  final String? professionalId;
+  final String? professionalName;
 
   @override
   ConsumerState<FinanceMovementsPage> createState() => _FinanceMovementsPageState();
 }
 
 class _FinanceMovementsPageState extends ConsumerState<FinanceMovementsPage> {
-  String? _kind;
+  late String? _kind = _kinds.any((k) => k.$1 == widget.initialKind) ? widget.initialKind : null;
 
   static const _kinds = [
     (null, 'Todos'),
@@ -1004,20 +1013,42 @@ class _FinanceMovementsPageState extends ConsumerState<FinanceMovementsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Movimientos')),
+    appBar: AppBar(
+      title: Text(widget.professionalName == null ? 'Movimientos' : 'Movimientos de ${widget.professionalName}'),
+    ),
     body: AdminList<FinanceTransaction>(
-      value: ref.watch(financeTransactionsProvider(_kind)),
-      onRefresh: () => ref.refresh(financeTransactionsProvider(_kind).future),
+      value: ref.watch(financeTransactionsProvider((_kind, widget.professionalId))),
+      onRefresh: () => ref.refresh(financeTransactionsProvider((_kind, widget.professionalId)).future),
       emptyIcon: Icons.receipt_long_outlined,
       emptyTitle: 'Sin movimientos de este tipo.',
       header: Padding(
         padding: const EdgeInsets.only(bottom: HySpacing.sm),
-        child: Wrap(
-          spacing: HySpacing.xs,
-          runSpacing: 4,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final (k, label) in _kinds)
-              ChoiceChip(label: Text(label), selected: _kind == k, onSelected: (_) => setState(() => _kind = k)),
+            if (_kind == 'commission_capture')
+              const Padding(
+                padding: EdgeInsets.only(bottom: HySpacing.xs),
+                child: InfoBanner(
+                  icon: Icons.info_outline,
+                  text:
+                      'Las comisiones son el único ingreso de la plataforma. Muestra los últimos 100 movimientos; '
+                      'el total del mes está en Finanzas y Bancos.',
+                ),
+              ),
+            Wrap(
+              spacing: HySpacing.xs,
+              runSpacing: 4,
+              children: [
+                for (final (k, label) in _kinds)
+                  ChoiceChip(
+                    key: Key('movements-kind-${k ?? 'todos'}'),
+                    label: Text(label),
+                    selected: _kind == k,
+                    onSelected: (_) => setState(() => _kind = k),
+                  ),
+              ],
+            ),
           ],
         ),
       ),

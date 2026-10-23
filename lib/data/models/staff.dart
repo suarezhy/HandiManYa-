@@ -94,7 +94,8 @@ enum OpsCaseKind {
   support('support', 'Soporte'),
   application('application', 'Postulación'),
   dispute('dispute', 'Disputa'),
-  report('report', 'Reporte');
+  report('report', 'Reporte'),
+  booking('booking', 'Revisión de pedido');
 
   const OpsCaseKind(this.key, this.label);
   final String key;

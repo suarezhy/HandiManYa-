@@ -38,5 +38,6 @@ end $$;
 \ir 99g_owner_finance_tests.sql
 \ir 99h_team_directory_tests.sql
 \ir 99i_ai_reports_es_tests.sql
+\ir 99j_owner_drilldowns_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'

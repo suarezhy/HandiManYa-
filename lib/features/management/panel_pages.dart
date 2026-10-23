@@ -6,6 +6,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/booking.dart';
+import '../../data/models/drilldown.dart';
 import '../../data/models/staff.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
@@ -55,10 +56,25 @@ class _ManagerSummary extends StatelessWidget {
         const SectionHeader(title: 'Casos del equipo'),
         PanelGrid(
           children: [
-            PanelStat('Urgentes', d.urgentCases, tone: StatusTone.danger, onTap: () => go(Routes.staffCases)),
-            PanelStat('Escalados', d.escalatedCases, tone: StatusTone.danger, onTap: () => go(Routes.staffCases)),
-            PanelStat('Sin asignar', d.unassignedCases, tone: StatusTone.brand, onTap: () => go(Routes.staffCases)),
-            PanelStat('Míos abiertos', d.myOpenCases, onTap: () => go(Routes.staffCases)),
+            PanelStat(
+              'Urgentes',
+              d.urgentCases,
+              tone: StatusTone.danger,
+              onTap: () => go(Routes.staffCasesScope('urgent')),
+            ),
+            PanelStat(
+              'Escalados',
+              d.escalatedCases,
+              tone: StatusTone.danger,
+              onTap: () => go(Routes.staffCasesScope('escalated')),
+            ),
+            PanelStat(
+              'Sin asignar',
+              d.unassignedCases,
+              tone: StatusTone.brand,
+              onTap: () => go(Routes.staffCasesScope('unassigned')),
+            ),
+            PanelStat('Míos abiertos', d.myOpenCases, onTap: () => go(Routes.staffCasesScope('mine'))),
           ],
         ),
         const SectionHeader(title: 'Verificación de profesionales'),
@@ -70,7 +86,12 @@ class _ManagerSummary extends StatelessWidget {
               tone: StatusTone.brand,
               onTap: () => go(Routes.adminApplications),
             ),
-            PanelStat('Documentos por revisar', d.pendingDocuments, tone: StatusTone.brand),
+            PanelStat(
+              'Documentos por revisar',
+              d.pendingDocuments,
+              tone: StatusTone.brand,
+              onTap: () => go(Routes.adminApplications),
+            ),
             PanelStat('Documentos marcados', d.flaggedDocuments, tone: StatusTone.warning),
           ],
         ),
@@ -95,12 +116,38 @@ class _ManagerSummary extends StatelessWidget {
         const SectionHeader(title: 'Trabajos y disponibilidad'),
         PanelGrid(
           children: [
-            PanelStat('Pedidos de hoy', d.bookingsToday),
-            PanelStat('Trabajos activos', d.activeBookings),
-            PanelStat('Completados hoy', d.completedToday),
-            PanelStat('Cancelados hoy', d.cancelledToday, tone: StatusTone.warning),
-            PanelStat('Profesionales disponibles', d.availableProfessionals),
-            PanelStat('Profesionales aprobados', d.approvedProfessionals),
+            PanelStat(
+              'Pedidos de hoy',
+              d.bookingsToday,
+              key: const Key('manager-stat-bookings-today'),
+              onTap: () => go(Routes.opsBookingsFiltered(BookingFilter.today)),
+            ),
+            PanelStat(
+              'Activos ahora',
+              d.activeBookings,
+              onTap: () => go(Routes.opsBookingsFiltered(BookingFilter.active)),
+            ),
+            PanelStat(
+              'Completados hoy',
+              d.completedToday,
+              onTap: () => go(Routes.opsBookingsFiltered(BookingFilter.completedToday)),
+            ),
+            PanelStat(
+              'Cancelados hoy',
+              d.cancelledToday,
+              tone: StatusTone.warning,
+              onTap: () => go(Routes.opsBookingsFiltered(BookingFilter.cancelledToday)),
+            ),
+            PanelStat(
+              'Profesionales disponibles',
+              d.availableProfessionals,
+              onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.available)),
+            ),
+            PanelStat(
+              'Profesionales aprobados',
+              d.approvedProfessionals,
+              onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.professionals)),
+            ),
           ],
         ),
         const SectionHeader(title: 'Más tareas'),

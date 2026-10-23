@@ -31,6 +31,7 @@ abstract interface class AppBackend
         SafetyRepository,
         AdminRepository,
         StaffRepository,
+        DrilldownRepository,
         AiControlRepository,
         FinanceRepository {}
 

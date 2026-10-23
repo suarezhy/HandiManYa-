@@ -53,7 +53,7 @@ class AiControlCenterPage extends ConsumerWidget {
           ],
         ),
       ),
-      body: const TabBarView(children: [_OverviewTab(), _DecisionsTab(), _AgentsTab(), DailyReportTab()]),
+      body: const TabBarView(children: [_OverviewTab(), AiDecisionsList(), _AgentsTab(), DailyReportTab()]),
     ),
   );
 }
@@ -288,15 +288,22 @@ StatusTone _tone(AiSeverity s) => switch (s) {
   _ => StatusTone.info,
 };
 
-class _DecisionsTab extends ConsumerStatefulWidget {
-  const _DecisionsTab();
+/// La lista de decisiones. [highOnly]: abre con "Solo altas o críticas"
+/// (desde el número del panel), que cuenta igual que el panel.
+class AiDecisionsList extends ConsumerStatefulWidget {
+  const AiDecisionsList({super.key, this.highOnly = false});
+
+  final bool highOnly;
 
   @override
-  ConsumerState<_DecisionsTab> createState() => _DecisionsTabState();
+  ConsumerState<AiDecisionsList> createState() => _AiDecisionsListState();
 }
 
-class _DecisionsTabState extends ConsumerState<_DecisionsTab> {
+class _AiDecisionsListState extends ConsumerState<AiDecisionsList> {
   String _filter = 'pendientes';
+  late bool _highOnly = widget.highOnly;
+
+  static bool _isHigh(AiItem i) => i.severity == AiSeverity.high || i.severity == AiSeverity.critical;
 
   static const _empty = {
     'pendientes': 'No hay alertas ni pedidos pendientes.',
@@ -328,16 +335,26 @@ class _DecisionsTabState extends ConsumerState<_DecisionsTab> {
                       ('cerradas', 'Rechazadas o descartadas'),
                     ])
                       ChoiceChip(
+                        key: Key('ai-filter-$k'),
                         label: Text(label),
                         selected: _filter == k,
                         onSelected: (_) => setState(() => _filter = k),
                       ),
+                    FilterChip(
+                      key: const Key('ai-filter-high'),
+                      label: const Text('Solo altas o críticas'),
+                      selected: _highOnly,
+                      onSelected: (v) => setState(() => _highOnly = v),
+                    ),
                   ],
                 ),
                 const SizedBox(height: HySpacing.sm),
-                ...switch (items) {
+                ...switch (items.whenData((l) => _highOnly ? l.where(_isHigh).toList() : l)) {
                   AsyncData(:final value) when value.isEmpty => [
-                    EmptyState(icon: Icons.check_circle_outline, title: _empty[_filter] ?? 'Nada por aquí'),
+                    EmptyState(
+                      icon: Icons.check_circle_outline,
+                      title: _highOnly ? 'Nada de gravedad alta o crítica aquí.' : _empty[_filter] ?? 'Nada por aquí',
+                    ),
                   ],
                   AsyncData(:final value) => [for (final i in value) _ItemCard(item: i)],
                   AsyncError(:final error) => [

@@ -31,7 +31,8 @@ declare
     'hmy_log_agent_run','hmy_agent_run_ok','admin_run_all_checks','admin_ai_agents','admin_ai_item_detail','admin_generate_daily_report',
     'owner_dashboard',
     'hmy_mask_account','hmy_require_strong_confirmation','owner_finance_summary','owner_finance_transactions','owner_topups_reconciliation','owner_reconcile_topup','owner_receiving_accounts','owner_save_receiving_account','owner_set_receiving_account','owner_finance_audit',
-    'hmy_mask_phone','owner_staff_candidates'];
+    'hmy_mask_phone','owner_staff_candidates',
+    'hmy_booking_row','ops_bookings','ops_booking_detail','ops_open_booking_case','admin_people','ops_risk_items','owner_wallets'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -115,6 +116,7 @@ begin
     (not exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace and proname = 'request_topup' and pronargs < 6), 'recargas: no queda la versión sin confirmación'),
     (not has_table_privilege('authenticated', 'public.topup_requests', 'INSERT'), 'recargas: solo se piden con confirmación (por función)'),
     (not has_function_privilege('authenticated', 'public.hmy_require_confirmation(text, text)', 'EXECUTE'), 'confirmación: la regla es interna'),
+    (not has_function_privilege('authenticated', 'public.hmy_booking_row(public.bookings, boolean)', 'EXECUTE') and not has_function_privilege('anon', 'public.ops_bookings(text, text, integer)', 'EXECUTE') and not has_function_privilege('anon', 'public.owner_wallets(text, text, integer)', 'EXECUTE'), 'detalle del panel: los pedidos y billeteras pasan por funciones con permiso'),
     (not has_table_privilege('authenticated', 'public.security_settings', 'UPDATE') and not has_table_privilege('authenticated', 'public.security_settings', 'INSERT'), 'seguridad: huella o rostro se activan solo con contraseña (por función)'),
     (not has_table_privilege('authenticated', 'public.security_confirmations', 'SELECT') and not has_table_privilege('authenticated', 'public.security_confirmations', 'INSERT'), 'confirmación: el registro de usos es interno'),
     (not has_table_privilege('authenticated', 'public.ai_items', 'INSERT') and not has_table_privilege('authenticated', 'public.ai_items', 'UPDATE'), 'agentes IA: la app no escribe avisos directamente'),
