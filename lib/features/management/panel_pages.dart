@@ -83,13 +83,13 @@ class _ManagerSummary extends StatelessWidget {
         PanelGrid(
           children: [
             PanelStat(
-              'Postulaciones pendientes',
+              'Solicitudes pendientes',
               d.pendingApplications,
               tone: StatusTone.brand,
               onTap: () => go(Routes.adminApplications),
             ),
             PanelStat(
-              'Documentos por revisar',
+              'Revisar documentos',
               d.pendingDocuments,
               tone: StatusTone.brand,
               onTap: () => go(Routes.adminApplications),
@@ -146,7 +146,7 @@ class _ManagerSummary extends StatelessWidget {
               onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.available)),
             ),
             PanelStat(
-              'Profesionales aprobados',
+              'Profesionales',
               d.approvedProfessionals,
               onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.professionals)),
             ),

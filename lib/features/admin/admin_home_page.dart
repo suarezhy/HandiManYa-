@@ -197,7 +197,7 @@ class _Summary extends StatelessWidget {
               onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.customers)),
             ),
             PanelStat(
-              'Profesionales aprobados',
+              'Profesionales',
               d.approvedProfessionals,
               onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.professionals)),
             ),
@@ -207,13 +207,13 @@ class _Summary extends StatelessWidget {
               onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.available)),
             ),
             PanelStat(
-              'Postulaciones pendientes',
+              'Solicitudes pendientes',
               d.pendingApplications,
               tone: StatusTone.brand,
               onTap: () => go(Routes.adminApplications),
             ),
             PanelStat(
-              'Documentos por revisar',
+              'Revisar documentos',
               d.pendingDocuments,
               tone: StatusTone.brand,
               onTap: () => go(Routes.adminApplications),

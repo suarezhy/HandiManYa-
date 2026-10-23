@@ -1,12 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/tokens.dart';
-import '../../core/utils/text_fit.dart';
 import '../../core/widgets/common.dart';
-import '../../core/widgets/equal_height_row.dart';
 import '../../core/widgets/word_safe_text.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/staff.dart';
@@ -183,11 +182,13 @@ class PanelStat extends StatelessWidget {
           ],
         ),
         // Sin "…" ni palabras partidas: la tarjeta crece y la fila se empareja.
-        WordSafeText(label, style: labelStyle),
+        // Texto común, sin LayoutBuilder: así PanelGrid puede preguntarle su
+        // ancho mínimo (la palabra más larga) y darle siempre ese ancho.
+        Text(label, style: labelStyle),
         if (detail != null)
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: WordSafeText(detail!, style: detailStyle),
+            child: Text(detail!, style: detailStyle),
           ),
       ],
     ),
@@ -197,6 +198,12 @@ class PanelStat extends StatelessWidget {
 /// Cuadrícula que se adapta al ancho: 2 columnas en el teléfono, más en la
 /// tableta, y una sola en pantallas chicas o con letra grande. Las tarjetas de
 /// una fila tienen la misma altura.
+///
+/// Issue #12 (Samsung, Dev-17 y Dev-18): las columnas se eligen preguntándole
+/// a cada [PanelStat] qué ancho mínimo necesita para que su palabra más larga
+/// entre entera, medido por el mismo motor que la dibuja (con la negrita y la
+/// letra del teléfono). Si no entra, hay menos columnas y tarjetas más anchas:
+/// la letra no se achica y ninguna palabra se parte.
 class PanelGrid extends StatelessWidget {
   const PanelGrid({super.key, required this.children, this.minTileWidth = 150});
 
@@ -207,52 +214,149 @@ class PanelGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     // Con la letra del teléfono en 1,3x o más, cada tarjeta necesita más ancho.
     final scale = MediaQuery.textScalerOf(context).scale(1);
-    final minWidth = minTileWidth * (scale >= 1.3 ? scale : 1.0);
-    return LayoutBuilder(
-      builder: (context, box) {
-        // En un teléfono de 320 px va una por fila, para que ningún texto se corte.
-        var columns = (box.maxWidth / minWidth).floor().clamp(1, 5);
-        // Y menos columnas si la palabra más larga de un nombre no entra entera
-        // con la letra y la negrita que tiene el teléfono (Issue #12, Dev-17):
-        // la tarjeta se ensancha en vez de achicar la letra o partir la palabra.
-        final widest = _widestWord(context);
-        while (columns > 1 && _innerWidth(box.maxWidth, columns) < widest) {
-          columns--;
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (var i = 0; i < children.length; i += columns) ...[
-              if (i > 0) const SizedBox(height: HySpacing.sm),
-              EqualHeightRow(
-                columns: columns,
-                spacing: HySpacing.sm,
-                children: children.sublist(i, (i + columns).clamp(0, children.length)),
-              ),
-            ],
-          ],
-        );
-      },
+    return _PanelGridLayout(
+      minTileWidth: minTileWidth * (scale >= 1.3 ? scale : 1.0),
+      spacing: HySpacing.sm,
+      children: [for (final c in children) _GridCell(measured: c is PanelStat, child: c)],
     );
   }
 }
 
-extension on PanelGrid {
-  double _innerWidth(double width, int columns) =>
-      (width - HySpacing.sm * (columns - 1)) / columns - 2 * HySpacing.md - 2; // relleno y borde de la tarjeta
+class _GridCellData extends ContainerBoxParentData<RenderBox> {
+  bool measured = false;
+}
 
-  double _widestWord(BuildContext context) {
-    final scaler = MediaQuery.textScalerOf(context);
-    final label = effectiveTextStyle(context, PanelStat.labelStyle);
-    final detail = effectiveTextStyle(context, PanelStat.detailStyle);
-    var widest = 0.0;
-    for (final c in children) {
-      if (c is! PanelStat) continue;
-      widest = math.max(widest, WordSafeText.longestWord(c.label, label, scaler));
-      if (c.detail != null) widest = math.max(widest, WordSafeText.longestWord(c.detail!, detail, scaler));
+/// Marca qué tarjetas se miden (las de [PanelStat] no usan LayoutBuilder).
+class _GridCell extends ParentDataWidget<_GridCellData> {
+  const _GridCell({required this.measured, required super.child});
+
+  final bool measured;
+
+  @override
+  void applyParentData(RenderObject renderObject) {
+    final data = renderObject.parentData! as _GridCellData;
+    if (data.measured != measured) {
+      data.measured = measured;
+      renderObject.parent?.markNeedsLayout();
     }
-    return widest;
   }
+
+  @override
+  Type get debugTypicalAncestorWidgetClass => _PanelGridLayout;
+}
+
+class _PanelGridLayout extends MultiChildRenderObjectWidget {
+  const _PanelGridLayout({required this.minTileWidth, required this.spacing, required super.children});
+
+  final double minTileWidth;
+  final double spacing;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderPanelGrid(minTileWidth, spacing);
+
+  @override
+  void updateRenderObject(BuildContext context, covariant RenderObject renderObject) {
+    (renderObject as _RenderPanelGrid)
+      ..minTileWidth = minTileWidth
+      ..spacing = spacing;
+  }
+}
+
+class _RenderPanelGrid extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _GridCellData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _GridCellData> {
+  _RenderPanelGrid(this._minTileWidth, this._spacing);
+
+  double _minTileWidth;
+  set minTileWidth(double v) {
+    if (v == _minTileWidth) return;
+    _minTileWidth = v;
+    markNeedsLayout();
+  }
+
+  double _spacing;
+  set spacing(double v) {
+    if (v == _spacing) return;
+    _spacing = v;
+    markNeedsLayout();
+  }
+
+  /// Columnas que se usaron en la última medida (para las pruebas).
+  int columns = 1;
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _GridCellData) child.parentData = _GridCellData();
+  }
+
+  double _cell(double width, int columns) => math.max(0, (width - _spacing * (columns - 1)) / columns);
+
+  int _columnsFor(double width) {
+    var c = (width / _minTileWidth).floor().clamp(1, 5);
+    var need = 0.0;
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      if ((child.parentData! as _GridCellData).measured) {
+        need = math.max(need, child.getMinIntrinsicWidth(double.infinity));
+      }
+    }
+    while (c > 1 && _cell(width, c) < need) {
+      c--;
+    }
+    return c;
+  }
+
+  @override
+  void performLayout() {
+    final width = constraints.maxWidth;
+    columns = _columnsFor(width);
+    final cell = _cell(width, columns);
+    final all = <RenderBox>[];
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      all.add(child);
+    }
+    var y = 0.0;
+    for (var i = 0; i < all.length; i += columns) {
+      final row = all.sublist(i, math.min(i + columns, all.length));
+      if (i > 0) y += _spacing;
+      // Igual que EqualHeightRow: cada una con su altura, después todas con la
+      // de la más alta (mínimo, no fijo, para que vuelvan a medirse).
+      var tallest = 0.0;
+      for (final c in row) {
+        c.layout(BoxConstraints(minWidth: cell, maxWidth: cell), parentUsesSize: true);
+        tallest = math.max(tallest, c.size.height);
+      }
+      var x = 0.0;
+      var height = tallest;
+      for (final c in row) {
+        c.layout(BoxConstraints(minWidth: cell, maxWidth: cell, minHeight: tallest), parentUsesSize: true);
+        height = math.max(height, c.size.height);
+        (c.parentData! as _GridCellData).offset = Offset(x, y);
+        x += cell + _spacing;
+      }
+      y += height;
+    }
+    size = constraints.constrain(Size(width, y));
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) {
+    var w = 0.0;
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      if ((child.parentData! as _GridCellData).measured) w = math.max(w, child.getMinIntrinsicWidth(height));
+    }
+    return w;
+  }
+
+  @override
+  double computeMaxIntrinsicWidth(double height) => computeMinIntrinsicWidth(height);
+
+  @override
+  void paint(PaintingContext context, Offset offset) => defaultPaint(context, offset);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
 }
 
 /// Una tarea del panel: ícono, título, explicación y pendientes.
