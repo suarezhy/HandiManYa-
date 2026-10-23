@@ -63,9 +63,7 @@ class _StatusView extends ConsumerWidget {
         EmptyState(
           icon: approved ? Icons.verified_rounded : Icons.hourglass_top_rounded,
           title: approved ? '¡Tu perfil fue aprobado!' : 'Postulación ${app.status.label.toLowerCase()}',
-          message: approved
-              ? 'Ya puedes recibir pedidos. Activa tu disponibilidad desde el modo profesional.'
-              : 'Nuestro equipo está revisando tus datos y documentos. Te avisaremos por notificación.',
+          message: approved ? 'Ya puedes recibir pedidos. Activa tu disponibilidad desde el modo profesional.' : 'Nuestro equipo está revisando tus datos y documentos. Te avisaremos en Notificaciones, dentro de la app.',
           action: approved
               ? PrimaryButton(
                   label: 'Ir al modo profesional',

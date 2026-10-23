@@ -136,14 +136,18 @@ class PanelStat extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                display ?? (value == null ? '—' : '$value'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: display != null ? 21 : 26,
-                  fontWeight: FontWeight.w900,
-                  color: tone != null && (value ?? 0) > 0 ? tone!.foreground : HyColors.navy,
+              // Un monto nunca se corta: se achica para entrar entero.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  display ?? (value == null ? '—' : '$value'),
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: display != null ? 21 : 26,
+                    fontWeight: FontWeight.w900,
+                    color: tone != null && (value ?? 0) > 0 ? tone!.foreground : HyColors.navy,
+                  ),
                 ),
               ),
               Text(
@@ -155,7 +159,7 @@ class PanelStat extends StatelessWidget {
               if (detail != null)
                 Text(
                   detail!,
-                  maxLines: 1,
+                  maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: HyColors.textMuted, fontSize: 13),
                 ),
@@ -180,7 +184,8 @@ class PanelGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
-      final columns = (box.maxWidth / minTileWidth).floor().clamp(2, 5);
+      // En un teléfono de 320 px va una por fila, para que ningún texto se corte.
+      final columns = (box.maxWidth / minTileWidth).floor().clamp(1, 5);
       final width = (box.maxWidth - HySpacing.sm * (columns - 1)) / columns;
       return Wrap(
         spacing: HySpacing.sm,

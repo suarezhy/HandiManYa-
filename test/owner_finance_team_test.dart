@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/app.dart';
@@ -235,6 +237,14 @@ void main() {
   });
 
   testWidgets('cada tarjeta de Finanzas abre su lista, con el mismo total y filtros', (tester) async {
+    // La letra real de la app, para medir los textos como en el teléfono.
+    await tester.runAsync(() async {
+      final loader = FontLoader('Nunito');
+      for (final w in [400, 600, 700, 800, 900]) {
+        loader.addFont(rootBundle.load('assets/fonts/Nunito-$w.ttf'));
+      }
+      await loader.load();
+    });
     final (backend, c) = await _pump(tester);
     // Una recarga acreditada este mes, sin conciliar.
     final t = (await backend.topupsForReconciliation('pendiente')).first;
@@ -243,6 +253,28 @@ void main() {
     // La etiqueta ya no se corta ("Saldos disponibles (0").
     expect(find.text('Saldos disponibles'), findsOneWidget);
     expect(find.textContaining('Saldos disponibles ('), findsNothing);
+    // Ningún texto de una tarjeta se corta con "…", ni a 320 px.
+    for (final size in [const Size(390, 844), const Size(320, 640)]) {
+      tester.view.physicalSize = size * 3;
+      await tester.pumpAndSettle();
+      for (final card
+          in find
+              .byWidgetPredicate(
+                (w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('fin-card-'),
+              )
+              .evaluate()
+              .toList()) {
+        for (final p
+            in find
+                .descendant(of: find.byWidget(card.widget), matching: find.byType(RichText))
+                .evaluate()
+                .map((e) => e.renderObject! as RenderParagraph)) {
+          expect(p.didExceedMaxLines, isFalse, reason: '${card.widget.key} ${size.width}: ${p.text.toPlainText()}');
+        }
+      }
+    }
+    tester.view.physicalSize = const Size(390, 844) * 3;
+    await tester.pumpAndSettle();
 
     // Cada tarjeta abre la pantalla correcta, ya filtrada, y "atrás" vuelve.
     final month = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';

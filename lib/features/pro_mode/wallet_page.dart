@@ -544,7 +544,7 @@ class TopupReceiptPage extends StatelessWidget {
                 const SizedBox(height: HySpacing.md),
                 const InfoBanner(
                   icon: Icons.hourglass_top_rounded,
-                  text: 'Tu saldo sube cuando el equipo verifique el pago. Te avisaremos con una notificación.',
+                  text: 'Tu saldo sube cuando el equipo verifique el pago. Te avisaremos en Notificaciones, dentro de la app.',
                 ),
                 const SizedBox(height: HySpacing.lg),
                 PrimaryButton(label: 'Listo', onPressed: () => Navigator.pop(context)),
