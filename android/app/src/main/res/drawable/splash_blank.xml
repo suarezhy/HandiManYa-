@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícono vacío para la pantalla de arranque de Android 12+. El logo de 46 dp
+     de alto no entra en el círculo de 192 dp que Android deja ver (lo
+     recortaría), así que esa pantalla muestra solo el fondo blanco y el logo
+     aparece una sola vez, en la pantalla de Flutter (SplashPage). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <size android:width="288dp" android:height="288dp" />
+</shape>

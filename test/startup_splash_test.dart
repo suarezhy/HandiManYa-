@@ -8,6 +8,7 @@ import 'package:handimanya/core/theme/tokens.dart';
 import 'package:handimanya/data/models/user.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:handimanya/features/shell/splash_page.dart';
+import 'package:handimanya/features/shell/startup_error_app.dart';
 
 /// Arranque de una sola pantalla: la nativa de Android y la de Flutter
 /// muestran el mismo logo, fondo y tamaño (Build 13 mostraba primero el ícono
@@ -44,6 +45,42 @@ void main() {
     expect(tester.getCenter(find.byKey(const Key('splash-logo'))).dy, screen.height / 2);
   });
 
+  testWidgets('arranque rápido (menos de 1 s): nunca aparece la ruedita', (tester) async {
+    final slow = Completer<UserProfile?>();
+    await pump(tester, () => slow.future);
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(find.byKey(const Key('splash-loading')), findsNothing);
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.byKey(const Key('splash-loading')), findsOneWidget, reason: 'pasado 1 s, sí');
+  });
+
+  testWidgets('sin internet: lo dice claro y Reintentar vuelve a cargar', (tester) async {
+    var calls = 0;
+    await pump(tester, () async {
+      calls++;
+      if (calls == 1) throw Exception('SocketException: Failed host lookup (network)');
+      return null;
+    });
+    await tester.pump();
+    expect(find.textContaining('No hay conexión a internet'), findsOneWidget);
+    await tester.tap(find.text('Reintentar'));
+    await tester.pump();
+    expect(calls, 2);
+    expect(find.text('Reintentar'), findsNothing, reason: 'al reintentar ya no muestra el error viejo');
+  });
+
+  testWidgets('si la app no logra arrancar, muestra el error con Reintentar', (tester) async {
+    var retried = 0;
+    await tester.pumpWidget(StartupErrorApp(error: Exception('network down'), onRetry: () async => retried++));
+    await tester.pump();
+    expect(find.byKey(const Key('startup-error')), findsOneWidget);
+    final screen = tester.getSize(find.byType(Scaffold));
+    expect(tester.getCenter(find.byType(Image)).dy, screen.height / 2, reason: 'el logo en el mismo lugar');
+    await tester.tap(find.text('Reintentar'));
+    await tester.pump();
+    expect(retried, 1);
+  });
+
   group('pantalla nativa de Android', () {
     const res = 'android/app/src/main/res';
     String read(String p) => File('$res/$p').readAsStringSync();
@@ -58,12 +95,17 @@ void main() {
       }
     });
 
-    test('Android 12+ muestra el logo completo, no el ícono sobre blanco', () {
+    test('Android 12+ no muestra un segundo logo (ni el ícono sobre blanco): solo el fondo', () {
+      // El logo grande no entra en el círculo de 192 dp que Android 12+ deja
+      // ver; recortado sería un segundo logo distinto antes del de Flutter.
+      final half = SplashPage.logoSize / 2;
+      expect(half.width * half.width + half.height * half.height, greaterThan(96 * 96));
       for (final dir in ['values-v31', 'values-night-v31']) {
         final s = read('$dir/styles.xml');
         expect(s, contains('windowSplashScreenBackground">@color/splash_background'));
-        expect(s, contains('windowSplashScreenAnimatedIcon">@drawable/splash_icon'));
+        expect(s, contains('windowSplashScreenAnimatedIcon">@drawable/splash_blank'));
       }
+      expect(read('drawable/splash_blank.xml'), contains('@android:color/transparent'));
       for (final f in ['drawable/launch_background.xml', 'drawable-v21/launch_background.xml']) {
         expect(read(f), allOf(contains('@color/splash_background'), contains('@drawable/splash_logo')));
       }
@@ -98,12 +140,10 @@ void main() {
         final logo = _pngSize('$res/drawable-$bucket/splash_logo.png');
         expect(logo.width, closeTo(SplashPage.logoSize.width * scale, 1), reason: bucket);
         expect(logo.height, closeTo(SplashPage.logoSize.height * scale, 1), reason: bucket);
-        final icon = _pngSize('$res/drawable-$bucket/splash_icon.png');
-        expect(icon.width, closeTo(288 * scale, 1), reason: 'lienzo de 288 dp ($bucket)');
       }
-      // El logo entero cabe en el círculo de 192 dp que Android deja ver.
-      final half = SplashPage.logoSize / 2;
-      expect(half.width * half.width + half.height * half.height, lessThan(96 * 96));
+      // Issue #13: 30-40 % más grande que el de Build 15 (175 x 34 dp), sin deformarse.
+      expect(SplashPage.logoSize.width / 175, inInclusiveRange(1.3, 1.4));
+      expect(SplashPage.logoSize.width / SplashPage.logoSize.height, closeTo(175 / 34, 0.05));
       expect(_pngSize('assets/brand/4.0x/splash_logo.png').width, closeTo(SplashPage.logoSize.width * 4, 1));
     });
   });

@@ -10,15 +10,18 @@ import '../../data/providers.dart';
 
 /// Primera pantalla de Flutter. Repite exactamente la pantalla nativa de
 /// arranque (mismo logo, tamaño, lugar y fondo; ver tool/make_splash.py), así
-/// el paso de una a otra no se ve. La ruedita sale solo si la carga tarda.
+/// el paso de una a otra no se ve; en Android 12+ la nativa es solo el fondo.
+/// La ruedita sale solo si la carga tarda.
 class SplashPage extends ConsumerStatefulWidget {
   const SplashPage({super.key});
 
-  /// Medidas del logo en dp; las mismas que el ícono de arranque de Android.
-  static const logoSize = Size(175, 34);
+  /// Medidas del logo en dp; las mismas que la imagen de arranque nativa
+  /// (35 % más grande que en Build 15; Issue #13).
+  static const logoSize = Size(237, 46);
 
-  /// Cuánto se espera antes de mostrar la ruedita.
-  static const spinnerDelay = Duration(milliseconds: 700);
+  /// Cuánto se espera antes de mostrar la ruedita: si todo carga antes de un
+  /// segundo, no aparece.
+  static const spinnerDelay = Duration(seconds: 1);
 
   @override
   ConsumerState<SplashPage> createState() => _SplashPageState();
@@ -27,6 +30,7 @@ class SplashPage extends ConsumerStatefulWidget {
 class _SplashPageState extends ConsumerState<SplashPage> {
   Timer? _timer;
   bool _slow = false;
+  bool _retrying = false;
 
   @override
   void initState() {
@@ -45,6 +49,9 @@ class _SplashPageState extends ConsumerState<SplashPage> {
   @override
   Widget build(BuildContext context) {
     final account = ref.watch(accountProvider);
+    ref.listen(accountProvider, (_, next) {
+      if (_retrying && !next.isLoading) setState(() => _retrying = false);
+    });
     return Scaffold(
       backgroundColor: HyColors.background,
       body: LayoutBuilder(
@@ -63,7 +70,8 @@ class _SplashPageState extends ConsumerState<SplashPage> {
               left: HySpacing.xl,
               right: HySpacing.xl,
               top: box.maxHeight / 2 + SplashPage.logoSize.height / 2 + HySpacing.xxl,
-              child: account.hasError
+              // Al reintentar se ve la ruedita, no el error anterior.
+              child: account.hasError && !_retrying
                   ? Column(
                       children: [
                         Text(
@@ -74,7 +82,10 @@ class _SplashPageState extends ConsumerState<SplashPage> {
                         const SizedBox(height: HySpacing.lg),
                         PrimaryButton(
                           label: 'Reintentar',
-                          onPressed: () => ref.invalidate(accountProvider),
+                          onPressed: () {
+                            setState(() => _retrying = true);
+                            ref.invalidate(accountProvider);
+                          },
                           expand: false,
                         ),
                         TextButton(
