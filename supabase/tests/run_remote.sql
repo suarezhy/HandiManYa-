@@ -43,5 +43,6 @@ end $$;
 \ir 99l_commission_lifecycle_tests.sql
 \ir 99m_owner_demand_tests.sql
 \ir 99n_push_notifications_tests.sql
+\ir 99o_booking_deadlines_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'
