@@ -35,7 +35,7 @@ declare
     'hmy_booking_row','ops_bookings','ops_booking_detail','ops_open_booking_case','admin_people','ops_risk_items','owner_wallets',
     'owner_finance_ledger','owner_finance_topups','commission_preview','owner_commission_debts','owner_demand_bookings',
     'register_push_device','unregister_push_device','my_push_status','send_test_push','hmy_push_claim','hmy_push_report','owner_push_overview',
-    'hmy_booking_deadline_guard','expire_my_overdue_bookings'];
+    'hmy_booking_deadline_guard','expire_my_overdue_bookings','hmy_response_deadline'];
   v_missing text;
   v_count int;
   v_failed int := 0;

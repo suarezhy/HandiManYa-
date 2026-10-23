@@ -19,6 +19,28 @@ end $$;
 drop trigger bookings_deadline_guard on public.bookings;
 drop function public.hmy_booking_deadline_guard();
 drop function public.expire_my_overdue_bookings();
+-- La limpieza vuelve a la versión de 0007.
+create or replace function public.run_booking_housekeeping() returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  r record;
+  n int := 0;
+begin
+  for r in select id from public.bookings where status = 'requested' and response_deadline < now() loop
+    perform public._booking_move(r.id, 'cancelled', 'system', 'Sin respuesta del profesional a tiempo');
+    n := n + 1;
+  end loop;
+  for r in select id from public.bookings where status = 'awaiting_response' and response_deadline < now() loop
+    perform public._booking_move(r.id, 'cancelled', 'system', 'Ningún profesional aceptó a tiempo. Puedes intentar de nuevo o programar para después.');
+    n := n + 1;
+  end loop;
+  for r in select id from public.bookings where status = 'work_finished' and finished_at < now() - interval '72 hours' loop
+    perform public._booking_move(r.id, 'completed', 'system', 'Confirmado automáticamente después de 72 horas');
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+drop function public.hmy_response_deadline(public.bookings);
 delete from supabase_migrations.schema_migrations where version = '20261023004600';
 commit;
 \echo 'Reversión de 0046 terminada.'

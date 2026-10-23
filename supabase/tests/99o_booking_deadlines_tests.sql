@@ -27,6 +27,15 @@ insert into public.bookings (id, customer_id, professional_id, category_id, city
   -- Trabajo terminado hace 73 horas, sin confirmar.
   ('00000000-0000-0000-0000-000009a6b005', '00000000-0000-0000-0000-000009a60003', '00000000-0000-0000-0000-000009a60002',
    1, 1, 'now', 'Arreglar la puerta', 'work_finished', null, now() - interval '73 hours');
+-- Programado: todavía en plazo de respuesta, pero la hora de la cita ya pasó.
+-- (Se inserta en dos pasos: la base no deja crear una cita en el pasado.)
+insert into public.bookings (id, customer_id, professional_id, category_id, city_id, mode, description, status,
+                             scheduled_start, scheduled_end, response_deadline)
+values ('00000000-0000-0000-0000-000009a6b006', '00000000-0000-0000-0000-000009a60003', '00000000-0000-0000-0000-000009a60002',
+        1, 1, 'scheduled', 'Instalar una lámpara', 'requested', now() + interval '1 hour', now() + interval '3 hours',
+        now() + interval '6 hours');
+update public.bookings set scheduled_start = now() - interval '5 minutes', scheduled_end = now() + interval '2 hours'
+where id = '00000000-0000-0000-0000-000009a6b006';
 insert into public.booking_offers (booking_id, professional_id)
 values ('00000000-0000-0000-0000-000009a6b002', '00000000-0000-0000-0000-000009a60002');
 
@@ -35,6 +44,7 @@ select test.login('00000000-0000-0000-0000-000009a60002');
 select test.expect_error($$select public.accept_booking('00000000-0000-0000-0000-000009a6b001')$$, 'HMY_REQUEST_EXPIRED');
 select test.expect_error($$select public.send_quote('00000000-0000-0000-0000-000009a6b001', 150)$$, 'HMY_REQUEST_EXPIRED');
 select test.expect_error($$select public.claim_ya_request('00000000-0000-0000-0000-000009a6b002')$$, 'HMY_REQUEST_EXPIRED');
+select test.expect_error($$select public.accept_booking('00000000-0000-0000-0000-000009a6b006')$$, 'HMY_REQUEST_EXPIRED');
 select test.logout();
 select test.eq((select professional_id from public.bookings where id = '00000000-0000-0000-0000-000009a6b002'), null::uuid,
                'vencido: el ¡Ya! no queda asignado a nadie');
@@ -52,8 +62,8 @@ select test.eq(public.expire_my_overdue_bookings(), 2, 'cliente: vence sus dos p
 select test.eq(public.expire_my_overdue_bookings(), 0, 'cliente: repetir no hace nada');
 select test.logout();
 select test.eq((select string_agg(status::text, ',' order by id) from public.bookings
-                where id::text like '00000000-0000-0000-0000-000009a6b00%'),
-               'cancelled,cancelled,requested,requested,work_finished',
+                where id::text like '00000000-0000-0000-0000-000009a6b00%' and id::text < '00000000-0000-0000-0000-000009a6b007'),
+               'cancelled,cancelled,requested,requested,work_finished,requested',
                'cliente: el pedido a tiempo y los de otro cliente siguen igual');
 select test.eq((select count(*)::int from public.bookings
                 where id in ('00000000-0000-0000-0000-000009a6b001', '00000000-0000-0000-0000-000009a6b002')
@@ -74,14 +84,25 @@ select test.eq((select count(*)::int from public.notifications
 -- 4. El profesional abre la app: vence lo suyo (el pedido del otro cliente y
 -- el trabajo terminado hace 73 horas), no el que sigue a tiempo.
 select test.login('00000000-0000-0000-0000-000009a60002');
-select test.eq(public.expire_my_overdue_bookings(), 2, 'profesional: vence sus dos pendientes atrasados');
+select test.eq(public.expire_my_overdue_bookings(), 3, 'profesional: vence sus tres pendientes atrasados (uno por la hora de la cita)');
 select test.logout();
 select test.eq((select string_agg(status::text, ',' order by id) from public.bookings
-                where id::text like '00000000-0000-0000-0000-000009a6b00%'),
-               'cancelled,cancelled,cancelled,requested,completed',
+                where id::text like '00000000-0000-0000-0000-000009a6b00%' and id::text < '00000000-0000-0000-0000-000009a6b007'),
+               'cancelled,cancelled,cancelled,requested,completed,cancelled',
                'profesional: el trabajo de hace 73 horas queda confirmado y el pedido a tiempo sigue');
 
--- 5. Solo la app la usa; el guardián no se llama de afuera.
+-- 5. La limpieza programada usa el mismo plazo.
+insert into public.bookings (id, customer_id, professional_id, category_id, city_id, mode, description, status,
+                             scheduled_start, scheduled_end, response_deadline)
+values ('00000000-0000-0000-0000-000009a6b007', '00000000-0000-0000-0000-000009a60003', '00000000-0000-0000-0000-000009a60002',
+        1, 1, 'scheduled', 'Revisar el calefón', 'requested', now() + interval '1 hour', now() + interval '3 hours',
+        now() + interval '6 hours');
+update public.bookings set scheduled_start = now() - interval '1 minute' where id = '00000000-0000-0000-0000-000009a6b007';
+select public.run_booking_housekeeping();
+select test.eq((select status::text from public.bookings where id = '00000000-0000-0000-0000-000009a6b007'), 'cancelled',
+               'limpieza: un programado cuya hora ya pasó se cancela');
+
+-- 6. Solo la app la usa; el guardián no se llama de afuera.
 select test.eq(has_function_privilege('authenticated', 'public.hmy_booking_deadline_guard()', 'execute'), false,
                'guardián: nadie lo llama directo');
 select test.eq(has_function_privilege('anon', 'public.expire_my_overdue_bookings()', 'execute'), false,
