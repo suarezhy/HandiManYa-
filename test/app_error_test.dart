@@ -9,5 +9,8 @@ void main() {
     final taken = AppError.from(Exception('PostgrestException(message: HMY_ALREADY_TAKEN, code: P0001)'));
     expect(taken.code, 'HMY_ALREADY_TAKEN');
     expect(taken.message, 'Otro profesional ya tomó este pedido.');
+    final late = AppError.from(Exception('PostgrestException(message: HMY_REQUEST_EXPIRED, code: P0001)'));
+    expect(late.code, 'HMY_REQUEST_EXPIRED');
+    expect(late.message, startsWith('Esta solicitud ya venció'));
   });
 }

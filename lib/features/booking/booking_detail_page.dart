@@ -509,11 +509,11 @@ class _ActionsState extends ConsumerState<_Actions> {
 
   Future<void> _run(Future<void> Function() action, {String? success}) async {
     setState(() => _busy = true);
-    final ok = await runGuarded(context, action, success: success);
-    if (ok) {
-      ref.invalidate(bookingDetailProvider(widget.b.id));
-      ref.invalidate(myBookingsProvider(!widget.b.viewerIsCustomer));
-    }
+    await runGuarded(context, action, success: success);
+    // También si falló: el pedido pudo vencer o tomarlo otro profesional, y la
+    // pantalla tiene que mostrarlo.
+    ref.invalidate(bookingDetailProvider(widget.b.id));
+    ref.invalidate(myBookingsProvider(!widget.b.viewerIsCustomer));
     if (mounted) setState(() => _busy = false);
   }
 

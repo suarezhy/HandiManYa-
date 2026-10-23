@@ -473,8 +473,23 @@ class SupabaseBackend
   }
 
   @override
-  Future<void> accept(String bookingId, {required bool isOffer}) =>
-      _db.rpc(isOffer ? 'claim_ya_request' : 'accept_booking', params: {'p_booking': bookingId});
+  Future<void> accept(String bookingId, {required bool isOffer}) => _closingIfExpired(
+    () => _db.rpc(isOffer ? 'claim_ya_request' : 'accept_booking', params: {'p_booking': bookingId}),
+  );
+
+  // Si el pedido ya venció, se cierra enseguida para que la pantalla deje de
+  // ofrecer "Aceptar".
+  Future<void> _closingIfExpired(Future<dynamic> Function() call) async {
+    try {
+      await call();
+    } on PostgrestException catch (e) {
+      if (e.message.contains('HMY_REQUEST_EXPIRED')) {
+        _expiredAt = null;
+        await _expireOverdue();
+      }
+      rethrow;
+    }
+  }
 
   @override
   Future<void> decline(String bookingId, {required bool isOffer, String? reason}) => isOffer
@@ -482,8 +497,9 @@ class SupabaseBackend
       : _db.rpc('decline_booking', params: {'p_booking': bookingId, 'p_reason': reason});
 
   @override
-  Future<void> sendQuote(String bookingId, double amount, String? note) =>
-      _db.rpc('send_quote', params: {'p_booking': bookingId, 'p_amount': amount, 'p_note': note});
+  Future<void> sendQuote(String bookingId, double amount, String? note) => _closingIfExpired(
+    () => _db.rpc('send_quote', params: {'p_booking': bookingId, 'p_amount': amount, 'p_note': note}),
+  );
 
   @override
   Future<void> updateProgress(String bookingId, BookingStatus to, {double? finalAmount}) =>
