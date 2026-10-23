@@ -60,5 +60,11 @@ values ('e2e00000-0000-4000-8000-0000000000b1', 'ci_anverso', 'e2e00000-0000-400
        ('e2e00000-0000-4000-8000-0000000000b1', 'ci_reverso', 'e2e00000-0000-4000-8000-0000000000b1/e2e-ci-r.jpg');
 select set_config('request.jwt.claims', '', true);
 
+-- Un método de recarga temporal: dev no tiene ninguno configurado y sin
+-- recarga no se pueden probar la billetera ni la conciliación. cleanup.sql lo borra.
+insert into public.topup_methods (name, instructions, sort_order)
+select 'Prueba E2E (temporal)', 'Solo para la prueba automática; se borra al terminar.', 999
+ where not exists (select 1 from public.topup_methods where name = 'Prueba E2E (temporal)');
+
 commit;
 \echo 'Cuentas E2E listas.'

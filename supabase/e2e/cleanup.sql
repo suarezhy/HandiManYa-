@@ -57,6 +57,9 @@ alter table public.wallet_ledger disable trigger wallet_ledger_no_update;
 delete from public.wallet_ledger where professional_id in (select id from e2e_ids);
 alter table public.wallet_ledger enable trigger wallet_ledger_no_update;
 delete from public.wallets where professional_id in (select id from e2e_ids);
+-- El método de recarga temporal de setup.sql (solo si nadie más lo usó).
+delete from public.topup_methods m where m.name = 'Prueba E2E (temporal)'
+   and not exists (select 1 from public.topup_requests r where r.method_id = m.id);
 
 -- Lo que el admin de prueba revisó queda sin revisor.
 update public.professional_profiles set reviewed_by = null where reviewed_by in (select id from e2e_ids);

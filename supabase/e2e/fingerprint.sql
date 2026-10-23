@@ -29,6 +29,9 @@ select 'wallet_ledger|' || count(*) || '|' || md5(coalesce(string_agg(id::text, 
 select 'topup_requests|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, status, to_jsonb(t) ->> 'bank_status',
                                                                           to_jsonb(t) ->> 'bank_reference'), ';' order by id), ''))
   from public.topup_requests t where professional_id not in (select id from e2e_ids);
+-- Métodos de recarga: el temporal de la prueba no debe quedar.
+select 'topup_methods|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, name, is_active), ';' order by id), ''))
+  from public.topup_methods;
 -- Cuentas de cobro (desde 0038; antes no existe y no se imprime nada).
 select format($f$select 'receiving_accounts|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, label, bank_name,
   holder_name, account_number, qr_path, verification, is_active), ';' order by id), '')) from public.receiving_accounts
