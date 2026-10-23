@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Android 12+ siempre muestra su propia pantalla de arranque (ícono
-         centrado sobre un color) y recorta el ícono a un círculo de 192 dp,
-         donde el logo completo, ahora más grande, no entra. Por eso muestra
-         solo el fondo blanco, con un ícono vacío, y el logo aparece una sola
-         vez en SplashPage, sobre el mismo fondo: no hay dos logos ni saltos.-->
+    <!-- PRUEBA Android 12+: la pantalla del sistema muestra el logo completo de
+         una vez, a 36 dp de alto (lo más grande que entra en el círculo de
+         192 dp que Android deja ver). Al pasar a Flutter, MainActivity lo
+         agranda en 0,2 s hasta los 46 dp de SplashPage, y recién entonces
+         quita la pantalla del sistema: debajo está el mismo logo, igual.-->
     <style name="LaunchTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">@color/splash_background</item>
         <item name="android:windowSplashScreenBackground">@color/splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_blank</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
     </style>
     <style name="NormalTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">@color/splash_background</item>
