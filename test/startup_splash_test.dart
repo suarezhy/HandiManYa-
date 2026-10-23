@@ -69,6 +69,30 @@ void main() {
       }
     });
 
+    test('cada @color y @drawable que usan los recursos de Android existe', () {
+      // Build 14: cambiar colors.xml borró ic_launcher_background y la
+      // compilación de Android falló recién en GitHub.
+      final res = Directory('android/app/src/main/res');
+      final files = res.listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.xml')).toList();
+      final colors = {
+        for (final f in files.where((f) => f.path.contains('${Platform.pathSeparator}values')))
+          for (final m in RegExp(r'<color name="([^"]+)"').allMatches(f.readAsStringSync())) m.group(1)!,
+      };
+      final drawables = {
+        for (final f in res.listSync(recursive: true).whereType<File>())
+          if (RegExp(r'[/\\](drawable|mipmap)[^/\\]*[/\\]').hasMatch(f.path)) f.uri.pathSegments.last.split('.').first,
+      };
+      for (final f in files) {
+        final text = f.readAsStringSync();
+        for (final m in RegExp(r'@color/(\w+)').allMatches(text)) {
+          expect(colors, contains(m.group(1)), reason: f.path);
+        }
+        for (final m in RegExp(r'@(?:drawable|mipmap)/(\w+)').allMatches(text)) {
+          expect(drawables, contains(m.group(1)), reason: f.path);
+        }
+      }
+    });
+
     test('las imágenes miden lo mismo en dp en todas las densidades', () {
       for (final (bucket, scale) in [('mdpi', 1.0), ('hdpi', 1.5), ('xhdpi', 2.0), ('xxhdpi', 3.0), ('xxxhdpi', 4.0)]) {
         final logo = _pngSize('$res/drawable-$bucket/splash_logo.png');
