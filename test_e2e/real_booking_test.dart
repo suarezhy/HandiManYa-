@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/data/models/admin.dart';
 import 'package:handimanya/data/models/booking.dart';
+import 'package:handimanya/data/models/drilldown.dart';
 import 'package:handimanya/data/models/finance.dart';
 import 'package:handimanya/data/models/geo.dart';
 import 'package:handimanya/data/models/staff.dart';
@@ -576,6 +577,45 @@ void main() {
           }
         });
       }
+      // Cada número del panel abre su lista (0041): mismo total que la tarjeta,
+      // sin dirección ni GPS, y los montos solo para el propietario.
+      await _step('panel del propietario: cada lista da el mismo total que su tarjeta', () async {
+        final d = await owner.adminDashboard();
+        expect((await owner.opsBookings(BookingFilter.today)).total, d.bookingsToday);
+        expect((await owner.opsBookings(BookingFilter.active)).total, d.activeBookings);
+        expect((await owner.opsBookings(BookingFilter.completedToday)).total, d.completedToday);
+        expect((await owner.opsBookings(BookingFilter.cancelledToday)).total, d.cancelledToday);
+        expect((await owner.adminPeople(PeopleFilter.customers)).total, d.customers);
+        expect((await owner.adminPeople(PeopleFilter.professionals)).total, d.approvedProfessionals);
+        expect((await owner.adminPeople(PeopleFilter.available)).total, d.availableProfessionals);
+        expect((await owner.riskItems(RiskKind.safety)).total, d.safetyIncidents);
+        expect((await owner.riskItems(RiskKind.fraud)).total, d.fraudAlerts);
+        final w = await owner.ownerWallets();
+        expect(w.available, d.walletAvailable);
+        expect(w.reserved, d.walletReserved);
+        final recent = await owner.opsBookings(BookingFilter.recent);
+        if (recent.items.isNotEmpty) {
+          final raw = await ownerDb.rpc('ops_booking_detail', params: {'p_booking': recent.items.first.id});
+          for (final k in ['address', 'address_line', 'lat', 'lng', 'latitude', 'longitude', 'location']) {
+            expect((raw as Map).containsKey(k), isFalse, reason: 'el detalle no lleva $k');
+          }
+        }
+      });
+      await _step('el gerente ve pedidos sin montos y no ve billeteras', () async {
+        final list = await manager.opsBookings(BookingFilter.recent);
+        expect(
+          list.items.every((x) => x.finalAmount == null && x.quoteAmount == null && x.commissionCaptured == null),
+          isTrue,
+        );
+        await expectLater(manager.ownerWallets(), _code('HMY_FORBIDDEN'));
+        expect((await manager.riskItems(RiskKind.fraud)).items.every((i) => i.source != 'ai'), isTrue);
+      });
+      await _step('el empleado no abre las listas del panel', () async {
+        await expectLater(emp1.opsBookings(BookingFilter.today), _code('HMY_FORBIDDEN'));
+        await expectLater(emp1.adminPeople(PeopleFilter.all), _code('HMY_FORBIDDEN'));
+        await expectLater(emp1.ownerWallets(), _code('HMY_FORBIDDEN'));
+        await expectLater(customer.opsBookings(BookingFilter.today), _code('HMY_FORBIDDEN'));
+      });
       await _step('el gerente no resuelve disputas (cambian la comisión)', () async {
         await expectLater(
           manager.resolveDispute('00000000-0000-0000-0000-000000000000', DisputeOutcome.completed, 'Prueba E2E'),
