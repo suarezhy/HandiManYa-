@@ -13,7 +13,7 @@ declare
     'departments','disputes','identity_checks','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
     'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
-    'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets','staff_members','ops_cases','ops_case_notes'];
+    'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets','staff_members','ops_cases','ops_case_notes','receiving_accounts'];
   v_buckets jsonb := '{"avatars":true,"portfolio":true,"booking-photos":false,"chat-images":false,"payment-qr":false,"professional-documents":false,"topup-proofs":false}';
   v_functions text[] := array['handle_new_user','create_booking','create_ya_request','claim_ya_request','ya_eligible_professionals',
     'accept_booking','cancel_booking','confirm_completion','booking_detail','can_see_booking_address','set_booking_approx_point',
