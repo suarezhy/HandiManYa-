@@ -139,6 +139,9 @@ class FinanceTransaction {
     required this.availableDelta,
     required this.reservedDelta,
     this.bookingCode,
+    this.bookingId,
+    this.bookingStatus,
+    this.categoryName,
     this.topupId,
     this.topupBankStatus,
     this.reference,
@@ -153,6 +156,11 @@ class FinanceTransaction {
   final double availableDelta;
   final double reservedDelta;
   final String? bookingCode;
+
+  /// El pedido del movimiento (comisiones), para abrir su detalle.
+  final String? bookingId;
+  final String? bookingStatus;
+  final String? categoryName;
   final int? topupId;
   final BankStatus? topupBankStatus;
   final String? reference;
@@ -180,6 +188,9 @@ class FinanceTransaction {
     availableDelta: _d(m['available_delta']),
     reservedDelta: _d(m['reserved_delta']),
     bookingCode: m['booking_code'] as String?,
+    bookingId: m['booking_id'] as String?,
+    bookingStatus: m['booking_status'] as String?,
+    categoryName: m['category_name'] as String?,
     topupId: m['topup_id'] == null ? null : _i(m['topup_id']),
     topupBankStatus: m['topup_bank_status'] == null ? null : BankStatus.parse(m['topup_bank_status'] as String),
     reference: m['reference'] as String?,
@@ -392,4 +403,41 @@ class FinanceAuditEntry {
     details: Map<String, dynamic>.from((m['details'] as Map?) ?? const {}),
     createdAt: _t(m['created_at']) ?? DateTime.now(),
   );
+}
+
+/// Una lista de Finanzas con el total y la suma de TODAS las filas (la lista
+/// puede traer solo las primeras). [isPartial]: el servidor todavía no tiene
+/// 0042 y la lista se armó con los últimos movimientos.
+class FinanceList<T> {
+  const FinanceList(this.items, {required this.total, required this.sumBs, this.isPartial = false});
+
+  final List<T> items;
+  final int total;
+  final double sumBs;
+  final bool isPartial;
+
+  bool get isTruncated => items.length < total;
+}
+
+/// Qué recargas mostrar (owner_finance_topups).
+enum TopupFilter {
+  credited('acreditadas', 'Acreditadas'),
+  unverified('sin_verificar', 'Sin verificar'),
+  reconciled('conciliada', 'Conciliadas'),
+  notFound('no_encontrada', 'No aparecen'),
+  pending('pendiente', 'Por revisar'),
+  all('todas', 'Todas');
+
+  const TopupFilter(this.key, this.label);
+  final String key;
+  final String label;
+
+  static TopupFilter parse(String? v) => values.firstWhere((f) => f.key == v, orElse: () => unverified);
+
+  bool matches(ReconcileTopup t) => switch (this) {
+    all => true,
+    pending => t.status == 'pending',
+    credited => t.isCredited,
+    _ => t.isCredited && t.bankStatus.key == key,
+  };
 }

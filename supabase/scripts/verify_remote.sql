@@ -32,7 +32,8 @@ declare
     'owner_dashboard',
     'hmy_mask_account','hmy_require_strong_confirmation','owner_finance_summary','owner_finance_transactions','owner_topups_reconciliation','owner_reconcile_topup','owner_receiving_accounts','owner_save_receiving_account','owner_set_receiving_account','owner_finance_audit',
     'hmy_mask_phone','owner_staff_candidates',
-    'hmy_booking_row','ops_bookings','ops_booking_detail','ops_open_booking_case','admin_people','ops_risk_items','owner_wallets'];
+    'hmy_booking_row','ops_bookings','ops_booking_detail','ops_open_booking_case','admin_people','ops_risk_items','owner_wallets',
+    'owner_finance_ledger','owner_finance_topups'];
   v_missing text;
   v_count int;
   v_failed int := 0;

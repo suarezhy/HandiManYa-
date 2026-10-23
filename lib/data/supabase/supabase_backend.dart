@@ -1331,6 +1331,86 @@ class SupabaseBackend
   ];
 
   @override
+  Future<FinanceList<FinanceTransaction>> financeLedger({
+    String? kind,
+    DateTime? month,
+    String query = '',
+    String? professionalId,
+  }) async {
+    try {
+      final m = _obj(
+        await _db.rpc(
+          'owner_finance_ledger',
+          params: {
+            'p_kind': kind,
+            'p_month': month == null ? null : _day(DateTime(month.year, month.month)),
+            'p_query': query,
+            'p_professional': professionalId,
+          },
+        ),
+      );
+      return FinanceList(
+        [for (final r in (m['items'] as List? ?? const [])) FinanceTransaction.fromMap(r as Map<String, dynamic>)],
+        total: (m['total'] as num?)?.toInt() ?? 0,
+        sumBs: (m['sum_bs'] as num?)?.toDouble() ?? 0,
+      );
+    } on PostgrestException catch (e) {
+      // Sin 0042: los últimos 200 movimientos, filtrados aquí (lista parcial).
+      if (e.code != 'PGRST202') rethrow;
+      final rows = (await financeTransactions(kind: kind, limit: 200, professionalId: professionalId))
+          .where((t) => month == null || (t.createdAt.year == month.year && t.createdAt.month == month.month))
+          .where((t) => _matches(query, [t.professionalName, t.bookingCode, t.reference, t.note]))
+          .toList();
+      return FinanceList(
+        rows,
+        total: rows.length,
+        sumBs: rows.fold(
+          0.0,
+          (s, t) => s + (t.entryType == 'commission_capture' ? t.platformRevenue : t.availableDelta),
+        ),
+        isPartial: true,
+      );
+    }
+  }
+
+  @override
+  Future<FinanceList<ReconcileTopup>> financeTopups(TopupFilter filter, {DateTime? month, String query = ''}) async {
+    try {
+      final m = _obj(
+        await _db.rpc(
+          'owner_finance_topups',
+          params: {
+            'p_status': filter.key,
+            'p_month': month == null ? null : _day(DateTime(month.year, month.month)),
+            'p_query': query,
+          },
+        ),
+      );
+      return FinanceList(
+        [for (final r in (m['items'] as List? ?? const [])) ReconcileTopup.fromMap(r as Map<String, dynamic>)],
+        total: (m['total'] as num?)?.toInt() ?? 0,
+        sumBs: (m['sum_bs'] as num?)?.toDouble() ?? 0,
+      );
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+      final rows = (await topupsForReconciliation(filter == TopupFilter.credited ? 'todas' : filter.key))
+          .where(filter.matches)
+          .where((t) {
+            final at = t.isCredited ? (t.reviewedAt ?? t.createdAt) : t.createdAt;
+            return month == null || (at.year == month.year && at.month == month.month);
+          })
+          .where((t) => _matches(query, [t.professionalName, t.reference, t.bankReference, '${t.id}']))
+          .toList();
+      return FinanceList(rows, total: rows.length, sumBs: rows.fold(0.0, (s, t) => s + t.amount), isPartial: true);
+    }
+  }
+
+  static bool _matches(String query, List<String?> fields) {
+    final q = query.trim().toLowerCase();
+    return q.isEmpty || fields.whereType<String>().any((f) => f.toLowerCase().contains(q));
+  }
+
+  @override
   Future<void> reconcileTopup(
     int topupId,
     BankStatus status, {

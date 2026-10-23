@@ -109,7 +109,7 @@ class PanelAppBar extends StatelessWidget implements PreferredSizeWidget {
 
 /// Un número del panel, con su etiqueta. Sin datos, lo dice.
 class PanelStat extends StatelessWidget {
-  const PanelStat(this.label, this.value, {super.key, this.tone, this.onTap, this.display});
+  const PanelStat(this.label, this.value, {super.key, this.tone, this.onTap, this.display, this.detail});
 
   final String label;
   final int? value;
@@ -120,25 +120,50 @@ class PanelStat extends StatelessWidget {
   /// [value]: "—", sin datos.
   final String? display;
 
+  /// Una línea chica debajo del nombre (por ejemplo "3 billeteras"), para que
+  /// el nombre no se corte.
+  final String? detail;
+
   @override
   Widget build(BuildContext context) => AppCard(
     onTap: onTap,
     padding: const EdgeInsets.symmetric(horizontal: HySpacing.md, vertical: HySpacing.sm),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          display ?? (value == null ? '—' : '$value'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: display != null ? 21 : 26,
-            fontWeight: FontWeight.w900,
-            color: tone != null && (value ?? 0) > 0 ? tone!.foreground : HyColors.navy,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                display ?? (value == null ? '—' : '$value'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: display != null ? 21 : 26,
+                  fontWeight: FontWeight.w900,
+                  color: tone != null && (value ?? 0) > 0 ? tone!.foreground : HyColors.navy,
+                ),
+              ),
+              Text(
+                label,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: HyColors.textSecondary),
+              ),
+              if (detail != null)
+                Text(
+                  detail!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: HyColors.textMuted, fontSize: 13),
+                ),
+            ],
           ),
         ),
-        Text(label, maxLines: 2, style: const TextStyle(color: HyColors.textSecondary)),
+        // Se ve que se puede tocar (en Build 13 las tarjetas parecían fijas).
+        if (onTap != null) const Icon(Icons.chevron_right, size: 20, color: HyColors.textMuted),
       ],
     ),
   );

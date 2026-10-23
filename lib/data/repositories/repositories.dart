@@ -370,6 +370,20 @@ abstract interface class FinanceRepository {
   /// [bankStatus]: sin_verificar, conciliada, no_encontrada, pendiente o todas.
   Future<List<ReconcileTopup>> topupsForReconciliation(String bankStatus);
 
+  /// Lo que hay detrás de cada tarjeta de Finanzas (0042), con las mismas
+  /// definiciones del resumen. [kind]: tipo de movimiento; [month]: cualquier
+  /// día del mes (hora de Bolivia), null = todos; [query]: nombre, pedido o
+  /// referencia.
+  Future<FinanceList<FinanceTransaction>> financeLedger({
+    String? kind,
+    DateTime? month,
+    String query = '',
+    String? professionalId,
+  });
+
+  /// Recargas por estado y mes de acreditación (null = todos los meses).
+  Future<FinanceList<ReconcileTopup>> financeTopups(TopupFilter filter, {DateTime? month, String query = ''});
+
   /// Marca si una recarga acreditada aparece en el extracto del banco.
   /// Conciliar pide la referencia del banco. [authMethod]: código recién.
   Future<void> reconcileTopup(

@@ -46,18 +46,18 @@ Widget _countLine(int shown, int total, String noun) => Padding(
 );
 
 /// Buscador con espera corta, para no pedir a la base en cada letra.
-class _SearchField extends StatefulWidget {
-  const _SearchField({required this.hint, required this.onChanged, this.fieldKey});
+class DrilldownSearchField extends StatefulWidget {
+  const DrilldownSearchField({super.key, required this.hint, required this.onChanged, this.fieldKey});
 
   final String hint;
   final ValueChanged<String> onChanged;
   final Key? fieldKey;
 
   @override
-  State<_SearchField> createState() => _SearchFieldState();
+  State<DrilldownSearchField> createState() => _DrilldownSearchFieldState();
 }
 
-class _SearchFieldState extends State<_SearchField> {
+class _DrilldownSearchFieldState extends State<DrilldownSearchField> {
   Timer? _debounce;
 
   @override
@@ -79,7 +79,7 @@ class _SearchFieldState extends State<_SearchField> {
 }
 
 /// Chips en una fila que se desliza (en 320 px no caben todos).
-Widget _chipRow<T>(List<(T, String)> options, T selected, ValueChanged<T> onSelected, String keyPrefix) =>
+Widget drilldownChipRow<T>(List<(T, String)> options, T selected, ValueChanged<T> onSelected, String keyPrefix) =>
     SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -126,14 +126,14 @@ class _OpsBookingsPageState extends ConsumerState<OpsBookingsPage> {
         header: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _chipRow(
+            drilldownChipRow(
               [for (final f in BookingFilter.values) (f, f.label)],
               _filter,
               (f) => setState(() => _filter = f),
               'bookings-filter',
             ),
             const SizedBox(height: HySpacing.sm),
-            _SearchField(
+            DrilldownSearchField(
               fieldKey: const Key('bookings-search'),
               hint: 'Código, cliente o profesional',
               onChanged: (q) => setState(() => _query = q),
@@ -553,7 +553,7 @@ class _RiskItemsPageState extends ConsumerState<RiskItemsPage> {
         header: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _chipRow(
+            drilldownChipRow(
               [for (final k in RiskKind.values) (k, k.title)],
               _kind,
               (k) => setState(() => _kind = k),
@@ -656,14 +656,14 @@ class _OwnerWalletsPageState extends ConsumerState<OwnerWalletsPage> {
                 ),
               ),
             const SizedBox(height: HySpacing.sm),
-            _chipRow(
+            drilldownChipRow(
               [for (final s in WalletSort.values) (s, s.label)],
               _sort,
               (s) => setState(() => _sort = s),
               'wallets-sort',
             ),
             const SizedBox(height: HySpacing.sm),
-            _SearchField(
+            DrilldownSearchField(
               fieldKey: const Key('wallets-search'),
               hint: 'Nombre del profesional',
               onChanged: (q) => setState(() => _query = q),

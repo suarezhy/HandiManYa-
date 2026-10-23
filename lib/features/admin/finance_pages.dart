@@ -18,6 +18,7 @@ import '../common/unsaved_changes.dart';
 import '../management/management_common.dart';
 import '../security/confirm_identity.dart';
 import 'admin_common.dart';
+import 'drilldown_pages.dart';
 
 // Finanzas y Bancos: solo el Propietario. El router no deja entrar a otro rol
 // y cada función del servidor vuelve a exigir is_admin(). Los montos salen de
@@ -28,9 +29,6 @@ final financeSummaryProvider = FutureProvider.family<FinanceSummary, String>((re
   final p = month.split('-');
   return ref.watch(backendProvider).financeSummary(month: DateTime(int.parse(p[0]), int.parse(p[1])));
 });
-final reconcileTopupsProvider = FutureProvider.family<List<ReconcileTopup>, String>(
-  (ref, status) => ref.watch(backendProvider).topupsForReconciliation(status),
-);
 final receivingAccountsProvider = FutureProvider<List<ReceivingAccount>>(
   (ref) => ref.watch(backendProvider).receivingAccounts(),
 );
@@ -39,15 +37,36 @@ final receivingAccountsProvider = FutureProvider<List<ReceivingAccount>>(
 final financeTransactionsProvider = FutureProvider.family<List<FinanceTransaction>, (String?, String?)>(
   (ref, k) => ref.watch(backendProvider).financeTransactions(kind: k.$1, professionalId: k.$2, limit: 100),
 );
+
+/// (filtro, mes 'YYYY-MM' o null, búsqueda).
+final financeTopupsProvider = FutureProvider.family<FinanceList<ReconcileTopup>, (TopupFilter, String?, String)>(
+  (ref, k) => ref.watch(backendProvider).financeTopups(k.$1, month: _monthOf(k.$2), query: k.$3),
+);
+
+/// (tipo, mes 'YYYY-MM' o null, búsqueda, profesional).
+final financeLedgerProvider =
+    FutureProvider.family<FinanceList<FinanceTransaction>, (String?, String?, String, String?)>(
+      (ref, k) => ref
+          .watch(backendProvider)
+          .financeLedger(kind: k.$1, month: _monthOf(k.$2), query: k.$3, professionalId: k.$4),
+    );
+
+DateTime? _monthOf(String? key) {
+  if (key == null) return null;
+  final p = key.split('-');
+  return DateTime(int.parse(p[0]), int.parse(p[1]));
+}
+
 final financeAuditProvider = FutureProvider<List<FinanceAuditEntry>>(
   (ref) => ref.watch(backendProvider).financeAudit(),
 );
 
 void _refreshFinance(WidgetRef ref) => ref
   ..invalidate(financeSummaryProvider)
-  ..invalidate(reconcileTopupsProvider)
   ..invalidate(receivingAccountsProvider)
   ..invalidate(financeTransactionsProvider)
+  ..invalidate(financeTopupsProvider)
+  ..invalidate(financeLedgerProvider)
   ..invalidate(financeAuditProvider)
   ..invalidate(adminDashboardProvider);
 
@@ -157,6 +176,9 @@ class _FinanceSummaryView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     void go(String route) => context.push(route);
+    String movements(String kind) => '${Routes.adminFinanceMovements}?tipo=$kind&mes=${s.month}';
+    String topups(TopupFilter f, {bool allMonths = false}) =>
+        '${Routes.adminFinanceReconcile}?estado=${f.key}${allMonths ? '' : '&mes=${s.month}'}';
     const note = TextStyle(color: HyColors.textSecondary);
     return Column(
       key: const Key('finance-summary'),
@@ -175,16 +197,33 @@ class _FinanceSummaryView extends StatelessWidget {
         PanelGrid(
           minTileWidth: 170,
           children: [
-            PanelStat('Comisiones cobradas', null, display: Fmt.bs(s.commissionEarnedBs)),
-            PanelStat('Trabajos con comisión cobrada', s.commissionsCount),
+            PanelStat(
+              'Comisiones cobradas',
+              null,
+              key: const Key('fin-card-commission'),
+              display: Fmt.bs(s.commissionEarnedBs),
+              onTap: () => go(movements('commission_capture')),
+            ),
+            PanelStat(
+              'Trabajos con comisión cobrada',
+              s.commissionsCount,
+              key: const Key('fin-card-commission-jobs'),
+              onTap: () => go(movements('commission_capture')),
+            ),
             if (s.commissionRefundedBs != 0)
-              PanelStat('Devoluciones a profesionales', null, display: Fmt.bs(s.commissionRefundedBs)),
+              PanelStat(
+                'Devoluciones a profesionales',
+                null,
+                key: const Key('fin-card-refunds'),
+                display: Fmt.bs(s.commissionRefundedBs),
+                onTap: () => go(movements('refund')),
+              ),
           ],
         ),
         const Padding(
           padding: EdgeInsets.only(top: HySpacing.xs),
           child: Text(
-            'Lo único que gana la plataforma es la comisión que se cobra de la billetera al cerrar un trabajo. '
+            'Lo único que gana la plataforma es la comisión que se cobra de la billetera del profesional. '
             'Lo que el cliente paga por el trabajo (en efectivo o QR) lo recibe el profesional y no pasa por aquí.',
             style: note,
           ),
@@ -194,26 +233,44 @@ class _FinanceSummaryView extends StatelessWidget {
           minTileWidth: 170,
           children: [
             PanelStat(
-              'Recargas acreditadas (${s.walletFundsReceivedCount})',
+              'Recargas acreditadas',
               null,
+              key: const Key('fin-card-credited'),
               display: Fmt.bs(s.walletFundsReceivedBs),
+              detail: s.walletFundsReceivedCount == 1 ? '1 recarga' : '${s.walletFundsReceivedCount} recargas',
+              onTap: () => go(topups(TopupFilter.credited)),
             ),
-            PanelStat('Conciliadas con el banco', null, display: Fmt.bs(s.walletFundsReconciledBs)),
+            PanelStat(
+              'Conciliadas con el banco',
+              null,
+              key: const Key('fin-card-reconciled'),
+              display: Fmt.bs(s.walletFundsReconciledBs),
+              onTap: () => go(topups(TopupFilter.reconciled)),
+            ),
             PanelStat(
               'Sin verificar en el banco',
               s.walletFundsUnverifiedBs > 0 ? 1 : 0,
+              key: const Key('fin-card-unverified'),
               tone: StatusTone.warning,
               display: Fmt.bs(s.walletFundsUnverifiedBs),
-              onTap: () => go(Routes.adminFinanceReconcile),
+              onTap: () => go(topups(TopupFilter.unverified)),
             ),
             PanelStat(
               'No aparecen en el banco',
               s.walletFundsNotFoundBs > 0 ? 1 : 0,
+              key: const Key('fin-card-not-found'),
               tone: StatusTone.danger,
               display: Fmt.bs(s.walletFundsNotFoundBs),
-              onTap: () => go(Routes.adminFinanceReconcile),
+              onTap: () => go(topups(TopupFilter.notFound)),
             ),
-            if (s.manualAdjustmentsBs != 0) PanelStat('Ajustes manuales', null, display: Fmt.bs(s.manualAdjustmentsBs)),
+            if (s.manualAdjustmentsBs != 0)
+              PanelStat(
+                'Ajustes manuales',
+                null,
+                key: const Key('fin-card-adjustments'),
+                display: Fmt.bs(s.manualAdjustmentsBs),
+                onTap: () => go(movements('adjustment')),
+              ),
           ],
         ),
         const Padding(
@@ -228,19 +285,37 @@ class _FinanceSummaryView extends StatelessWidget {
         PanelGrid(
           minTileWidth: 170,
           children: [
-            PanelStat('Saldos disponibles (${s.walletsCount} billeteras)', null, display: Fmt.bs(s.walletsAvailableBs)),
-            PanelStat('Saldos reservados', null, display: Fmt.bs(s.walletsReservedBs)),
             PanelStat(
-              'Recargas por revisar (${Fmt.bs(s.topupsPendingBs)})',
+              'Saldos disponibles',
+              null,
+              key: const Key('fin-card-available'),
+              display: Fmt.bs(s.walletsAvailableBs),
+              detail: s.walletsCount == 1 ? '1 billetera' : '${s.walletsCount} billeteras',
+              onTap: () => go(Routes.adminFinanceWallets),
+            ),
+            PanelStat(
+              'Saldos reservados',
+              null,
+              key: const Key('fin-card-reserved'),
+              display: Fmt.bs(s.walletsReservedBs),
+              detail: 'Comisiones de trabajos en curso',
+              onTap: () => go('${Routes.adminFinanceWallets}?orden=reservado'),
+            ),
+            PanelStat(
+              'Recargas por revisar',
               s.topupsPending,
+              key: const Key('fin-card-pending'),
               tone: StatusTone.brand,
+              detail: Fmt.bs(s.topupsPendingBs),
               onTap: () => go(Routes.adminTopups),
             ),
             PanelStat(
-              'Acreditadas sin conciliar, todos los meses (${Fmt.bs(s.topupsUnverifiedTotalBs)})',
+              'Acreditadas sin conciliar',
               s.topupsUnverifiedTotal,
+              key: const Key('fin-card-unverified-all'),
               tone: StatusTone.warning,
-              onTap: () => go(Routes.adminFinanceReconcile),
+              detail: '${Fmt.bs(s.topupsUnverifiedTotalBs)} · todos los meses',
+              onTap: () => go(topups(TopupFilter.unverified, allMonths: true)),
             ),
           ],
         ),
@@ -334,55 +409,156 @@ class _FinanceSummaryView extends StatelessWidget {
 }
 
 // ============================================================ Conciliar
-class FinanceReconcilePage extends ConsumerWidget {
-  const FinanceReconcilePage({super.key});
+/// Recargas filtradas por estado y mes: lo que hay detrás de cada tarjeta de
+/// fondos de billeteras. Desde aquí se concilia cada una.
+class FinanceReconcilePage extends ConsumerStatefulWidget {
+  const FinanceReconcilePage({super.key, this.initialFilter = TopupFilter.unverified, this.month});
 
-  static const _tabs = [
-    ('sin_verificar', 'Sin verificar'),
-    ('conciliada', 'Conciliadas'),
-    ('no_encontrada', 'No encontradas'),
-    ('pendiente', 'Por revisar'),
-  ];
+  final TopupFilter initialFilter;
+
+  /// 'YYYY-MM' o null para todos los meses.
+  final String? month;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => DefaultTabController(
-    length: _tabs.length,
-    child: Scaffold(
-      appBar: AppBar(
-        title: const Text('Conciliar recargas'),
-        bottom: TabBar(isScrollable: true, tabs: [for (final (_, label) in _tabs) Tab(text: label)]),
+  ConsumerState<FinanceReconcilePage> createState() => _FinanceReconcilePageState();
+}
+
+class _FinanceReconcilePageState extends ConsumerState<FinanceReconcilePage> {
+  late var _filter = widget.initialFilter;
+  late String? _month = widget.month;
+  var _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final key = (_filter, _month, _query);
+    final value = ref.watch(financeTopupsProvider(key));
+    return Scaffold(
+      appBar: AppBar(title: const Text('Recargas y banco')),
+      body: AdminList<ReconcileTopup>(
+        value: value.whenData((l) => l.items),
+        onRefresh: () => ref.refresh(financeTopupsProvider(key).future),
+        emptyIcon: Icons.account_balance_wallet_outlined,
+        emptyTitle: switch (_filter) {
+          TopupFilter.unverified => 'No hay recargas acreditadas sin conciliar en este periodo.',
+          TopupFilter.reconciled => 'No hay recargas conciliadas en este periodo.',
+          TopupFilter.notFound => 'Ninguna recarga marcada como no encontrada en este periodo.',
+          TopupFilter.pending => 'No hay recargas por revisar.',
+          _ => 'No hay recargas en este periodo.',
+        },
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            drilldownChipRow(
+              [for (final f in TopupFilter.values) (f, f.label)],
+              _filter,
+              (f) => setState(() => _filter = f),
+              'topups-filter',
+            ),
+            const SizedBox(height: HySpacing.xs),
+            _MonthFilter(month: _month, onChanged: (m) => setState(() => _month = m)),
+            DrilldownSearchField(
+              hint: 'Profesional, referencia o número',
+              fieldKey: const Key('topups-search'),
+              onChanged: (q) => setState(() => _query = q),
+            ),
+            const SizedBox(height: HySpacing.xs),
+            if (value.value case final l?) _FinanceCountLine(l, noun: ('recarga', 'recargas')),
+            Padding(
+              padding: const EdgeInsets.only(bottom: HySpacing.sm),
+              child: InfoBanner(
+                text: _filter == TopupFilter.pending
+                    ? 'Estas todavía no están acreditadas. Se revisan en Recargas; después se concilian aquí.'
+                    : 'Busca cada recarga en tu extracto del banco por monto, fecha y referencia. '
+                          'Un comprobante subido no prueba que el dinero llegó. Solo tú puedes marcarla; queda en el historial.',
+              ),
+            ),
+          ],
+        ),
+        itemBuilder: (context, t) => _ReconcileCard(topup: t),
       ),
-      body: TabBarView(children: [for (final (k, _) in _tabs) _ReconcileList(status: k)]),
+    );
+  }
+}
+
+/// "3 recargas · Bs 120,00", y un aviso si la lista no está completa.
+class _FinanceCountLine<T> extends StatelessWidget {
+  const _FinanceCountLine(this.list, {required this.noun});
+
+  final FinanceList<T> list;
+  final (String, String) noun;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: HySpacing.xs),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${list.total} ${list.total == 1 ? noun.$1 : noun.$2} · ${Fmt.bs(list.sumBs)}',
+          key: const Key('finance-count'),
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        if (list.isTruncated)
+          Text(
+            'Mostrando las ${list.items.length} más recientes. Busca o cambia el mes para ver el resto.',
+            style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
+          ),
+        if (list.isPartial)
+          const Text(
+            'Lista parcial: el servidor todavía no tiene la última actualización; se muestran los últimos movimientos.',
+            key: Key('finance-partial'),
+            style: TextStyle(color: HyColors.warning, fontSize: 13),
+          ),
+      ],
     ),
   );
 }
 
-class _ReconcileList extends ConsumerWidget {
-  const _ReconcileList({required this.status});
+/// Mes anterior / siguiente, o todos los meses.
+class _MonthFilter extends StatelessWidget {
+  const _MonthFilter({required this.month, required this.onChanged});
 
-  final String status;
+  final String? month;
+  final ValueChanged<String?> onChanged;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => AdminList<ReconcileTopup>(
-    value: ref.watch(reconcileTopupsProvider(status)),
-    onRefresh: () => ref.refresh(reconcileTopupsProvider(status).future),
-    emptyTitle: switch (status) {
-      'sin_verificar' => 'No hay recargas acreditadas sin conciliar.',
-      'conciliada' => 'Todavía no conciliaste ninguna recarga.',
-      'no_encontrada' => 'Ninguna recarga marcada como no encontrada.',
-      _ => 'No hay recargas por revisar.',
-    },
-    header: Padding(
-      padding: const EdgeInsets.only(bottom: HySpacing.sm),
-      child: InfoBanner(
-        text: status == 'pendiente'
-            ? 'Estas todavía no están acreditadas. Se revisan en Recargas; después se concilian aquí.'
-            : 'Busca cada recarga en tu extracto del banco por monto, fecha y referencia. '
-                  'Solo tú puedes marcarla; queda en el historial.',
-      ),
-    ),
-    itemBuilder: (context, t) => _ReconcileCard(topup: t),
-  );
+  Widget build(BuildContext context) {
+    final now = _monthKey(DateTime.now());
+    String shift(String m, int by) {
+      final p = m.split('-');
+      return _monthKey(DateTime(int.parse(p[0]), int.parse(p[1]) + by));
+    }
+
+    return Row(
+      children: [
+        IconButton(
+          key: const Key('month-prev'),
+          tooltip: 'Mes anterior',
+          onPressed: () => onChanged(shift(month ?? now, -1)),
+          icon: const Icon(Icons.chevron_left),
+        ),
+        Expanded(
+          child: Text(
+            month == null ? 'Todos los meses' : _monthLabel(month!),
+            key: const Key('month-label'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+        ),
+        IconButton(
+          key: const Key('month-next'),
+          tooltip: 'Mes siguiente',
+          onPressed: month == null || month == now ? null : () => onChanged(shift(month!, 1)),
+          icon: const Icon(Icons.chevron_right),
+        ),
+        TextButton(
+          key: const Key('month-all'),
+          onPressed: () => onChanged(month == null ? now : null),
+          child: Text(month == null ? 'Este mes' : 'Todos'),
+        ),
+      ],
+    );
+  }
 }
 
 class _ReconcileCard extends ConsumerWidget {
@@ -987,10 +1163,13 @@ class _ReceivingAccountFormPageState extends ConsumerState<ReceivingAccountFormP
 
 // ============================================================ Movimientos
 class FinanceMovementsPage extends ConsumerStatefulWidget {
-  const FinanceMovementsPage({super.key, this.initialKind, this.professionalId, this.professionalName});
+  const FinanceMovementsPage({super.key, this.initialKind, this.month, this.professionalId, this.professionalName});
 
   /// Tipo con el que abre (por ejemplo 'commission_capture' desde el panel).
   final String? initialKind;
+
+  /// Mes 'AAAA-MM' con el que abre; null = todos los meses.
+  final String? month;
 
   /// Solo los movimientos de esta billetera.
   final String? professionalId;
@@ -1002,6 +1181,8 @@ class FinanceMovementsPage extends ConsumerStatefulWidget {
 
 class _FinanceMovementsPageState extends ConsumerState<FinanceMovementsPage> {
   late String? _kind = _kinds.any((k) => k.$1 == widget.initialKind) ? widget.initialKind : null;
+  late String? _month = widget.month;
+  var _query = '';
 
   static const _kinds = [
     (null, 'Todos'),
@@ -1012,93 +1193,106 @@ class _FinanceMovementsPageState extends ConsumerState<FinanceMovementsPage> {
   ];
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.professionalName == null ? 'Movimientos' : 'Movimientos de ${widget.professionalName}'),
-    ),
-    body: AdminList<FinanceTransaction>(
-      value: ref.watch(financeTransactionsProvider((_kind, widget.professionalId))),
-      onRefresh: () => ref.refresh(financeTransactionsProvider((_kind, widget.professionalId)).future),
-      emptyIcon: Icons.receipt_long_outlined,
-      emptyTitle: 'Sin movimientos de este tipo.',
-      header: Padding(
-        padding: const EdgeInsets.only(bottom: HySpacing.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (_kind == 'commission_capture')
-              const Padding(
-                padding: EdgeInsets.only(bottom: HySpacing.xs),
-                child: InfoBanner(
-                  icon: Icons.info_outline,
-                  text:
-                      'Las comisiones son el único ingreso de la plataforma. Muestra los últimos 100 movimientos; '
-                      'el total del mes está en Finanzas y Bancos.',
-                ),
-              ),
-            Wrap(
-              spacing: HySpacing.xs,
-              runSpacing: 4,
-              children: [
-                for (final (k, label) in _kinds)
-                  ChoiceChip(
-                    key: Key('movements-kind-${k ?? 'todos'}'),
-                    label: Text(label),
-                    selected: _kind == k,
-                    onSelected: (_) => setState(() => _kind = k),
-                  ),
-              ],
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) {
+    final key = (_kind, _month, _query, widget.professionalId);
+    final value = ref.watch(financeLedgerProvider(key));
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.professionalName == null ? 'Movimientos' : 'Movimientos de ${widget.professionalName}'),
       ),
-      itemBuilder: (context, t) {
-        final delta = t.availableDelta + t.reservedDelta;
-        return AppCard(
-          key: Key('movement-${t.id}'),
-          padding: const EdgeInsets.symmetric(horizontal: HySpacing.md, vertical: HySpacing.sm),
+      body: AdminList<FinanceTransaction>(
+        value: value.whenData((l) => l.items),
+        onRefresh: () => ref.refresh(financeLedgerProvider(key).future),
+        emptyIcon: Icons.receipt_long_outlined,
+        emptyTitle: _month == null ? 'Sin movimientos de este tipo.' : 'Sin movimientos de este tipo en este mes.',
+        header: Padding(
+          padding: const EdgeInsets.only(bottom: HySpacing.sm),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(t.label, style: const TextStyle(fontWeight: FontWeight.w800)),
+              if (_kind == 'commission_capture')
+                const Padding(
+                  padding: EdgeInsets.only(bottom: HySpacing.xs),
+                  child: InfoBanner(
+                    icon: Icons.info_outline,
+                    text:
+                        'Las comisiones son el único ingreso de la plataforma. El cliente le paga al profesional '
+                        'en efectivo o QR; la comisión sale de la billetera del profesional.',
                   ),
-                  Text(
-                    t.entryType == 'commission_capture' ? '+${Fmt.bs(t.platformRevenue)}' : Fmt.bs(delta),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: t.entryType == 'commission_capture' ? HyColors.success : HyColors.text,
-                    ),
-                  ),
-                ],
-              ),
-              Text(
-                [
-                  t.professionalName ?? 'Profesional',
-                  Fmt.dateTime(t.createdAt),
-                  if (t.bookingCode != null) 'Pedido ${t.bookingCode}',
-                ].join(' · '),
-                style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
-              ),
-              if (t.entryType == 'commission_capture')
-                const Text('Ingreso de la plataforma', style: TextStyle(color: HyColors.textSecondary, fontSize: 13))
-              else if (t.entryType == 'topup')
-                Text(
-                  'Saldo del profesional · Banco: ${t.topupBankStatus?.label ?? BankStatus.unverified.label}',
-                  style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
                 ),
-              if ((t.reference ?? '').isNotEmpty)
-                Text('Referencia: ${t.reference}', style: const TextStyle(color: HyColors.textMuted, fontSize: 13)),
-              if ((t.note ?? '').isNotEmpty)
-                Text(t.note!, style: const TextStyle(color: HyColors.textMuted, fontSize: 13)),
+              drilldownChipRow(_kinds, _kind, (k) => setState(() => _kind = k), 'movements-kind'),
+              const SizedBox(height: HySpacing.xs),
+              _MonthFilter(month: _month, onChanged: (m) => setState(() => _month = m)),
+              DrilldownSearchField(
+                hint: 'Profesional, pedido o referencia',
+                fieldKey: const Key('movements-search'),
+                onChanged: (q) => setState(() => _query = q),
+              ),
+              const SizedBox(height: HySpacing.xs),
+              if (value.value case final l?) _FinanceCountLine(l, noun: ('movimiento', 'movimientos')),
             ],
           ),
-        );
-      },
-    ),
-  );
+        ),
+        itemBuilder: (context, t) => _MovementCard(t),
+      ),
+    );
+  }
+}
+
+class _MovementCard extends StatelessWidget {
+  const _MovementCard(this.t);
+
+  final FinanceTransaction t;
+
+  @override
+  Widget build(BuildContext context) {
+    final delta = t.availableDelta + t.reservedDelta;
+    final small = const TextStyle(color: HyColors.textSecondary, fontSize: 13);
+    return AppCard(
+      key: Key('movement-${t.id}'),
+      padding: const EdgeInsets.symmetric(horizontal: HySpacing.md, vertical: HySpacing.sm),
+      onTap: t.bookingId == null ? null : () => context.push(Routes.opsBooking(t.bookingId!)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(t.label, style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+              Text(
+                t.entryType == 'commission_capture' ? '+${Fmt.bs(t.platformRevenue)}' : Fmt.bs(delta),
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: t.entryType == 'commission_capture' ? HyColors.success : HyColors.text,
+                ),
+              ),
+              if (t.bookingId != null) const Icon(Icons.chevron_right, color: HyColors.textMuted),
+            ],
+          ),
+          Text(
+            [
+              t.professionalName ?? 'Profesional',
+              Fmt.dateTime(t.createdAt),
+              if (t.bookingCode != null) 'Pedido ${t.bookingCode}',
+              if (t.categoryName != null) t.categoryName!,
+            ].join(' · '),
+            style: small,
+          ),
+          if (t.entryType == 'commission_capture')
+            Text('Ingreso de la plataforma', style: small)
+          else if (t.entryType == 'topup')
+            Text(
+              'Saldo del profesional · Banco: ${t.topupBankStatus?.label ?? BankStatus.unverified.label}',
+              style: small,
+            ),
+          if ((t.reference ?? '').isNotEmpty)
+            Text('Referencia: ${t.reference}', style: const TextStyle(color: HyColors.textMuted, fontSize: 13)),
+          if ((t.note ?? '').isNotEmpty) Text(t.note!, style: const TextStyle(color: HyColors.textMuted, fontSize: 13)),
+        ],
+      ),
+    );
+  }
 }
 
 // ============================================================ Historial

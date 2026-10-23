@@ -4315,6 +4315,42 @@ class DemoBackend
   }
 
   @override
+  Future<FinanceList<FinanceTransaction>> financeLedger({
+    String? kind,
+    DateTime? month,
+    String query = '',
+    String? professionalId,
+  }) async {
+    final rows = (await financeTransactions(kind: kind, limit: 1 << 20, professionalId: professionalId))
+        .where((t) => month == null || (t.createdAt.year == month.year && t.createdAt.month == month.month))
+        .where((t) => _hit(query, [t.professionalName, t.bookingCode, t.reference, t.note]))
+        .toList();
+    return FinanceList(
+      rows.take(100).toList(),
+      total: rows.length,
+      sumBs: rows.fold(0.0, (s, t) => s + (t.entryType == 'commission_capture' ? t.platformRevenue : t.availableDelta)),
+    );
+  }
+
+  @override
+  Future<FinanceList<ReconcileTopup>> financeTopups(TopupFilter filter, {DateTime? month, String query = ''}) async {
+    final rows = (await topupsForReconciliation('todas'))
+        .where(filter.matches)
+        .where((t) {
+          final at = t.isCredited ? (t.reviewedAt ?? t.createdAt) : t.createdAt;
+          return month == null || (at.year == month.year && at.month == month.month);
+        })
+        .where((t) => _hit(query, [t.professionalName, t.reference, t.bankReference, '${t.id}']))
+        .toList();
+    return FinanceList(rows.take(100).toList(), total: rows.length, sumBs: rows.fold(0.0, (s, t) => s + t.amount));
+  }
+
+  bool _hit(String query, List<String?> fields) {
+    final q = _norm(query.trim());
+    return q.isEmpty || fields.whereType<String>().any((f) => _norm(f).contains(q));
+  }
+
+  @override
   Future<List<ReconcileTopup>> topupsForReconciliation(String bankStatus) async {
     await _latency(150);
     _admin();

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'data/models/booking.dart';
 import 'data/models/drilldown.dart';
+import 'data/models/finance.dart';
 import 'data/models/staff.dart';
 import 'data/models/user.dart';
 import 'data/providers.dart';
@@ -481,10 +482,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Finanzas y Bancos: solo el propietario (no está en _managerAdminRoutes).
       _route(path: Routes.adminFinance, builder: (_, _) => const FinancePage()),
       _route(path: Routes.adminFinanceAccounts, builder: (_, _) => const ReceivingAccountsPage()),
-      _route(path: Routes.adminFinanceReconcile, builder: (_, _) => const FinanceReconcilePage()),
+      _route(
+        path: Routes.adminFinanceReconcile,
+        builder: (_, s) => FinanceReconcilePage(
+          initialFilter: TopupFilter.parse(s.uri.queryParameters['estado']),
+          month: s.uri.queryParameters['mes'],
+        ),
+      ),
       _route(
         path: Routes.adminFinanceMovements,
-        builder: (_, s) => FinanceMovementsPage(initialKind: s.uri.queryParameters['tipo']),
+        builder: (_, s) =>
+            FinanceMovementsPage(initialKind: s.uri.queryParameters['tipo'], month: s.uri.queryParameters['mes']),
       ),
       _route(path: Routes.adminFinanceAudit, builder: (_, _) => const FinanceAuditPage()),
       _route(path: Routes.ownerTeamAdd, builder: (_, _) => const AddStaffPage()),

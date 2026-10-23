@@ -5,10 +5,14 @@ import 'package:handimanya/app.dart';
 import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/core/utils/formatters.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
+import 'package:handimanya/data/models/drilldown.dart';
 import 'package:handimanya/data/models/finance.dart';
 import 'package:handimanya/data/models/staff.dart';
 import 'package:handimanya/data/models/wallet.dart';
 import 'package:handimanya/data/providers.dart';
+import 'package:handimanya/features/admin/admin_money_pages.dart';
+import 'package:handimanya/features/admin/drilldown_pages.dart';
+import 'package:handimanya/features/admin/finance_pages.dart';
 import 'package:handimanya/router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -230,6 +234,81 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('cada tarjeta de Finanzas abre su lista, con el mismo total y filtros', (tester) async {
+    final (backend, c) = await _pump(tester);
+    // Una recarga acreditada este mes, sin conciliar.
+    final t = (await backend.topupsForReconciliation('pendiente')).first;
+    await tester.runAsync(() => backend.reviewTopup(t.id, approve: true));
+    await _go(tester, c, Routes.adminFinance);
+    // La etiqueta ya no se corta ("Saldos disponibles (0").
+    expect(find.text('Saldos disponibles'), findsOneWidget);
+    expect(find.textContaining('Saldos disponibles ('), findsNothing);
+
+    // Cada tarjeta abre la pantalla correcta, ya filtrada, y "atrás" vuelve.
+    final month = '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}';
+    bool movements(String kind) => tester
+        .widgetList<FinanceMovementsPage>(find.byType(FinanceMovementsPage))
+        .any((p) => p.initialKind == kind && p.month == month);
+    bool topups(TopupFilter f, String? m) => tester
+        .widgetList<FinanceReconcilePage>(find.byType(FinanceReconcilePage))
+        .any((p) => p.initialFilter == f && p.month == m);
+    bool wallets(WalletSort s) =>
+        tester.widgetList<OwnerWalletsPage>(find.byType(OwnerWalletsPage)).any((p) => p.initialSort == s);
+    final cases = <(String, bool Function())>[
+      ('fin-card-commission', () => movements('commission_capture')),
+      ('fin-card-commission-jobs', () => movements('commission_capture')),
+      ('fin-card-credited', () => topups(TopupFilter.credited, month)),
+      ('fin-card-reconciled', () => topups(TopupFilter.reconciled, month)),
+      ('fin-card-unverified', () => topups(TopupFilter.unverified, month)),
+      ('fin-card-not-found', () => topups(TopupFilter.notFound, month)),
+      ('fin-card-available', () => wallets(WalletSort.available)),
+      ('fin-card-reserved', () => wallets(WalletSort.reserved)),
+      ('fin-card-pending', () => find.byType(AdminTopupsPage).evaluate().isNotEmpty),
+      ('fin-card-unverified-all', () => topups(TopupFilter.unverified, null)),
+    ];
+    for (final (card, opened) in cases) {
+      await _tap(tester, find.byKey(Key(card)));
+      expect(opened(), isTrue, reason: card);
+      await tester.binding.handlePopRoute(); // atrás del sistema
+      await tester.pumpAndSettle();
+      expect(find.byKey(Key(card)), findsOneWidget, reason: 'vuelve a Finanzas desde $card');
+    }
+
+    // La lista de "sin conciliar" de este mes trae la recarga y su total.
+    await _tap(tester, find.byKey(const Key('fin-card-unverified')));
+    expect(find.byKey(Key('reconcile-${t.id}')), findsOneWidget);
+    final list = (await tester.runAsync(() => backend.financeTopups(TopupFilter.unverified, month: DateTime.now())))!;
+    expect(
+      find.text('${list.total} ${list.total == 1 ? 'recarga' : 'recargas'} · ${Fmt.bs(list.sumBs)}'),
+      findsOneWidget,
+    );
+    // Buscar algo que no existe deja la lista vacía, con su mensaje.
+    await tester.enterText(find.byKey(const Key('topups-search')), 'zzz-no-existe');
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+    expect(find.byKey(Key('reconcile-${t.id}')), findsNothing);
+    expect(find.textContaining('No hay recargas acreditadas sin conciliar'), findsOneWidget);
+    // Otro estado, con chips.
+    await tester.enterText(find.byKey(const Key('topups-search')), '');
+    await tester.pump(const Duration(seconds: 1));
+    await _tap(tester, find.byKey(const Key('topups-filter-TopupFilter.reconciled')));
+    expect(find.byKey(Key('reconcile-${t.id}')), findsNothing, reason: 'todavía no está conciliada');
+    // Todos los meses.
+    await _tap(tester, find.byKey(const Key('topups-filter-TopupFilter.credited')));
+    await _tap(tester, find.byKey(const Key('month-all')));
+    expect(find.text('Todos los meses'), findsOneWidget);
+    expect(find.byKey(Key('reconcile-${t.id}')), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    // Movimientos: recargas del mes, con referencia y estado del banco.
+    await _go(tester, c, '${Routes.adminFinanceMovements}?tipo=topup');
+    expect(find.text('Todos los meses'), findsOneWidget, reason: 'sin mes en el enlace');
+    expect(find.textContaining('Banco: Sin verificar'), findsWidgets);
+    expect(find.byKey(const Key('finance-count')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('cuenta de cobro: atrás con cambios pregunta, guardar pide código y la muestra enmascarada', (
     tester,
   ) async {
@@ -324,7 +403,13 @@ void main() {
     await tester.pumpWidget(UncontrolledProviderScope(container: c, child: const HandiManYaApp()));
     await tester.pumpAndSettle();
     await loginWithPhone(tester, DemoBackend.managerPhone);
-    for (final r in [Routes.adminFinance, Routes.adminFinanceAccounts, Routes.ownerTeamAdd]) {
+    for (final r in [
+      Routes.adminFinance,
+      Routes.adminFinanceAccounts,
+      Routes.adminFinanceReconcile,
+      Routes.adminFinanceMovements,
+      Routes.ownerTeamAdd,
+    ]) {
       c.read(routerProvider).go(r);
       await tester.pumpAndSettle();
       expect(_location(c), Routes.manager, reason: r);
