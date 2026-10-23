@@ -95,17 +95,23 @@ void main() {
       }
     });
 
-    test('Android 12+ no muestra un segundo logo (ni el ícono sobre blanco): solo el fondo', () {
-      // El logo grande no entra en el círculo de 192 dp que Android 12+ deja
-      // ver; recortado sería un segundo logo distinto antes del de Flutter.
-      final half = SplashPage.logoSize / 2;
-      expect(half.width * half.width + half.height * half.height, greaterThan(96 * 96));
+    test('Android 12+ (prueba): el logo chico entra entero en el círculo y crece hasta el de Flutter', () {
+      // Lienzo de 288 dp; Android deja ver un círculo de 192 dp.
+      final small = Size(SplashPage.logoSize.width * 36 / 46, 36);
+      expect(small.width * small.width / 4 + small.height * small.height / 4, lessThan(96 * 96));
       for (final dir in ['values-v31', 'values-night-v31']) {
         final s = read('$dir/styles.xml');
         expect(s, contains('windowSplashScreenBackground">@color/splash_background'));
-        expect(s, contains('windowSplashScreenAnimatedIcon">@drawable/splash_blank'));
+        expect(s, contains('windowSplashScreenAnimatedIcon">@drawable/splash_icon'));
       }
-      expect(read('drawable/splash_blank.xml'), contains('@android:color/transparent'));
+      for (final (bucket, scale) in [('mdpi', 1.0), ('hdpi', 1.5), ('xhdpi', 2.0), ('xxhdpi', 3.0), ('xxxhdpi', 4.0)]) {
+        expect(_pngSize('$res/drawable-$bucket/splash_icon.png').width, closeTo(288 * scale, 1), reason: bucket);
+      }
+      // MainActivity agranda 46/36: el mismo alto que el logo de SplashPage.
+      final activity = File('android/app/src/main/kotlin/bo/handimanya/handimanya/MainActivity.kt').readAsStringSync();
+      expect(activity, contains('LOGO_GROWTH = 46f / 36f'));
+      expect(SplashPage.logoSize.height, 46);
+      expect(activity, contains('view.remove()'));
       for (final f in ['drawable/launch_background.xml', 'drawable-v21/launch_background.xml']) {
         expect(read(f), allOf(contains('@color/splash_background'), contains('@drawable/splash_logo')));
       }

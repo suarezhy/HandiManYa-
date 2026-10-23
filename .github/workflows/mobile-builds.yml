@@ -144,7 +144,8 @@ jobs:
 
   web-dev:
     name: Web de prueba (dev, para iPhone y iPad)
-    if: ${{ (inputs.entorno || 'dev') == 'dev' }}
+    # Las compilaciones de prueba (ramas experiment/) no reemplazan la web de dev.
+    if: ${{ (inputs.entorno || 'dev') == 'dev' && !startsWith(github.ref, 'refs/heads/experiment/') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

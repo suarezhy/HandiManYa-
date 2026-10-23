@@ -19,6 +19,11 @@ ORANGE = (0xF2, 0x55, 0x00, 255)
 # de arranque, por eso ahí ese ícono va vacío (drawable/splash_blank.xml) y el
 # logo lo muestra solo la pantalla de Flutter, sobre el mismo fondo.
 LOGO_H = 46
+# Prueba Android 12+: el mismo logo a 36 dp de alto entra entero en el círculo
+# de 192 dp del ícono de arranque del sistema (lienzo de 288 dp); al pasar a
+# Flutter, MainActivity lo agranda a 46 dp (46/36) y queda igual a SplashPage.
+A12_LOGO_H = 36
+ICON_CANVAS = 288
 
 
 def draw_logo(scale: float) -> Image.Image:
@@ -47,11 +52,11 @@ def draw_logo(scale: float) -> Image.Image:
     return img
 
 
-def logo_at(scale: float) -> Image.Image:
+def logo_at(scale: float, height: float = LOGO_H) -> Image.Image:
     """Dibuja a 8x y reduce, para que todas las densidades midan lo mismo en dp."""
     big = draw_logo(8)
-    width_dp = round(big.width / 8)
-    return big.resize((round(width_dp * scale), round(LOGO_H * scale)), Image.LANCZOS)
+    width_dp = round(big.width / 8) * height / LOGO_H
+    return big.resize((round(width_dp * scale), round(height * scale)), Image.LANCZOS)
 
 
 def save(img: Image.Image, path: Path) -> None:
@@ -66,6 +71,12 @@ def main() -> None:
         logo = logo_at(scale)
         # Android anterior a 12: imagen centrada sobre el color de fondo.
         save(logo, res / f'drawable-{bucket}/splash_logo.png')
+        # Android 12+: el logo chico centrado en el lienzo de 288 dp del ícono.
+        small = logo_at(scale, A12_LOGO_H)
+        side = round(ICON_CANVAS * scale)
+        icon = Image.new('RGBA', (side, side), (0, 0, 0, 0))
+        icon.alpha_composite(small, ((side - small.width) // 2, (side - small.height) // 2))
+        save(icon, res / f'drawable-{bucket}/splash_icon.png')
     # Flutter: el mismo dibujo, a 1x, 2x, 3x y 4x.
     save(logo_at(1), ROOT / 'assets/brand/splash_logo.png')
     for n in (2, 3, 4):
