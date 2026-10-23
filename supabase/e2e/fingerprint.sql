@@ -26,8 +26,14 @@ select 'wallets|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', p
   from public.wallets where professional_id not in (select id from e2e_ids);
 select 'wallet_ledger|' || count(*) || '|' || md5(coalesce(string_agg(id::text, ';' order by id), ''))
   from public.wallet_ledger where professional_id not in (select id from e2e_ids);
-select 'topup_requests|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, status), ';' order by id), ''))
-  from public.topup_requests where professional_id not in (select id from e2e_ids);
+select 'topup_requests|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, status, to_jsonb(t) ->> 'bank_status',
+                                                                          to_jsonb(t) ->> 'bank_reference'), ';' order by id), ''))
+  from public.topup_requests t where professional_id not in (select id from e2e_ids);
+-- Cuentas de cobro (desde 0038; antes no existe y no se imprime nada).
+select format($f$select 'receiving_accounts|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, label, bank_name,
+  holder_name, account_number, qr_path, verification, is_active), ';' order by id), '')) from public.receiving_accounts
+  where created_by not in (select id from e2e_ids)$f$)
+where to_regclass('public.receiving_accounts') is not null \gexec
 select 'bookings|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, status), ';' order by id), ''))
   from public.bookings where customer_id not in (select id from e2e_ids)
    and coalesce(professional_id, customer_id) not in (select id from e2e_ids);

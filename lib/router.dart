@@ -17,6 +17,7 @@ import 'features/admin/admin_services_pages.dart';
 import 'features/admin/admin_home_page.dart';
 import 'features/admin/admin_money_pages.dart';
 import 'features/admin/admin_users_page.dart';
+import 'features/admin/finance_pages.dart';
 import 'features/admin/ai_control_center_page.dart';
 import 'features/booking/booking_detail_page.dart';
 import 'features/booking/live_trip.dart';
@@ -91,6 +92,12 @@ abstract final class Routes {
   static const adminAudit = '/admin/auditoria';
   static const adminAi = '/admin/centro-ia';
   static const adminCosts = '/admin/costos';
+  static const adminFinance = '/admin/finanzas';
+  static const adminFinanceAccounts = '/admin/finanzas/cuentas';
+  static const adminFinanceReconcile = '/admin/finanzas/conciliar';
+  static const adminFinanceMovements = '/admin/finanzas/movimientos';
+  static const adminFinanceAudit = '/admin/finanzas/historial';
+  static const ownerTeamAdd = '/admin/equipo/agregar';
   static const ownerManage = '/admin/gestion';
   static const ownerTeam = '/admin/equipo';
   static const ownerProfile = '/admin/perfil';
@@ -455,6 +462,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       _route(path: Routes.adminAudit, builder: (_, _) => const AdminAuditPage()),
       _route(path: Routes.adminCosts, builder: (_, _) => const AdminCostsPage()),
+      // Finanzas y Bancos: solo el propietario (no está en _managerAdminRoutes).
+      _route(path: Routes.adminFinance, builder: (_, _) => const FinancePage()),
+      _route(path: Routes.adminFinanceAccounts, builder: (_, _) => const ReceivingAccountsPage()),
+      _route(path: Routes.adminFinanceReconcile, builder: (_, _) => const FinanceReconcilePage()),
+      _route(path: Routes.adminFinanceMovements, builder: (_, _) => const FinanceMovementsPage()),
+      _route(path: Routes.adminFinanceAudit, builder: (_, _) => const FinanceAuditPage()),
+      _route(path: Routes.ownerTeamAdd, builder: (_, _) => const AddStaffPage()),
     ],
   );
 });

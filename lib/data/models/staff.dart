@@ -293,6 +293,7 @@ class StaffMember {
     required this.role,
     required this.status,
     this.statusReason,
+    this.phoneMasked,
     this.openCases = 0,
     this.resolved7d = 0,
     this.avgFirstResponseMin,
@@ -303,6 +304,9 @@ class StaffMember {
   final StaffRole role;
   final String status;
   final String? statusReason;
+
+  /// "+591 7••• ••05": nunca el número completo.
+  final String? phoneMasked;
   final int openCases;
   final int resolved7d;
   final int? avgFirstResponseMin;
@@ -321,9 +325,62 @@ class StaffMember {
     role: StaffRole.parse(m['role'] as String?) ?? StaffRole.employee,
     status: m['status'] as String? ?? 'active',
     statusReason: m['status_reason'] as String?,
+    phoneMasked: m['phone_masked'] as String?,
     openCases: (m['open_cases'] as num?)?.toInt() ?? 0,
     resolved7d: (m['resolved_7d'] as num?)?.toInt() ?? 0,
     avgFirstResponseMin: (m['avg_first_response_min'] as num?)?.toInt(),
+  );
+}
+
+/// Una cuenta encontrada al buscar a quién agregar al equipo. El servidor
+/// (owner_staff_candidates) dice si puede recibir un rol y, si no, por qué.
+class StaffCandidate {
+  const StaffCandidate({
+    required this.id,
+    required this.fullName,
+    this.phoneMasked,
+    this.cityName,
+    this.staffRole,
+    this.staffStatus,
+    required this.eligible,
+    this.reason,
+  });
+
+  final String id;
+  final String fullName;
+  final String? phoneMasked;
+  final String? cityName;
+
+  /// Rol y estado en el equipo, si ya lo tuvo.
+  final StaffRole? staffRole;
+  final String? staffStatus;
+  final bool eligible;
+
+  /// self, owner, suspended, phone_unconfirmed o already_staff.
+  final String? reason;
+
+  String? get reasonLabel => switch (reason) {
+    null => null,
+    'self' => 'Es tu cuenta',
+    'owner' => 'Es el Propietario',
+    'suspended' => 'La cuenta está suspendida',
+    'phone_unconfirmed' => 'No confirmó su celular',
+    'already_staff' => 'Ya es ${staffRole?.label ?? 'del equipo'}',
+    _ => 'No disponible',
+  };
+
+  /// Antes tuvo un rol (suspendido o sin acceso): dar el rol lo reactiva.
+  bool get wasStaff => staffRole != null && staffStatus != 'active';
+
+  factory StaffCandidate.fromMap(Map<String, dynamic> m) => StaffCandidate(
+    id: m['id'] as String,
+    fullName: m['full_name'] as String? ?? '',
+    phoneMasked: m['phone_masked'] as String?,
+    cityName: m['city_name'] as String?,
+    staffRole: StaffRole.parse(m['staff_role'] as String?),
+    staffStatus: m['staff_status'] as String?,
+    eligible: m['eligible'] as bool? ?? false,
+    reason: m['reason'] as String?,
   );
 }
 

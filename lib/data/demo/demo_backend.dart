@@ -5,11 +5,13 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../core/utils/app_error.dart';
+import '../../core/utils/formatters.dart';
 import '../models/admin.dart';
 import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/costs.dart';
+import '../models/finance.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
@@ -39,7 +41,8 @@ class DemoBackend
         SafetyRepository,
         AdminRepository,
         StaffRepository,
-        AiControlRepository {
+        AiControlRepository,
+        FinanceRepository {
   DemoBackend({this.simulateDelays = true, this.codeCooldown = const Duration(seconds: 60)}) {
     _seed();
     _seedAdmin();
@@ -2666,6 +2669,7 @@ class DemoBackend
         createdAt: t.createdAt,
       );
       if (approve) {
+        _topupCreditedAt[t.id] = DateTime.now();
         _post(e.key, LedgerType.topup, t.amount, 0, 'Recarga acreditada');
         _notify(e.key, 'topup', 'Recarga acreditada', 'Sumamos ${t.amount.toStringAsFixed(2)} Bs a tu billetera.');
       } else {
@@ -3786,25 +3790,84 @@ class DemoBackend
   }
 
   @override
-  Future<void> grantStaff(String userId, StaffRole role) async {
+  Future<List<StaffCandidate>> staffCandidates(String query) async {
+    await _latency(200);
+    final owner = _admin();
+    final q = query.trim().toLowerCase();
+    if (q.length < 2) return const [];
+    var digits = query.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 8) digits = '591$digits';
+    final list = [
+      for (final a in _accounts.values)
+        if (a.fullName.toLowerCase().contains(q) ||
+            (digits.length >= 4 && (a.phone ?? '').replaceAll(RegExp(r'\D'), '').contains(digits)))
+          () {
+            final st = _staff[a.id];
+            final reason = a.id == owner.id
+                ? 'self'
+                : a.roles.contains(AppRole.admin)
+                ? 'owner'
+                : a.suspendedAt != null
+                ? 'suspended'
+                : a.phone == null
+                ? 'phone_unconfirmed'
+                : st?.status == 'active'
+                ? 'already_staff'
+                : null;
+            return StaffCandidate(
+              id: a.id,
+              fullName: a.fullName,
+              phoneMasked: maskPhone(a.phone),
+              cityName: a.cityId == null ? null : _cityName(a.cityId!),
+              staffRole: st?.role,
+              staffStatus: st?.status,
+              eligible: reason == null,
+              reason: reason,
+            );
+          }(),
+    ]..sort((a, b) => a.eligible == b.eligible ? a.fullName.compareTo(b.fullName) : (a.eligible ? -1 : 1));
+    return list.take(20).toList();
+  }
+
+  /// Como hmy_require_strong_confirmation: solo un código verificado recién.
+  void _requireStrong(String? method) {
+    if (method != 'otp') throw AppError.from('HMY_CONFIRMATION_REQUIRED');
+    _requireConfirmation('otp');
+  }
+
+  @override
+  Future<void> grantStaff(String userId, StaffRole role, {required String authMethod}) async {
     await _latency();
     final owner = _admin();
     if (role == StaffRole.owner) throw AppError.from('HMY_INVALID_ROLE');
     final a = _account(userId);
-    if (a == null || a.phone == null || a.suspendedAt != null) throw AppError.from('HMY_STAFF_ACCOUNT_REQUIRED');
-    if (a.id == owner.id || a.roles.contains(AppRole.admin)) throw AppError.from('HMY_FORBIDDEN');
+    if (a == null || a.id == owner.id || a.roles.contains(AppRole.admin)) throw AppError.from('HMY_FORBIDDEN');
+    if (a.phone == null || a.suspendedAt != null) throw AppError.from('HMY_STAFF_ACCOUNT_REQUIRED');
+    final old = _staff[userId];
+    if (old != null && old.status == 'active' && old.role == role) throw AppError.from('HMY_ALREADY_STAFF');
+    _requireStrong(authMethod);
     _staff[userId] = _Staff(role);
-    _log('staff.grant', 'staff_members', userId, {'role': role.key});
+    _log('staff.grant', 'staff_members', userId, {
+      'role': role.key,
+      'previous_role': ?old?.role.key,
+      'previous_status': ?old?.status,
+      'auth_method': authMethod,
+    });
   }
 
   @override
-  Future<void> setStaffStatus(String userId, String status, {String? reason}) async {
+  Future<void> setStaffStatus(String userId, String status, {String? reason, String? authMethod}) async {
     await _latency();
     _admin();
     if (!const {'active', 'suspended', 'revoked'}.contains(status)) throw AppError.from('HMY_INVALID_STATUS');
     if (status != 'active' && (reason ?? '').trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
     final st = _staff[userId];
     if (st == null) throw AppError.from('HMY_NOT_FOUND');
+    final previous = st.status;
+    if (status == 'active') {
+      if (_account(userId)?.suspendedAt != null) throw AppError.from('HMY_STAFF_ACCOUNT_REQUIRED');
+      _requireStrong(authMethod);
+    }
     st
       ..status = status
       ..reason = status == 'active' ? null : reason!.trim();
@@ -3817,9 +3880,335 @@ class DemoBackend
     }
     _log('staff.$status', 'staff_members', userId, {
       'reason': ?reason?.trim(),
+      'previous_status': previous,
       'released_cases': ?(released == 0 ? null : released),
+      'auth_method': ?authMethod,
     });
   }
+
+  // ------------------------------------------------- Finanzas y Bancos (demo)
+  final _receiving = <int, _Receiving>{};
+  final _bankChecks = <int, ({BankStatus status, String? reference, int? account, DateTime at})>{};
+  final _topupCreditedAt = <int, DateTime>{};
+  final _receivingQr = <String, Uint8List>{};
+
+  Iterable<(String, TopupRequest)> get _allTopups => [
+    for (final e in _topups.entries)
+      for (final t in e.value) (e.key, t),
+  ];
+
+  BankStatus _bankOf(int topupId) => _bankChecks[topupId]?.status ?? BankStatus.unverified;
+
+  @override
+  Future<FinanceSummary> financeSummary({DateTime? month}) async {
+    await _latency(200);
+    _admin();
+    final m = month ?? DateTime.now();
+    bool inMonth(DateTime d, DateTime ref) => d.year == ref.year && d.month == ref.month;
+    final ledger = _ledger.values.expand((l) => l);
+    double commission(DateTime ref) => ledger
+        .where((l) => l.type == LedgerType.commissionCapture && inMonth(l.createdAt, ref))
+        .fold(0.0, (t, l) => t - (l.availableDelta + l.reservedDelta));
+    final credited = [
+      for (final (pro, t) in _allTopups)
+        if (t.status == TopupStatus.approved) (pro, t, _topupCreditedAt[t.id] ?? t.createdAt),
+    ];
+    double funds(DateTime ref, [BankStatus? status]) => credited
+        .where((c) => inMonth(c.$3, ref) && (status == null || _bankOf(c.$2.id) == status))
+        .fold(0.0, (t, c) => t + c.$2.amount);
+    final pending = _allTopups.where((p) => p.$2.status == TopupStatus.pending).map((p) => p.$2).toList();
+    final unverified = credited.where((c) => _bankOf(c.$2.id) == BankStatus.unverified).toList();
+    String key(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
+    return FinanceSummary(
+      month: key(m),
+      timezone: 'America/La_Paz',
+      generatedAt: DateTime.now(),
+      commissionEarnedBs: commission(m),
+      commissionsCount: ledger.where((l) => l.type == LedgerType.commissionCapture && inMonth(l.createdAt, m)).length,
+      commissionRefundedBs: ledger
+          .where((l) => l.type == LedgerType.refund && inMonth(l.createdAt, m))
+          .fold(0.0, (t, l) => t + l.availableDelta),
+      walletFundsReceivedBs: funds(m),
+      walletFundsReceivedCount: credited.where((c) => inMonth(c.$3, m)).length,
+      walletFundsReconciledBs: funds(m, BankStatus.reconciled),
+      walletFundsUnverifiedBs: funds(m, BankStatus.unverified),
+      walletFundsNotFoundBs: funds(m, BankStatus.notFound),
+      manualAdjustmentsBs: ledger
+          .where((l) => l.type == LedgerType.adjustment && inMonth(l.createdAt, m))
+          .fold(0.0, (t, l) => t + l.availableDelta),
+      topupsPending: pending.length,
+      topupsPendingBs: pending.fold(0.0, (t, x) => t + x.amount),
+      topupsUnverifiedTotal: unverified.length,
+      topupsUnverifiedTotalBs: unverified.fold(0.0, (t, c) => t + c.$2.amount),
+      walletsAvailableBs: _wallets.values.fold(0.0, (t, w) => t + w[0]),
+      walletsReservedBs: _wallets.values.fold(0.0, (t, w) => t + w[1]),
+      walletsCount: _wallets.length,
+      receivingAccountsActive: _receiving.values.where((a) => a.active).length,
+      receivingAccountsVerified: _receiving.values.where((a) => a.active && a.verified).length,
+      bankIntegration: 'pendiente_configuracion',
+      months: [
+        for (var i = 5; i >= 0; i--)
+          () {
+            final d = DateTime(m.year, m.month - i);
+            return FinanceMonth(month: key(d), walletFundsBs: funds(d), commissionBs: commission(d));
+          }(),
+      ],
+    );
+  }
+
+  @override
+  Future<List<FinanceTransaction>> financeTransactions({String? kind, int? before, int limit = 50}) async {
+    await _latency(150);
+    _admin();
+    final list = [
+      for (final e in _ledger.entries)
+        for (final l in e.value)
+          if ((kind == null || l.type.key == kind) && (before == null || l.id < before))
+            FinanceTransaction(
+              id: l.id,
+              professionalId: e.key,
+              professionalName: _nameOf(e.key),
+              entryType: l.type.key,
+              availableDelta: l.availableDelta,
+              reservedDelta: l.reservedDelta,
+              note: l.note,
+              createdAt: l.createdAt,
+            ),
+    ]..sort((a, b) => b.id.compareTo(a.id));
+    return list.take(limit).toList();
+  }
+
+  @override
+  Future<List<ReconcileTopup>> topupsForReconciliation(String bankStatus) async {
+    await _latency(150);
+    _admin();
+    final list = [
+      for (final (pro, t) in _allTopups)
+        if (switch (bankStatus) {
+          'todas' => true,
+          'pendiente' => t.status == TopupStatus.pending,
+          _ => t.status == TopupStatus.approved && _bankOf(t.id).key == bankStatus,
+        })
+          ReconcileTopup(
+            id: t.id,
+            professionalId: pro,
+            professionalName: _nameOf(pro),
+            amount: t.amount,
+            methodName: 'QR (ejemplo)',
+            reference: t.reference,
+            hasProof: _topupProofs.containsKey(t.id),
+            status: t.status.key,
+            bankStatus: _bankOf(t.id),
+            bankReference: _bankChecks[t.id]?.reference,
+            bankAccountId: _bankChecks[t.id]?.account,
+            bankAccountLabel: _receiving[_bankChecks[t.id]?.account]?.label,
+            bankCheckedAt: _bankChecks[t.id]?.at,
+            reviewedAt: _topupCreditedAt[t.id],
+            createdAt: t.createdAt,
+          ),
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  @override
+  Future<void> reconcileTopup(
+    int topupId,
+    BankStatus status, {
+    String? bankReference,
+    int? accountId,
+    required String authMethod,
+  }) async {
+    await _latency();
+    _admin();
+    final found = _allTopups.where((p) => p.$2.id == topupId).firstOrNull;
+    if (found == null) throw AppError.from('HMY_NOT_FOUND');
+    if (found.$2.status != TopupStatus.approved) throw AppError.from('HMY_TOPUP_NOT_CREDITED');
+    final ref = bankReference?.trim();
+    if (status == BankStatus.reconciled && (ref ?? '').isEmpty) throw AppError.from('HMY_BANK_REFERENCE_REQUIRED');
+    if (accountId != null && !_receiving.containsKey(accountId)) throw AppError.from('HMY_NOT_FOUND');
+    _requireStrong(authMethod);
+    final from = _bankOf(topupId);
+    _bankChecks[topupId] = (
+      status: status,
+      reference: (ref ?? '').isEmpty ? null : ref,
+      account: accountId,
+      at: DateTime.now(),
+    );
+    _log('finance.reconcile', 'topup_requests', '$topupId', {
+      'from': from.key,
+      'to': status.key,
+      'amount': found.$2.amount,
+      'account': ?accountId,
+      'bank_reference': ?((ref ?? '').isEmpty ? null : ref),
+      'auth_method': authMethod,
+    });
+  }
+
+  @override
+  Future<List<ReceivingAccount>> receivingAccounts() async {
+    await _latency(150);
+    _admin();
+    return [
+      for (final a
+          in _receiving.values.toList()
+            ..sort((a, b) => a.active == b.active ? a.id.compareTo(b.id) : (a.active ? -1 : 1)))
+        a.toModel(),
+    ];
+  }
+
+  @override
+  Future<int> saveReceivingAccount(ReceivingAccountDraft d, {required String authMethod}) async {
+    await _latency();
+    final me = _admin();
+    final number = d.accountNumber?.trim();
+    if (d.label.trim().length < 2 || d.bankName.trim().length < 2 || d.holderName.trim().length < 2) {
+      throw AppError.from('HMY_NAME_REQUIRED');
+    }
+    if (number != null && number.isNotEmpty && !RegExp(r'^[0-9][0-9 -]{3,29}$').hasMatch(number)) {
+      throw AppError.from('HMY_INVALID_ACCOUNT');
+    }
+    final hasNumber = (number ?? '').isNotEmpty;
+    if (d.type != ReceivingAccountType.qr && !hasNumber) throw AppError.from('HMY_INVALID_ACCOUNT');
+    if (d.type == ReceivingAccountType.qr && !hasNumber && d.qrPath == null) throw AppError.from('HMY_QR_REQUIRED');
+    if (d.qrPath != null && !d.qrPath!.startsWith('${me.id}/')) throw AppError.from('HMY_FORBIDDEN');
+    final old = d.id == null ? null : _receiving[d.id];
+    if (d.id != null && old == null) throw AppError.from('HMY_NOT_FOUND');
+    _requireStrong(authMethod);
+    final a = old ?? _Receiving(_seq++);
+    final changed =
+        old == null ||
+        old.number != (hasNumber ? number : null) ||
+        old.qrPath != d.qrPath ||
+        old.holder != d.holderName.trim() ||
+        old.bank != d.bankName.trim();
+    a
+      ..label = d.label.trim()
+      ..type = d.type
+      ..bank = d.bankName.trim()
+      ..holder = d.holderName.trim()
+      ..number = hasNumber ? number : null
+      ..currency = d.currency
+      ..qrPath = d.qrPath
+      ..notes = (d.notes ?? '').trim().isEmpty ? null : d.notes!.trim()
+      ..updatedAt = DateTime.now();
+    if (changed) a.verified = false;
+    _receiving[a.id] = a;
+    _log(old == null ? 'finance.account_created' : 'finance.account_updated', 'receiving_accounts', '${a.id}', {
+      'label': a.label,
+      'account': ?_maskAccount(a.number),
+      'auth_method': authMethod,
+    });
+    return a.id;
+  }
+
+  @override
+  Future<void> setReceivingAccount(
+    int id, {
+    required bool active,
+    required bool verified,
+    required String authMethod,
+  }) async {
+    await _latency();
+    _admin();
+    final a = _receiving[id];
+    if (a == null) throw AppError.from('HMY_NOT_FOUND');
+    _requireStrong(authMethod);
+    _log('finance.account_status', 'receiving_accounts', '$id', {
+      'active': active,
+      'verification': verified ? 'verificada' : 'sin_verificar',
+      'was_active': a.active,
+      'was': a.verified ? 'verificada' : 'sin_verificar',
+      'auth_method': authMethod,
+    });
+    a
+      ..active = active
+      ..verified = verified
+      ..updatedAt = DateTime.now();
+  }
+
+  @override
+  Future<String> uploadReceivingQr(PhotoUpload image) async {
+    await _latency(300);
+    final me = _admin();
+    final path = '${me.id}/cobro_${_seq++}.png';
+    _receivingQr[path] = image.bytes;
+    return path;
+  }
+
+  @override
+  Future<String?> receivingQrUrl(String path) async => null;
+
+  /// En la demostración la imagen del QR está en memoria.
+  Uint8List? receivingQrBytes(String path) => _receivingQr[path];
+
+  @override
+  Future<List<FinanceAuditEntry>> financeAudit({int limit = 100}) async {
+    await _latency(150);
+    _admin();
+    bool money(AuditEntry a) =>
+        a.action.startsWith('finance.') ||
+        a.action.startsWith('topup.') ||
+        a.action.startsWith('wallet.') ||
+        a.action.startsWith('commission') ||
+        const {
+          'topup_requests',
+          'wallets',
+          'wallet_ledger',
+          'commission_rules',
+          'receiving_accounts',
+        }.contains(a.targetTable);
+    return [
+      for (final a in _audit.where(money).take(limit))
+        FinanceAuditEntry(
+          id: a.id,
+          actorName: a.actorName,
+          action: a.action,
+          targetTable: a.targetTable,
+          targetId: a.targetId,
+          details: a.details,
+          createdAt: a.createdAt,
+        ),
+    ];
+  }
+}
+
+String? _maskAccount(String? n) {
+  final d = (n ?? '').replaceAll(RegExp(r'\D'), '');
+  if (d.isEmpty) return null;
+  return d.length <= 4 ? '••••' : '•••• ${d.substring(d.length - 4)}';
+}
+
+class _Receiving {
+  _Receiving(this.id);
+
+  final int id;
+  String label = '';
+  ReceivingAccountType type = ReceivingAccountType.savings;
+  String bank = '';
+  String holder = '';
+  String? number;
+  String currency = 'BOB';
+  String? qrPath;
+  String? notes;
+  bool verified = false;
+  bool active = true;
+  DateTime updatedAt = DateTime.now();
+
+  ReceivingAccount toModel() => ReceivingAccount(
+    id: id,
+    label: label,
+    type: type,
+    bankName: bank,
+    holderName: holder,
+    accountNumber: number,
+    accountMasked: _maskAccount(number),
+    currency: currency,
+    qrPath: qrPath,
+    notes: notes,
+    verified: verified,
+    isActive: active,
+    updatedAt: updatedAt,
+  );
 }
 
 class _Account {

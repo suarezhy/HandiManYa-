@@ -135,6 +135,12 @@ void main() {
       Routes.adminAi,
       Routes.adminAudit,
       Routes.ownerTeam,
+      Routes.ownerTeamAdd,
+      Routes.adminFinance,
+      Routes.adminFinanceAccounts,
+      Routes.adminFinanceReconcile,
+      Routes.adminFinanceMovements,
+      Routes.adminFinanceAudit,
       Routes.employee,
       Routes.home,
     ]) {
@@ -178,6 +184,10 @@ void main() {
       Routes.adminTopups,
       Routes.manager,
       Routes.ownerTeam,
+      Routes.ownerTeamAdd,
+      Routes.adminFinance,
+      Routes.adminFinanceAccounts,
+      Routes.adminFinanceReconcile,
       Routes.wallet,
     ]) {
       await _go(tester, c, route);
@@ -190,7 +200,12 @@ void main() {
       backend.adminApplications,
       () => backend.adminUsers(''),
       backend.staffOverview,
-      () => backend.grantStaff('demo-empleado-2', StaffRole.manager),
+      () => backend.grantStaff('demo-empleado-2', StaffRole.manager, authMethod: 'otp'),
+      () => backend.staffCandidates('demo'),
+      backend.financeSummary,
+      backend.receivingAccounts,
+      () => backend.topupsForReconciliation('todas'),
+      backend.financeAudit,
     ]) {
       final code = await tester.runAsync(() async {
         try {

@@ -44,3 +44,17 @@ abstract final class Fmt {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 }
+
+/// "+591 7••• ••05", como hmy_mask_phone en la base: nunca el número completo.
+String? maskPhone(String? phone) {
+  final d = (phone ?? '').replaceAll(RegExp(r'\D'), '');
+  if (d.length < 6) return null;
+  if (d.startsWith('591') && d.length == 11) return '+591 ${d[3]}••• ••${d.substring(9)}';
+  return '••• ${d.substring(d.length - 2)}';
+}
+
+/// "•••• 3456", como hmy_mask_account en la base.
+String maskAccount(String number) {
+  final d = number.replaceAll(RegExp(r'\D'), '');
+  return d.length <= 4 ? '••••' : '•••• ${d.substring(d.length - 4)}';
+}

@@ -203,6 +203,15 @@ class _Summary extends StatelessWidget {
             style: TextStyle(color: HyColors.textSecondary),
           ),
         ),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton.icon(
+            key: const Key('owner-summary-finance'),
+            onPressed: () => go(Routes.adminFinance),
+            icon: const Icon(Icons.account_balance_outlined),
+            label: const Text('Ver Finanzas y Bancos'),
+          ),
+        ),
         const SectionHeader(title: 'Demanda de los últimos 30 días'),
         _DemandCard(
           key: const Key('owner-demand-municipality'),
@@ -414,6 +423,13 @@ class OwnerManagePage extends ConsumerWidget {
                   onTap: () => go(Routes.adminUsers),
                 ),
                 const SectionHeader(title: 'Dinero y costos'),
+                PanelTile(
+                  key: const Key('owner-finance'),
+                  icon: Icons.account_balance_outlined,
+                  title: 'Finanzas y Bancos',
+                  subtitle: 'Comisiones, billeteras, cuentas de cobro y conciliación',
+                  onTap: () => go(Routes.adminFinance),
+                ),
                 PanelTile(
                   icon: Icons.account_balance_wallet_outlined,
                   title: 'Recargas',

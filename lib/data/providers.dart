@@ -31,7 +31,8 @@ abstract interface class AppBackend
         SafetyRepository,
         AdminRepository,
         StaffRepository,
-        AiControlRepository {}
+        AiControlRepository,
+        FinanceRepository {}
 
 class _SupabaseAppBackend extends SupabaseBackend implements AppBackend {
   _SupabaseAppBackend(super.db);

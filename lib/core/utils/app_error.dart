@@ -131,6 +131,11 @@ class AppError implements Exception {
     'HMY_SAME_EMAIL': 'Ese ya es tu correo.',
     'HMY_STAFF_ACCOUNT_REQUIRED':
         'Esa persona primero tiene que entrar a la app con su celular confirmado. Después puedes darle el rol.',
+    'HMY_ALREADY_STAFF': 'Esa persona ya tiene ese rol en el equipo.',
+    'HMY_TOPUP_NOT_CREDITED': 'Solo se concilian recargas ya acreditadas. Primero revísala en Recargas.',
+    'HMY_BANK_REFERENCE_REQUIRED': 'Escribe la referencia del movimiento en tu extracto del banco.',
+    'HMY_INVALID_ACCOUNT': 'Revisa el número de cuenta: solo números, espacios o guiones (de 4 a 30).',
+    'HMY_QR_REQUIRED': 'Sube la imagen del QR de cobro o escribe un número de cuenta.',
     'HMY_STAFF_NOT_ACTIVE': 'Solo puedes asignar casos a miembros activos del equipo.',
     'HMY_ESCALATE_REQUIRED': 'Este caso no lo puedes cerrar tú: escálalo al gerente.',
     'HMY_DECISION_REQUIRED': 'Una postulación se cierra al aprobarla o rechazarla.',
@@ -190,6 +195,8 @@ class AppError implements Exception {
     'HMY_CONFIRMATION_USED': 'Cada operación necesita una confirmación nueva. Vuelve a confirmar que eres tú.',
     'HMY_BIOMETRIC_DISABLED':
         'La huella o el rostro no están activados. Confirma con un código o actívalos en Perfil → Seguridad.',
+    // PostgREST: la función todavía no existe en el servidor (falta aplicar su migración).
+    'PGRST202': 'Esta parte necesita una actualización del servidor que todavía no está aplicada.',
     'HMY_PRO_NOT_CLEARED': 'Este profesional todavía no está habilitado para este servicio. Elige a otra persona.',
   };
 }

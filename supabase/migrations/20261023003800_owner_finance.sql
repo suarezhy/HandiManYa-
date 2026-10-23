@@ -273,6 +273,18 @@ begin
   if v_qr is not null and public.storage_owner_folder(v_qr) is distinct from auth.uid()::text then
     raise exception 'HMY_FORBIDDEN';
   end if;
+  -- Datos claros antes de pedir la confirmación (la tabla también lo exige).
+  if char_length(btrim(coalesce(p_label, ''))) < 2 or char_length(btrim(coalesce(p_bank_name, ''))) < 2
+     or char_length(btrim(coalesce(p_holder_name, ''))) < 2 then
+    raise exception 'HMY_NAME_REQUIRED';
+  end if;
+  if p_account_type not in ('caja_ahorro', 'cuenta_corriente', 'qr') or coalesce(p_currency, 'BOB') not in ('BOB', 'USD') then
+    raise exception 'HMY_INVALID_STATUS';
+  end if;
+  if (v_number is not null and v_number !~ '^[0-9][0-9 -]{3,29}$') or (p_account_type <> 'qr' and v_number is null) then
+    raise exception 'HMY_INVALID_ACCOUNT';
+  end if;
+  if p_account_type = 'qr' and v_number is null and v_qr is null then raise exception 'HMY_QR_REQUIRED'; end if;
   perform public.hmy_require_strong_confirmation(p_auth_method, 'finance.account');
   if p_id is null then
     insert into public.receiving_accounts (label, account_type, bank_name, holder_name, account_number, currency,

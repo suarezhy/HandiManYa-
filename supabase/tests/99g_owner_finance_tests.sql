@@ -55,6 +55,15 @@ select test.expect_error($$select public.owner_save_receiving_account(null, 'BNB
   'HandiMan Ya SRL', '1000123456', 'BOB', null, null, null)$$, 'HMY_CONFIRMATION_REQUIRED');
 select test.expect_error($$select public.owner_save_receiving_account(null, 'BNB principal', 'caja_ahorro', 'Banco Nacional de Bolivia',
   'HandiMan Ya SRL', '1000123456', 'BOB', null, null, 'biometric')$$, 'HMY_CONFIRMATION_REQUIRED');
+-- Datos inválidos se rechazan con un motivo claro, antes de pedir el código.
+select test.expect_error($$select public.owner_save_receiving_account(null, 'BNB', 'caja_ahorro', 'Banco', 'Titular',
+  'abc', 'BOB', null, null, null)$$, 'HMY_INVALID_ACCOUNT');
+select test.expect_error($$select public.owner_save_receiving_account(null, 'BNB', 'caja_ahorro', 'Banco', 'Titular',
+  null, 'BOB', null, null, null)$$, 'HMY_INVALID_ACCOUNT');
+select test.expect_error($$select public.owner_save_receiving_account(null, 'QR', 'qr', 'Banco', 'Titular',
+  null, 'BOB', null, null, null)$$, 'HMY_QR_REQUIRED');
+select test.expect_error($$select public.owner_save_receiving_account(null, ' ', 'caja_ahorro', 'Banco', 'Titular',
+  '1000123456', 'BOB', null, null, null)$$, 'HMY_NAME_REQUIRED');
 -- Un QR de otra carpeta no se acepta.
 select test.otp('00000000-0000-0000-0000-000009a10001');
 select test.expect_error($$select public.owner_save_receiving_account(null, 'QR', 'qr', 'Banco', 'Titular', null, 'BOB',

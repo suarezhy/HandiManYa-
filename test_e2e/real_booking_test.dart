@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/data/models/admin.dart';
 import 'package:handimanya/data/models/booking.dart';
+import 'package:handimanya/data/models/finance.dart';
 import 'package:handimanya/data/models/geo.dart';
 import 'package:handimanya/data/models/staff.dart';
 import 'package:handimanya/data/models/user.dart';
@@ -32,6 +33,17 @@ Future<(SupabaseBackend, SupabaseClient)> _signInWithClient(String email) async 
   final client = SupabaseClient(_url, _key, authOptions: const AuthClientOptions(autoRefreshToken: false));
   await client.auth.signInWithPassword(email: email, password: _pw);
   return (SupabaseBackend(client), client);
+}
+
+/// Vuelve a entrar con la contraseña: es la confirmación "recién" (menos de 5
+/// minutos, una sola operación) que el servidor pide para dar roles o tocar
+/// datos bancarios.
+/// El servidor guarda la hora del inicio de sesión en segundos: se espera un
+/// segundo para que cada confirmación sea un inicio nuevo.
+Future<String> _reauth(SupabaseClient c, String email) async {
+  await Future<void>.delayed(const Duration(milliseconds: 1100));
+  await c.auth.signInWithPassword(email: email, password: _pw);
+  return 'password';
 }
 
 /// Lo que esta sesión puede leer directo de una tabla (RLS decide).
@@ -410,23 +422,53 @@ void main() {
         }
       });
       await _step('un cliente no puede darse un rol', () async {
-        await expectLater(customer.grantStaff(_managerId, StaffRole.manager), _code('HMY_FORBIDDEN'));
+        await expectLater(
+          customer.grantStaff(_managerId, StaffRole.manager, authMethod: 'password'),
+          _code('HMY_FORBIDDEN'),
+        );
       });
-      await _step('el propietario da los roles por id de cuenta', () async {
-        await owner.grantStaff(_managerId, StaffRole.manager);
-        await owner.grantStaff(_emp1Id, StaffRole.employee);
-        await owner.grantStaff(_emp2Id, StaffRole.employee);
+      await _step('el propietario busca por celular: enmascarado y sin cuentas inventadas', () async {
+        final found = await owner.staffCandidates('6000 0904');
+        expect(found.map((c) => c.id), contains(_managerId));
+        final g = found.firstWhere((c) => c.id == _managerId);
+        expect(g.phoneMasked, '+591 6••• ••04');
+        expect(g.eligible, isTrue);
+        expect(await owner.staffCandidates('+591 6999 0999'), isEmpty, reason: 'un número sin cuenta no da resultados');
+        await expectLater(manager.staffCandidates('6000'), _code('HMY_FORBIDDEN'));
+        await expectLater(customer.staffCandidates('6000'), _code('HMY_FORBIDDEN'));
+      });
+      await _step('dar un rol sin confirmar se rechaza', () async {
+        await expectLater(
+          owner.grantStaff(_managerId, StaffRole.manager, authMethod: 'biometric'),
+          _code('HMY_CONFIRMATION_REQUIRED'),
+        );
+      });
+      await _step('el propietario da los roles por id de cuenta, con confirmación', () async {
+        await owner.grantStaff(_managerId, StaffRole.manager, authMethod: await _reauth(ownerDb, 'e2e-admin@test.bo'));
+        await owner.grantStaff(_emp1Id, StaffRole.employee, authMethod: await _reauth(ownerDb, 'e2e-admin@test.bo'));
+        await owner.grantStaff(_emp2Id, StaffRole.employee, authMethod: await _reauth(ownerDb, 'e2e-admin@test.bo'));
+        // La misma confirmación no sirve dos veces.
+        await expectLater(
+          owner.grantStaff(_emp2Id, StaffRole.manager, authMethod: 'password'),
+          _code('HMY_CONFIRMATION_USED'),
+        );
         expect((await manager.myAccount()).managementRole, StaffRole.manager);
         expect((await emp1.myAccount()).managementRole, StaffRole.employee);
         final team = await owner.staffOverview();
         expect(team.map((m) => m.userId), containsAll([_managerId, _emp1Id, _emp2Id]));
       });
       await _step('el gerente no puede dar ni subir roles', () async {
-        await expectLater(manager.grantStaff(_emp1Id, StaffRole.manager), _code('HMY_FORBIDDEN'));
+        await expectLater(
+          manager.grantStaff(_emp1Id, StaffRole.manager, authMethod: await _reauth(managerDb, 'e2e-gerente@test.bo')),
+          _code('HMY_FORBIDDEN'),
+        );
         await expectLater(manager.setStaffStatus(_emp1Id, 'suspended', reason: 'Prueba E2E'), _code('HMY_FORBIDDEN'));
       });
       await _step('un empleado no puede dar roles', () async {
-        await expectLater(emp1.grantStaff(_emp2Id, StaffRole.manager), _code('HMY_FORBIDDEN'));
+        await expectLater(
+          emp1.grantStaff(_emp2Id, StaffRole.manager, authMethod: await _reauth(emp1Db, 'e2e-empleado1@test.bo')),
+          _code('HMY_FORBIDDEN'),
+        );
       });
 
       // Dinero: solo el propietario.
@@ -438,6 +480,69 @@ void main() {
         await owner.aiOverview();
         await owner.auditLog();
       });
+      await _step('Finanzas y Bancos: el propietario separa comisiones de billeteras', () async {
+        final f = await owner.financeSummary();
+        expect(f.bankIntegration, 'pendiente_configuracion', reason: 'sin banco conectado, se dice');
+        expect(f.months, hasLength(6));
+        // La recarga de Bs 100 de esta prueba se acreditó, pero nadie la vio en el banco.
+        final unverified = await owner.topupsForReconciliation('sin_verificar');
+        final mine = unverified.where((t) => t.professionalId == _proId).toList();
+        expect(mine, isNotEmpty);
+        expect(mine.first.bankStatus, BankStatus.unverified);
+        await owner.financeTransactions(limit: 5);
+        await owner.receivingAccounts();
+        await owner.financeAudit(limit: 5);
+      });
+      await _step('Finanzas y Bancos: cambios con confirmación y en el historial', () async {
+        await expectLater(
+          owner.saveReceivingAccount(
+            const ReceivingAccountDraft(
+              label: 'Cuenta E2E',
+              type: ReceivingAccountType.savings,
+              bankName: 'Banco de prueba E2E',
+              holderName: 'Titular E2E',
+              accountNumber: '9000000001',
+            ),
+            authMethod: 'biometric',
+          ),
+          _code('HMY_CONFIRMATION_REQUIRED'),
+        );
+        final id = await owner.saveReceivingAccount(
+          const ReceivingAccountDraft(
+            label: 'Cuenta E2E',
+            type: ReceivingAccountType.savings,
+            bankName: 'Banco de prueba E2E',
+            holderName: 'Titular E2E',
+            accountNumber: '9000000001',
+          ),
+          authMethod: await _reauth(ownerDb, 'e2e-admin@test.bo'),
+        );
+        final acc = (await owner.receivingAccounts()).firstWhere((a) => a.id == id);
+        expect(acc.accountMasked, '•••• 0001');
+        expect(acc.verified, isFalse);
+        final topup = (await owner.topupsForReconciliation('sin_verificar'))
+            .firstWhere((t) => t.professionalId == _proId);
+        await expectLater(
+          owner.reconcileTopup(
+            topup.id,
+            BankStatus.reconciled,
+            authMethod: await _reauth(ownerDb, 'e2e-admin@test.bo'),
+          ),
+          _code('HMY_BANK_REFERENCE_REQUIRED'),
+        );
+        await owner.reconcileTopup(
+          topup.id,
+          BankStatus.reconciled,
+          bankReference: 'E2E-REF-1',
+          accountId: id,
+          authMethod: await _reauth(ownerDb, 'e2e-admin@test.bo'),
+        );
+        final done = (await owner.topupsForReconciliation('conciliada')).firstWhere((t) => t.id == topup.id);
+        expect(done.bankReference, 'E2E-REF-1');
+        final audit = await owner.financeAudit(limit: 20);
+        expect(audit.map((e) => e.action), containsAll(['finance.account_created', 'finance.reconcile']));
+        expect(audit.every((e) => !'${e.details}'.contains('9000000001')), isTrue, reason: 'sin el número completo');
+      });
       for (final (who, api, db) in [('el gerente', manager, managerDb), ('el empleado', emp1, emp1Db)]) {
         await _step('$who no ve dinero ni ajustes', () async {
           await expectLater(api.adminDashboard(), _code('HMY_FORBIDDEN'));
@@ -447,9 +552,24 @@ void main() {
           await expectLater(api.costDashboard(), _code('HMY_FORBIDDEN'));
           await expectLater(api.aiOverview(), _code('HMY_FORBIDDEN'));
           await expectLater(api.auditLog(), _code('HMY_FORBIDDEN'));
+          await expectLater(api.financeSummary(), _code('HMY_FORBIDDEN'));
+          await expectLater(api.financeTransactions(), _code('HMY_FORBIDDEN'));
+          await expectLater(api.topupsForReconciliation('todas'), _code('HMY_FORBIDDEN'));
+          await expectLater(api.receivingAccounts(), _code('HMY_FORBIDDEN'));
+          await expectLater(api.financeAudit(), _code('HMY_FORBIDDEN'));
+          await expectLater(
+            api.reconcileTopup(1, BankStatus.reconciled, bankReference: 'X', authMethod: 'password'),
+            _code('HMY_FORBIDDEN'),
+          );
+          await expectLater(api.staffCandidates('E2E'), _code('HMY_FORBIDDEN'));
           for (final table in ['wallets', 'wallet_ledger', 'topup_requests', 'cost_usage', 'admin_audit_log']) {
             expect(await _visibleRows(db, table), 0, reason: '$who no lee $table');
           }
+          // Las cuentas de cobro no tienen ningún permiso directo: ni leer.
+          await expectLater(
+            db.from('receiving_accounts').select().limit(1),
+            throwsA(predicate((e) => e is PostgrestException && e.code == '42501', 'permiso denegado')),
+          );
           final ops = await api.opsDashboard();
           for (final k in ops.keys) {
             expect(k, isNot(anyOf(contains('revenue'), contains('commission'), contains('wallet'), contains('topup'))));

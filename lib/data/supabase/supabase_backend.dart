@@ -3,11 +3,13 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
+import '../../core/utils/formatters.dart';
 import '../models/admin.dart';
 import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/costs.dart';
+import '../models/finance.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
@@ -15,6 +17,10 @@ import '../models/staff.dart';
 import '../models/user.dart';
 import '../models/wallet.dart';
 import '../repositories/repositories.dart';
+
+/// Fecha como la espera Postgres ('2026-10-01').
+String _day(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 List<Map<String, dynamic>> _rows(dynamic data) => [
   for (final r in (data as List? ?? const [])) Map<String, dynamic>.from(r as Map),
@@ -35,7 +41,8 @@ class SupabaseBackend
         SafetyRepository,
         AdminRepository,
         StaffRepository,
-        AiControlRepository {
+        AiControlRepository,
+        FinanceRepository {
   SupabaseBackend(this._db);
 
   final SupabaseClient _db;
@@ -869,13 +876,61 @@ class SupabaseBackend
     for (final m in _list(await _db.rpc('ops_my_activity'))) StaffActivity.fromMap(m),
   ];
 
+  // Sin la migración 0039 el servidor no tiene owner_staff_candidates ni la
+  // versión con confirmación de owner_grant_staff (PGRST202): se usa la de
+  // antes, que el servidor sigue autorizando solo para el propietario.
   @override
-  Future<void> grantStaff(String userId, StaffRole role) =>
-      _db.rpc('owner_grant_staff', params: {'p_user': userId, 'p_role': role.key});
+  Future<List<StaffCandidate>> staffCandidates(String query) async {
+    try {
+      return [
+        for (final m in _rows(await _db.rpc('owner_staff_candidates', params: {'p_query': query})))
+          StaffCandidate.fromMap(m),
+      ];
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+      final me = _db.auth.currentUser?.id;
+      return [
+        for (final u in await adminUsers(query))
+          StaffCandidate(
+            id: u.id,
+            fullName: u.fullName,
+            phoneMasked: maskPhone(u.phone),
+            cityName: u.cityName,
+            eligible: u.id != me && !u.isAdmin && !u.isSuspended && u.phone != null,
+            reason: u.id == me
+                ? 'self'
+                : u.isAdmin
+                ? 'owner'
+                : u.isSuspended
+                ? 'suspended'
+                : u.phone == null
+                ? 'phone_unconfirmed'
+                : null,
+          ),
+      ];
+    }
+  }
 
   @override
-  Future<void> setStaffStatus(String userId, String status, {String? reason}) =>
-      _db.rpc('owner_set_staff_status', params: {'p_user': userId, 'p_status': status, 'p_reason': reason});
+  Future<void> grantStaff(String userId, StaffRole role, {required String authMethod}) async {
+    try {
+      await _db.rpc('owner_grant_staff', params: {'p_user': userId, 'p_role': role.key, 'p_auth_method': authMethod});
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+      await _db.rpc('owner_grant_staff', params: {'p_user': userId, 'p_role': role.key});
+    }
+  }
+
+  @override
+  Future<void> setStaffStatus(String userId, String status, {String? reason, String? authMethod}) async {
+    final params = {'p_user': userId, 'p_status': status, 'p_reason': reason};
+    try {
+      await _db.rpc('owner_set_staff_status', params: {...params, 'p_auth_method': authMethod});
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+      await _db.rpc('owner_set_staff_status', params: params);
+    }
+  }
 
   @override
   Future<AdminDashboard> adminDashboard() async {
@@ -1179,4 +1234,107 @@ class SupabaseBackend
   @override
   Future<AiCheckResult> runAllChecks() async =>
       AiCheckResult.fromMap(Map<String, dynamic>.from(await _db.rpc('admin_run_all_checks') as Map));
+
+  // ---------------------------------------------------------------- Finanzas y Bancos
+  @override
+  Future<FinanceSummary> financeSummary({DateTime? month}) async => FinanceSummary.fromMap(
+    Map<String, dynamic>.from(
+      await _db.rpc(
+        'owner_finance_summary',
+        params: {'p_month': month == null ? null : _day(DateTime(month.year, month.month))},
+      ) as Map,
+    ),
+  );
+
+  @override
+  Future<List<FinanceTransaction>> financeTransactions({String? kind, int? before, int limit = 50}) async => [
+    for (final m in _rows(
+      await _db.rpc('owner_finance_transactions', params: {'p_kind': kind, 'p_before': before, 'p_limit': limit}),
+    ))
+      FinanceTransaction.fromMap(m),
+  ];
+
+  @override
+  Future<List<ReconcileTopup>> topupsForReconciliation(String bankStatus) async => [
+    for (final m in _rows(await _db.rpc('owner_topups_reconciliation', params: {'p_bank_status': bankStatus})))
+      ReconcileTopup.fromMap(m),
+  ];
+
+  @override
+  Future<void> reconcileTopup(
+    int topupId,
+    BankStatus status, {
+    String? bankReference,
+    int? accountId,
+    required String authMethod,
+  }) => _db.rpc(
+    'owner_reconcile_topup',
+    params: {
+      'p_topup': topupId,
+      'p_bank_status': status.key,
+      'p_bank_reference': bankReference,
+      'p_account': accountId,
+      'p_auth_method': authMethod,
+    },
+  );
+
+  @override
+  Future<List<ReceivingAccount>> receivingAccounts() async => [
+    for (final m in _rows(await _db.rpc('owner_receiving_accounts'))) ReceivingAccount.fromMap(m),
+  ];
+
+  @override
+  Future<int> saveReceivingAccount(ReceivingAccountDraft d, {required String authMethod}) async {
+    final id = await _db.rpc(
+      'owner_save_receiving_account',
+      params: {
+        'p_id': d.id,
+        'p_label': d.label,
+        'p_account_type': d.type.key,
+        'p_bank_name': d.bankName,
+        'p_holder_name': d.holderName,
+        'p_account_number': d.accountNumber,
+        'p_currency': d.currency,
+        'p_qr_path': d.qrPath,
+        'p_notes': d.notes,
+        'p_auth_method': authMethod,
+      },
+    );
+    return (id as num).toInt();
+  }
+
+  @override
+  Future<void> setReceivingAccount(
+    int id, {
+    required bool active,
+    required bool verified,
+    required String authMethod,
+  }) => _db.rpc(
+    'owner_set_receiving_account',
+    params: {
+      'p_id': id,
+      'p_active': active,
+      'p_verification': verified ? 'verificada' : 'sin_verificar',
+      'p_auth_method': authMethod,
+    },
+  );
+
+  @override
+  Future<String> uploadReceivingQr(PhotoUpload image) async {
+    final ext = image.contentType.split('/').last.replaceAll('jpeg', 'jpg');
+    final path = '$_uid/cobro_${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await _db.storage
+        .from('payment-qr')
+        .uploadBinary(path, image.bytes, fileOptions: FileOptions(contentType: image.contentType, upsert: false));
+    return path;
+  }
+
+  @override
+  Future<String?> receivingQrUrl(String path) => _signed('payment-qr', path);
+
+  @override
+  Future<List<FinanceAuditEntry>> financeAudit({int limit = 100}) async => [
+    for (final m in _rows(await _db.rpc('owner_finance_audit', params: {'p_limit': limit})))
+      FinanceAuditEntry.fromMap(m),
+  ];
 }

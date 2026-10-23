@@ -86,6 +86,14 @@ class _TopupList extends ConsumerWidget {
       value: ref.watch(adminTopupsProvider(status)),
       onRefresh: () => ref.refresh(adminTopupsProvider(status).future),
       emptyTitle: 'No hay recargas por revisar',
+      header: const Padding(
+        padding: EdgeInsets.only(bottom: HySpacing.sm),
+        child: InfoBanner(
+          text:
+              'Acreditar suma el saldo a la billetera del profesional; no es un ingreso. '
+              'Un comprobante no prueba que el dinero llegó: concílialo con tu extracto en Finanzas y Bancos.',
+        ),
+      ),
       itemBuilder: (context, t) => AppCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

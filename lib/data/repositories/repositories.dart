@@ -5,6 +5,7 @@ import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
 import '../models/costs.dart';
+import '../models/finance.dart';
 import '../models/geo.dart';
 import '../models/messaging.dart';
 import '../models/professional.dart';
@@ -336,9 +337,54 @@ abstract interface class StaffRepository {
   Future<List<StaffMember>> staffOverview();
   Future<List<StaffActivity>> myStaffActivity();
 
-  /// Solo el propietario, por el id de una cuenta que ya entró con su celular.
-  Future<void> grantStaff(String userId, StaffRole role);
+  /// Solo el propietario: cuentas por nombre o celular (con o sin +591), con
+  /// el celular enmascarado y si pueden recibir un rol.
+  Future<List<StaffCandidate>> staffCandidates(String query);
 
-  /// 'active', 'suspended' o 'revoked'. Suspender o quitar pide un motivo.
-  Future<void> setStaffStatus(String userId, String status, {String? reason});
+  /// Solo el propietario, por el id de una cuenta que ya entró con su celular
+  /// (nunca por un número). [authMethod]: código verificado recién ('otp').
+  Future<void> grantStaff(String userId, StaffRole role, {required String authMethod});
+
+  /// 'active', 'suspended' o 'revoked'. Suspender o quitar pide un motivo;
+  /// reactivar pide [authMethod] (devuelve el acceso).
+  Future<void> setStaffStatus(String userId, String status, {String? reason, String? authMethod});
+}
+
+/// Finanzas y Bancos: solo el Propietario. El servidor exige is_admin() en
+/// cada función; Gerente y Empleado reciben HMY_FORBIDDEN.
+abstract interface class FinanceRepository {
+  /// [month]: cualquier día del mes a resumir (hora de Bolivia). null = este mes.
+  Future<FinanceSummary> financeSummary({DateTime? month});
+
+  /// Libro de las billeteras, del más nuevo al más viejo. [kind]: tipo de
+  /// movimiento (topup, commission_capture, ...); [before]: para paginar.
+  Future<List<FinanceTransaction>> financeTransactions({String? kind, int? before, int limit = 50});
+
+  /// [bankStatus]: sin_verificar, conciliada, no_encontrada, pendiente o todas.
+  Future<List<ReconcileTopup>> topupsForReconciliation(String bankStatus);
+
+  /// Marca si una recarga acreditada aparece en el extracto del banco.
+  /// Conciliar pide la referencia del banco. [authMethod]: código recién.
+  Future<void> reconcileTopup(
+    int topupId,
+    BankStatus status, {
+    String? bankReference,
+    int? accountId,
+    required String authMethod,
+  });
+
+  Future<List<ReceivingAccount>> receivingAccounts();
+
+  /// Crea (id null) o cambia una cuenta de cobro y devuelve su id. Cambiar
+  /// banco, titular, número o QR la vuelve a "sin verificar".
+  Future<int> saveReceivingAccount(ReceivingAccountDraft draft, {required String authMethod});
+  Future<void> setReceivingAccount(int id, {required bool active, required bool verified, required String authMethod});
+
+  /// Sube la imagen del QR de cobro a la carpeta privada del Propietario y
+  /// devuelve su ruta.
+  Future<String> uploadReceivingQr(PhotoUpload image);
+
+  /// Enlace temporal para ver un QR guardado.
+  Future<String?> receivingQrUrl(String path);
+  Future<List<FinanceAuditEntry>> financeAudit({int limit = 100});
 }
