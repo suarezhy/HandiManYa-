@@ -183,6 +183,10 @@ void main() {
           ),
         );
       });
+      await _step('aviso dentro de la app: al profesional le llega el pedido nuevo', () async {
+        final mine = await pro.list();
+        expect(mine.where((n) => n.kind == 'booking_new' && n.bookingId == bookingId), isNotEmpty);
+      });
       await _step('antes de aceptar, el profesional no ve la dirección exacta', () async {
         final d = await pro.detail(bookingId);
         expect(d.status, BookingStatus.requested);
@@ -197,6 +201,10 @@ void main() {
         expect(d.status, BookingStatus.confirmed);
         expect(d.address?.line, 'Calle Prueba 123, casa verde');
       });
+      await _step('aviso dentro de la app: al cliente le llega que lo aceptaron', () async {
+        final mine = await customer.list();
+        expect(mine.where((n) => n.kind == 'booking_status' && n.bookingId == bookingId), isNotEmpty);
+      });
       await _step('el cliente no puede marcar el avance del profesional', () async {
         await expectLater(customer.updateProgress(bookingId, BookingStatus.onTheWay), _code('HMY_FORBIDDEN'));
       });
@@ -206,6 +214,38 @@ void main() {
         await customer.send(conv.id, 'Hola, ¿a qué hora llega?');
         await pro.send(conv.id, 'En 20 minutos');
         expect((await pro.conversations()).map((c) => c.id), contains(conv.id));
+      });
+      await _step('aviso dentro de la app: cada uno recibe el mensaje del otro', () async {
+        final conv = (await customer.conversations()).firstWhere((c) => c.bookingId == bookingId);
+        expect((await pro.list()).where((n) => n.kind == 'message' && n.conversationId == conv.id), isNotEmpty);
+        expect((await customer.list()).where((n) => n.kind == 'message' && n.conversationId == conv.id), isNotEmpty);
+      });
+      await _step('los avisos de una persona no los ve nadie más', () async {
+        expect((await admin.list()).where((n) => n.bookingId == bookingId), isEmpty);
+      });
+      await _step('nadie puede crear avisos a mano ni llamar a la función que los crea', () async {
+        final (_, db) = await _signInWithClient('e2e-cliente@test.bo');
+        await expectLater(
+          db.from('notifications').insert({
+            'user_id': _proId,
+            'kind': 'message',
+            'title': 'Falso',
+            'body': 'Aviso falso',
+          }),
+          throwsA(isA<PostgrestException>()),
+        );
+        await expectLater(
+          db.rpc(
+            'notify',
+            params: {'p_user': _proId, 'p_kind': 'message', 'p_title': 'Falso', 'p_body': 'Aviso falso'},
+          ),
+          throwsA(isA<PostgrestException>()),
+        );
+        expect((await pro.list()).where((n) => n.title == 'Falso'), isEmpty);
+      });
+      await _step('marcar como leídos deja todos los avisos del cliente leídos', () async {
+        await customer.markAllRead();
+        expect((await customer.list()).where((n) => n.readAt == null), isEmpty);
       });
       await _step('en camino', () => pro.updateProgress(bookingId, BookingStatus.onTheWay));
 
