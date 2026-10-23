@@ -1,0 +1,72 @@
+name: Rol de administrador de prueba (handimanya-flutter-dev)
+
+# Cuenta de prueba de administrador (+591 7000 0003) en el proyecto de
+# DESARROLLO. El rol se da desde el servidor, nunca desde la app, y solo con
+# la aprobación del dueño.
+#
+# Al subir la rama supabase/roles-dev: muestra las cuentas de prueba y sus
+# roles; si la cuenta 03 ya entró con su código, toma su id exacto de Supabase
+# Auth, lo vuelve a comprobar y le da el rol de administrador. Si todavía no
+# entró, no cambia nada. No toca al cliente (01) ni al profesional (02).
+
+on:
+  push:
+    branches: [supabase/roles-dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev-db
+  cancel-in-progress: false
+
+jobs:
+  admin:
+    name: Cuenta de prueba de administrador
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      EXPECTED_REF: yldqopeldibwgbwmdnzy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar que es el proyecto nuevo
+        run: supabase/scripts/check_target.sh
+
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
+
+      - name: Cuentas de prueba y roles (solo lectura)
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          select right(u.phone, 2) || ': id=' || u.id
+            || ', entró=' || (u.phone_confirmed_at is not null and u.last_sign_in_at is not null)::text
+            || ', roles=' || coalesce((select string_agg(r.role::text, ',' order by r.role) from public.user_roles r where r.user_id = u.id), 'ninguno')
+          from auth.users u where u.phone in ('59170000001', '59170000002', '59170000003') order by u.phone;
+          SQL
+
+      - name: Dar el rol de administrador al id verificado de 03
+        run: |
+          USER_ID=$(psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -c "select id from auth.users where phone = '59170000003' and phone_confirmed_at is not null and last_sign_in_at is not null")
+          if [ -z "${USER_ID}" ]; then
+            echo "::error::La cuenta 03 todavía no entró con su código. Entra una vez en la app con +591 7000 0003 y vuelve a correr."
+            exit 1
+          fi
+          if ! [[ "${USER_ID}" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "::error::user_id no es un id válido"; exit 1
+          fi
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -v user_id="${USER_ID}" -f supabase/e2e/phone/grant_test_admin.sql
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -c "select 'admin de ' || right(u.phone, 2) || ': ' || exists (select 1 from public.user_roles r where r.user_id = u.id and r.role = 'admin')::text from auth.users u where u.phone in ('59170000001','59170000002','59170000003') order by u.phone"
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -v user_id="${USER_ID}" <<'SQL'
+          select 'Auditoría: ' || count(*) || ' registro(s) role.admin_granted para ese id, último ' || coalesce(max(created_at)::text, '-')
+          from public.admin_audit_log where action = 'role.admin_granted' and target_id = :'user_id';
+          SQL
+          echo "Panel de administración como esa cuenta (sesión simulada, se deshace):"
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -v user_id="${USER_ID}" <<'SQL'
+          begin;
+          select set_config('request.jwt.claims', json_build_object('sub', :'user_id', 'role', 'authenticated')::text, true);
+          set local role authenticated;
+          select 'is_admin() = ' || public.is_admin()::text;
+          select 'admin_dashboard(): ' || case when public.admin_dashboard() is not null then 'responde' else 'vacío' end;
+          rollback;
+          SQL

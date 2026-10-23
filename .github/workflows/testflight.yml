@@ -1,0 +1,98 @@
+name: iPhone a TestFlight (handimanya-flutter-dev)
+
+# Firma la app del iPhone y la sube a TestFlight. Solo a mano, desde Actions,
+# escribiendo SUBIR, y solo con la aprobación del dueño para esa subida.
+# Firma automática con la clave de App Store Connect (rol App Manager o Admin):
+# no hay certificados ni perfiles guardados en el repositorio.
+# Secretos (los pone el dueño): APP_STORE_CONNECT_KEY_ID,
+# APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_KEY (el .p8) y APPLE_TEAM_ID.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: 'Para subir a TestFlight, escribe SUBIR'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.7
+  ENTORNO: dev
+
+jobs:
+  testflight:
+    name: Firmar y subir a TestFlight
+    runs-on: macos-latest
+    if: inputs.confirmar == 'SUBIR'
+    env:
+      KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY }}
+      TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Revisar los secretos de Apple
+        run: |
+          missing=""
+          for v in KEY_ID ISSUER_ID KEY_P8 TEAM_ID; do [ -n "${!v}" ] || missing="$missing $v"; done
+          if [ -n "$missing" ]; then
+            echo "::error::Faltan secretos de Apple:$missing (ver launch/owner-actions.md, iPhone)."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Exigir configuración real (nunca el modo demostración)
+        run: |
+          f="config/supabase-${ENTORNO}.json"
+          test -f "$f" || { echo "::error::Falta $f"; exit 1; }
+          jq -e '.SUPABASE_URL != "" and .SUPABASE_ANON_KEY != ""' "$f" >/dev/null
+      - run: flutter pub get
+      - name: Preparar el proyecto de Xcode
+        run: |
+          flutter build ios --release --config-only \
+            --dart-define-from-file="config/supabase-${ENTORNO}.json" \
+            $([ -f "config/firebase-${ENTORNO}.json" ] && echo "--dart-define-from-file=config/firebase-${ENTORNO}.json") \
+            --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+      - name: Clave de App Store Connect (solo en esta máquina, se borra al final)
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s' "$KEY_P8" > "$RUNNER_TEMP/keys/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/keys/AuthKey.p8"
+      - name: Archivar con firma automática
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" -destination 'generic/platform=iOS' \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey.p8" \
+            -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            archive | tail -n 40
+      - name: Subir a TestFlight
+        run: |
+          set -o pipefail
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey.p8" \
+            -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID" | tail -n 40
+          echo "Subida a App Store Connect: compilación ${GITHUB_RUN_NUMBER}. Aparece en TestFlight cuando Apple termina de procesarla." >> "$GITHUB_STEP_SUMMARY"
+      - name: Borrar la clave
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"

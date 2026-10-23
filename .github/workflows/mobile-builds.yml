@@ -1,0 +1,215 @@
+name: Builds para tiendas (Android y iPhone)
+
+# Compila la app para Google Play y App Store. NUNCA publica ni sube nada a las
+# tiendas: los archivos quedan como artefactos de esta ejecución y la subida
+# se hace a mano, solo con la aprobación del dueño del proyecto.
+# Se activa al subir la rama builds/movil o a mano desde Actions.
+# La versión web de dev se publica en GitHub Pages bajo /dev/ para probar en
+# iPhone y iPad con Safari (aprobado por el dueño el 2026-10-21). Solo dev:
+# las otras configuraciones nunca se publican.
+#
+# Secretos opcionales (si faltan, el build sale sin firmar y sirve solo como prueba):
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+
+on:
+  push:
+    branches: [builds/movil]
+  workflow_dispatch:
+    inputs:
+      entorno:
+        description: 'Proyecto Supabase (archivo config/supabase-<entorno>.json)'
+        required: true
+        default: dev
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.7
+  ENTORNO: ${{ inputs.entorno || 'dev' }}
+
+jobs:
+  android:
+    name: Android (App Bundle para Google Play)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Exigir configuración real (nunca el modo demostración)
+        run: |
+          f="config/supabase-${ENTORNO}.json"
+          test -f "$f" || { echo "::error::Falta $f"; exit 1; }
+          jq -e '.SUPABASE_URL != "" and .SUPABASE_ANON_KEY != ""' "$f" >/dev/null
+      # La misma llave de depuración en cada compilación: así el APK de prueba
+      # se instala encima del anterior sin desinstalar (solo para probar).
+      - name: Reusar la llave de depuración de las pruebas
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+      # Gradle crea la llave de depuración en otra carpeta del runner, así que
+      # el caché no la encontraba. Se crea aquí la primera vez (los valores
+      # estándar de Android para depuración) y luego se reutiliza.
+      - name: Crear la llave de depuración si falta
+        run: |
+          ks="$HOME/.android/debug.keystore"
+          if [ ! -f "$ks" ]; then
+            mkdir -p "$HOME/.android"
+            keytool -genkeypair -v -keystore "$ks" -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" >/dev/null
+            echo "Llave de depuración nueva."
+          else
+            echo "Llave de depuración reutilizada."
+          fi
+          keytool -list -v -keystore "$ks" -storepass android | grep -m1 "SHA256:" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Preparar la firma (si hay secretos)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+            echo "Firma de publicación: sí"
+          else
+            echo "::warning::Sin llave de firma: el App Bundle sale sin firmar y Google Play no lo acepta."
+          fi
+      - run: flutter pub get
+      - name: Compilar App Bundle
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          flutter build appbundle --release --dart-define-from-file="config/supabase-${ENTORNO}.json" $([ -f "config/firebase-${ENTORNO}.json" ] && echo "--dart-define-from-file=config/firebase-${ENTORNO}.json") \
+            --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}" --obfuscate --split-debug-info=build/symbols/android
+      - name: Comprobar firma
+        run: |
+          aab=build/app/outputs/bundle/release/app-release.aab
+          if jarsigner -verify "$aab" >/dev/null 2>&1; then echo "App Bundle firmado."; else echo "App Bundle SIN firmar."; fi
+      - name: Compilar APK para probar en teléfonos
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build apk --release --dart-define-from-file="config/supabase-${ENTORNO}.json" $([ -f "config/firebase-${ENTORNO}.json" ] && echo "--dart-define-from-file=config/firebase-${ENTORNO}.json") --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+      # Para instalar en un teléfono de prueba: firmado con la llave de depuración
+      # (Android no instala un APK sin firmar). Nunca se sube a Google Play.
+      - name: Compilar APK de prueba (instalable, solo para probar)
+        run: |
+          export HMY_DEBUG_KEYSTORE="$HOME/.android/debug.keystore"
+          flutter build apk --debug --dart-define-from-file="config/supabase-${ENTORNO}.json" $([ -f "config/firebase-${ENTORNO}.json" ] && echo "--dart-define-from-file=config/firebase-${ENTORNO}.json") --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          cp build/app/outputs/flutter-apk/app-debug.apk "build/app/outputs/flutter-apk/handimanya-prueba-${ENTORNO}.apk"
+      - name: Comprobar las fotos de bienvenida dentro del APK
+        run: |
+          apk="build/app/outputs/flutter-apk/handimanya-prueba-${ENTORNO}.apk"
+          for i in 1 2 3 4; do
+            f="assets/images/onboarding_$i.jpg"
+            dentro=$(unzip -p "$apk" "assets/flutter_assets/$f" | sha256sum | cut -c1-64)
+            repo=$(sha256sum "$f" | cut -c1-64)
+            echo "$f  $dentro" | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "$dentro" = "$repo" ] || { echo "::error::$f del APK no coincide con el repositorio"; exit 1; }
+          done
+          [ "$(for i in 1 2 3 4; do sha256sum "assets/images/onboarding_$i.jpg" | cut -c1-64; done | sort -u | wc -l)" = 4 ] \
+            || { echo "::error::Hay fotos de bienvenida repetidas"; exit 1; }
+      - name: El APK de prueba usa la llave de depuración guardada
+        run: |
+          apk="build/app/outputs/flutter-apk/handimanya-prueba-${ENTORNO}.apk"
+          signer=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          firma=$("$signer" verify --print-certs "$apk" | grep -m1 "SHA-256 digest" | awk '{print $NF}' | tr 'a-f' 'A-F')
+          llave=$(keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android | grep -m1 "SHA256:" | awk '{print $2}' | tr -d ':')
+          echo "Firma del APK: $firma" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$firma" = "$llave" ] || { echo "::error::El APK no está firmado con la llave de depuración guardada"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-prueba-${{ env.ENTORNO }}-${{ github.run_number }}
+          path: build/app/outputs/flutter-apk/handimanya-prueba-${{ env.ENTORNO }}.apk
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ env.ENTORNO }}-${{ github.run_number }}
+          path: |
+            build/app/outputs/bundle/release/app-release.aab
+            build/app/outputs/flutter-apk/app-release.apk
+            build/symbols/android
+          retention-days: 30
+
+  web-dev:
+    name: Web de prueba (dev, para iPhone y iPad)
+    # Las compilaciones de prueba (ramas experiment/) no reemplazan la web de dev.
+    if: ${{ (inputs.entorno || 'dev') == 'dev' && !startsWith(github.ref, 'refs/heads/experiment/') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Exigir configuración real (nunca el modo demostración)
+        run: jq -e '.SUPABASE_URL != "" and .SUPABASE_ANON_KEY != ""' config/supabase-dev.json >/dev/null
+      - run: flutter pub get
+      - name: Compilar web
+        run: |
+          flutter build web --release --no-web-resources-cdn --base-href /HandiManYa-/dev/ \
+            --dart-define-from-file=config/supabase-dev.json $([ -f config/firebase-dev.json ] && echo --dart-define-from-file=config/firebase-dev.json) --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          # Que los buscadores no la muestren.
+          sed -i 's|<head>|<head>\n  <meta name="robots" content="noindex, nofollow">|' build/web/index.html
+          grep -q 'noindex' build/web/index.html
+      - name: Publicar en gh-pages/dev (sin tocar la demo)
+        run: |
+          git clone -q --depth 1 --branch gh-pages \
+            "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" "$RUNNER_TEMP/pages"
+          cd "$RUNNER_TEMP/pages"
+          rm -rf dev && cp -r "$GITHUB_WORKSPACE/build/web" dev
+          touch .nojekyll
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Web de prueba (dev) ${GITHUB_SHA::7}, build ${GITHUB_RUN_NUMBER}" || { echo "Sin cambios"; exit 0; }
+          git push -q origin gh-pages
+          echo "Publicada en https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/dev/" >> "$GITHUB_STEP_SUMMARY"
+
+  ios:
+    name: iPhone (compilación para App Store)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Exigir configuración real (nunca el modo demostración)
+        run: |
+          f="config/supabase-${ENTORNO}.json"
+          test -f "$f" || { echo "::error::Falta $f"; exit 1; }
+          jq -e '.SUPABASE_URL != "" and .SUPABASE_ANON_KEY != ""' "$f" >/dev/null
+      - run: flutter pub get
+      - name: Compilar para iPhone (sin firmar)
+        # La firma necesita la cuenta de Apple Developer; se agrega cuando exista.
+        run: |
+          flutter build ios --release --no-codesign --dart-define-from-file="config/supabase-${ENTORNO}.json" $([ -f "config/firebase-${ENTORNO}.json" ] && echo "--dart-define-from-file=config/firebase-${ENTORNO}.json") \
+            --build-number="${GITHUB_RUN_NUMBER}" --dart-define=BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+      - name: Revisar Info.plist y manifiestos de privacidad
+        run: |
+          app=build/ios/iphoneos/Runner.app
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c "Print :MinimumOSVersion" "$app/Info.plist"
+          echo "Manifiestos de privacidad incluidos:"
+          find "$app" -name 'PrivacyInfo.xcprivacy' | sed "s|$app/||"

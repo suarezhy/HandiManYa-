@@ -1,0 +1,65 @@
+name: Respaldo de la base (handimanya-flutter-dev)
+
+# Hace un respaldo de la base de dev, lo comprueba (filas completas y una
+# restauración de prueba en una base local desechable) y lo guarda cifrado
+# como artefacto por 30 días. Solo LEE la base de dev.
+# Corre:
+# - antes de aplicar migraciones (lo llama "Base de datos Supabase"): si el
+#   respaldo no queda comprobado y guardado, no se aplica nada;
+# - al subir la rama supabase/respaldo-dev, o a mano desde Actions.
+# El repositorio es público: el respaldo se cifra con el secreto
+# BACKUP_PASSPHRASE, que solo conoce el dueño. Sin él no se guarda nada.
+
+on:
+  push:
+    branches: [supabase/respaldo-dev]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  respaldo:
+    name: Respaldo comprobado
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      EXPECTED_REF: yldqopeldibwgbwmdnzy
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar que es el proyecto nuevo
+        run: supabase/scripts/check_target.sh
+
+      - name: Instalar PostgreSQL de la misma versión que la base
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client postgresql-common >/dev/null
+          major="$(psql "${DB_URL}" -X -At -c 'show server_version_num' | cut -c1-2)"
+          echo "PostgreSQL de la base: ${major}"
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          sudo apt-get install -y -qq "postgresql-client-${major}" >/dev/null
+          echo "/usr/lib/postgresql/${major}/bin" >> "$GITHUB_PATH"
+          echo "PG_MAJOR=${major}" >> "$GITHUB_ENV"
+
+      - name: Base local desechable para la restauración de prueba
+        run: |
+          docker run -d --name restaurar -p 5433:5432 -e POSTGRES_HOST_AUTH_METHOD=trust "postgres:${PG_MAJOR}" >/dev/null
+          for i in $(seq 1 30); do pg_isready -q -h localhost -p 5433 && exit 0; sleep 1; done
+          echo "::error::La base local no arrancó"; exit 1
+
+      - name: Respaldar, comprobar y cifrar
+        env:
+          RESTORE_ADMIN_URL: postgresql://postgres@localhost:5433/postgres
+          OUT: respaldo
+        run: supabase/scripts/backup_verify.sh
+
+      - name: Guardar el respaldo cifrado (30 días)
+        uses: actions/upload-artifact@v4
+        with:
+          name: respaldo-dev-${{ github.run_id }}
+          path: respaldo/*.tar.gpg
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,49 @@
+name: handimanya
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  firebase_core: ^5.1.0
+  firebase_messaging: ^17.0.1
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_riverpod: ^3.4.3
+  flutter_secure_storage: ^11.2.0
+  geolocator: ^14.1.2
+  go_router: ^18.1.0
+  image_picker: ^1.2.4
+  intl: ^0.20.3
+  local_auth: ^3.0.2
+  shared_preferences: ^2.5.6
+  supabase_flutter: ^2.18.3
+  url_launcher: ^6.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  mocktail: ^1.0.5
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/brand/
+    - assets/images/
+  fonts:
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-400.ttf
+        - asset: assets/fonts/Nunito-600.ttf
+          weight: 600
+        - asset: assets/fonts/Nunito-700.ttf
+          weight: 700
+        - asset: assets/fonts/Nunito-800.ttf
+          weight: 800
+        - asset: assets/fonts/Nunito-900.ttf
+          weight: 900
