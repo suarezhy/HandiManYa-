@@ -3,6 +3,18 @@
 /// mostrar.
 library;
 
+import 'admin.dart' show ReportReason;
+
+/// El servidor titula los reportes con la clave del motivo ("Reporte: cobro_indebido");
+/// se muestra el nombre del motivo.
+String _caseTitle(String t) {
+  const prefix = 'Reporte: ';
+  if (!t.startsWith(prefix)) return t;
+  final key = t.substring(prefix.length);
+  final known = ReportReason.values.where((r) => r.key == key).firstOrNull;
+  return known == null ? t : '$prefix${known.label.toLowerCase()}';
+}
+
 DateTime? _date(Object? v) => v == null ? null : DateTime.parse(v as String).toLocal();
 
 enum StaffRole {
@@ -173,7 +185,7 @@ class OpsCase {
     id: (m['id'] as num).toInt(),
     kind: OpsCaseKind.parse(m['kind'] as String?),
     refId: m['ref_id'] as String? ?? '',
-    title: m['title'] as String? ?? '',
+    title: _caseTitle(m['title'] as String? ?? ''),
     category: m['category'] as String? ?? 'routine',
     status: OpsCaseStatus.parse(m['status'] as String?),
     priority: m['priority'] as String? ?? 'normal',

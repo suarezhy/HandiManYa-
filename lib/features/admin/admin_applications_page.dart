@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/word_safe_text.dart';
+import '../../core/widgets/trailing_row.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
@@ -62,25 +64,20 @@ class _List extends ConsumerWidget {
       emptyTitle: 'No hay postulaciones por revisar',
       itemBuilder: (context, a) => AppCard(
         onTap: () => context.push(Routes.adminApplication(a.userId)),
-        child: Row(
-          children: [
-            PersonAvatar(name: a.displayName, size: 52),
-            const SizedBox(width: HySpacing.sm),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(a.displayName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                  InfoLine(Icons.handyman_outlined, [a.categoryName, a.cityName].whereType<String>().join(' · ')),
-                  InfoLine(
-                    Icons.schedule,
-                    a.submittedAt == null ? 'Sin enviar' : 'Enviada ${Fmt.relative(a.submittedAt!)}',
-                  ),
-                ],
+        child: TrailingRow(
+          leading: PersonAvatar(name: a.displayName, size: 52),
+          trailing: ToneChip(a.status.label, _tone(a.status)),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              WordSafeText(a.displayName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              InfoLine(Icons.handyman_outlined, [a.categoryName, a.cityName].whereType<String>().join(' · ')),
+              InfoLine(
+                Icons.schedule,
+                a.submittedAt == null ? 'Sin enviar' : 'Enviada ${Fmt.relative(a.submittedAt!)}',
               ),
-            ),
-            ToneChip(a.status.label, _tone(a.status)),
-          ],
+            ],
+          ),
         ),
       ),
     );

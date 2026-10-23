@@ -3454,7 +3454,13 @@ class DemoBackend
           _ => 'routine',
         };
         _cases.add(
-          _Case(_seq++, OpsCaseKind.report, '${r.id}', 'Reporte: ${r.reason.key}', createdAt: r.createdAt)
+          _Case(
+              _seq++,
+              OpsCaseKind.report,
+              '${r.id}',
+              'Reporte: ${r.reason.label.toLowerCase()}',
+              createdAt: r.createdAt,
+            )
             ..category = category
             ..priority = category == 'routine' ? 'normal' : 'high',
         );

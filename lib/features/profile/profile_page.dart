@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/word_safe_text.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/user.dart';
@@ -49,8 +50,9 @@ class ProfilePage extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(account.fullName, style: text.titleLarge),
-                            Text(account.email, style: const TextStyle(color: HyColors.textSecondary)),
+                            WordSafeText(account.fullName, style: text.titleLarge),
+                            // El correo es una sola "palabra": se achica en vez de partirse.
+                            WordSafeText(account.email, style: const TextStyle(color: HyColors.textSecondary)),
                             if (account.phone != null)
                               Text(account.phone!, style: const TextStyle(color: HyColors.textSecondary)),
                             const SizedBox(height: 4),

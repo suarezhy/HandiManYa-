@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/widgets/word_safe_text.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/admin.dart';
@@ -133,7 +134,7 @@ class InfoLine extends StatelessWidget {
         Icon(icon, size: 18, color: HyColors.textMuted),
         const SizedBox(width: 6),
         Expanded(
-          child: Text(text, style: const TextStyle(color: HyColors.textSecondary, fontSize: 15)),
+          child: WordSafeText(text, style: const TextStyle(color: HyColors.textSecondary, fontSize: 15)),
         ),
       ],
     ),

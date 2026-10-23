@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../core/utils/text_fit.dart';
 import '../../data/models/staff.dart';
 import '../shell/app_shell.dart';
 import 'management_common.dart';
@@ -61,6 +62,8 @@ class ManagementShell extends StatelessWidget {
   );
 }
 
+const _labelStyle = TextStyle(fontSize: 11, height: 1.2, fontWeight: FontWeight.w800);
+
 class PanelBottomNav extends StatelessWidget {
   const PanelBottomNav({super.key, required this.role, required this.currentIndex, required this.onTap});
 
@@ -72,8 +75,15 @@ class PanelBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = panelNavItems(role);
     final media = MediaQuery.of(context);
-    // Las etiquetas siempre en una línea: la letra sigue al sistema hasta 1,2x.
-    final scale = media.textScaler.scale(1).clamp(1.0, 1.2);
+    // Las etiquetas siempre en una línea y enteras: la letra sigue al sistema
+    // hasta 1,2x y se achica un poco si "Postulaciones" no cabe en su lugar.
+    final scale = wordFitScale(
+      context,
+      texts: [for (final i in items) i.label.replaceAll(' ', '\u00A0')],
+      style: _labelStyle,
+      width: media.size.width / items.length - 8,
+      max: 1.2,
+    );
     return MediaQuery(
       data: media.copyWith(textScaler: TextScaler.linear(scale)),
       child: NavigationBarTheme(
@@ -83,9 +93,7 @@ class PanelBottomNav extends StatelessWidget {
           indicatorColor: panelAccent(role).withValues(alpha: 0.22),
           height: 68,
           labelTextStyle: WidgetStateProperty.resolveWith(
-            (states) => TextStyle(
-              fontSize: 11,
-              height: 1.2,
+            (states) => _labelStyle.copyWith(
               fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w600,
               color: states.contains(WidgetState.selected) ? Colors.white : const Color(0xFFB7C0D3),
             ),

@@ -24,18 +24,21 @@ class ManagerHomePage extends ConsumerWidget {
       appBar: const PanelAppBar(role: StaffRole.manager, title: 'Resumen'),
       body: RefreshIndicator(
         onRefresh: () async => refreshOps(ref),
-        child: ListView(
-          padding: bottomSafePadding(context),
-          children: [
-            PageBody(
-              child: switch (dash) {
-                AsyncData(:final value) => _ManagerSummary(d: value),
-                AsyncError(:final error) => ErrorView(error: error, onRetry: () => refreshOps(ref)),
-                _ => const LoadingView(),
-              },
-            ),
-          ],
-        ),
+        // Con datos, los títulos de sección quedan fijos arriba al desplazarse.
+        child: switch (dash) {
+          AsyncData(:final value) => _ManagerSummary(d: value),
+          _ => ListView(
+            padding: bottomSafePadding(context),
+            children: [
+              PageBody(
+                child: switch (dash) {
+                  AsyncError(:final error) => ErrorView(error: error, onRetry: () => refreshOps(ref)),
+                  _ => const LoadingView(),
+                },
+              ),
+            ],
+          ),
+        },
       ),
     );
   }
@@ -49,9 +52,8 @@ class _ManagerSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     void go(String route) => context.push(route);
-    return Column(
+    return PanelSections(
       key: const Key('manager-summary'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SectionHeader(title: 'Casos del equipo'),
         PanelGrid(

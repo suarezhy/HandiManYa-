@@ -6,6 +6,8 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/brand_logo.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/equal_height_row.dart';
+import '../../core/widgets/word_safe_text.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/wallet.dart';
 import '../../data/providers.dart';
@@ -63,7 +65,10 @@ class ProHomePage extends ConsumerWidget {
                     const SizedBox(height: HySpacing.md),
                     _AvailabilityCard(available: d.isAvailable),
                     const SizedBox(height: HySpacing.md),
-                    Row(
+                    // Las tres del mismo alto, con las palabras enteras.
+                    EqualHeightRow(
+                      columns: 3,
+                      spacing: HySpacing.xs,
                       children: [
                         _Counter(
                           value: d.incoming,
@@ -169,7 +174,7 @@ class _AvailabilityCardState extends ConsumerState<_AvailabilityCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                WordSafeText(
                   on ? 'Disponible para ¡Ya!' : 'No disponible',
                   style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800),
                 ),
@@ -215,26 +220,23 @@ class _Counter extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Expanded(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: AppCard(
-        onTap: onTap,
-        padding: const EdgeInsets.symmetric(vertical: HySpacing.md, horizontal: HySpacing.xs),
-        child: Column(
-          children: [
-            Text(
-              '$value',
-              style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: color),
-            ),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: HyColors.textSecondary, fontSize: 14, height: 1.2),
-            ),
-          ],
+  Widget build(BuildContext context) => AppCard(
+    onTap: onTap,
+    padding: const EdgeInsets.symmetric(vertical: HySpacing.md, horizontal: HySpacing.xs),
+    child: Column(
+      children: [
+        Text(
+          '$value',
+          style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: color),
         ),
-      ),
+        WordSafeText(
+          label,
+          textAlign: TextAlign.center,
+          // Tres por fila: en 320 px con letra grande "programados" necesita achicarse más.
+          minScale: 0.5,
+          style: const TextStyle(color: HyColors.textSecondary, fontSize: 14, height: 1.2),
+        ),
+      ],
     ),
   );
 }
@@ -328,7 +330,7 @@ class _MetricRow extends StatelessWidget {
     children: [
       Icon(icon, color: iconColor),
       const SizedBox(width: HySpacing.sm),
-      Expanded(child: Text(label, style: const TextStyle(fontSize: 16))),
+      Expanded(child: WordSafeText(label, style: const TextStyle(fontSize: 16))),
       Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
     ],
   );

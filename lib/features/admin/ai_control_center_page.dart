@@ -5,10 +5,12 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/word_safe_text.dart';
 import '../../data/models/ai_control.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/drilldown.dart';
 import '../../data/providers.dart';
+import '../management/management_common.dart' show PanelGrid;
 import '../security/confirm_identity.dart';
 import 'admin_costs_page.dart' show costDashboardProvider;
 import 'ai_daily_report.dart';
@@ -86,10 +88,10 @@ String _agentLabel(WidgetRef ref, String key) {
 int _columns(double width, {double min = 300}) => (width / min).floor().clamp(1, 3);
 
 class _Grid extends StatelessWidget {
-  const _Grid({required this.children, this.minItemWidth = 300});
+  const _Grid({required this.children});
 
   final List<Widget> children;
-  final double minItemWidth;
+  static const minItemWidth = 300.0;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -139,8 +141,8 @@ class _OverviewTab extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: HySpacing.md),
-                  _Grid(
-                    minItemWidth: 140,
+                  PanelGrid(
+                    minTileWidth: 140,
                     children: [
                       for (final (card, n, color) in [
                         (AiCard.approval, value.pendingApproval, HyColors.primary),
@@ -266,12 +268,7 @@ class _Stat extends StatelessWidget {
                 '$value',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: color),
               ),
-              Text(
-                label,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
-              ),
+              WordSafeText(label, style: const TextStyle(color: HyColors.textSecondary, fontSize: 13)),
             ],
           ),
         ),

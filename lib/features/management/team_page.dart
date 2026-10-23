@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/word_safe_text.dart';
+import '../../core/widgets/trailing_row.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/common.dart';
@@ -153,30 +155,25 @@ class _MemberCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: panelAccent(m.role).withValues(alpha: 0.15),
-                  child: Icon(
-                    m.role == StaffRole.manager ? Icons.manage_accounts_outlined : Icons.support_agent_outlined,
-                    color: HyColors.navy,
-                  ),
+            TrailingRow(
+              leading: CircleAvatar(
+                backgroundColor: panelAccent(m.role).withValues(alpha: 0.15),
+                child: Icon(
+                  m.role == StaffRole.manager ? Icons.manage_accounts_outlined : Icons.support_agent_outlined,
+                  color: HyColors.navy,
                 ),
-                const SizedBox(width: HySpacing.sm),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(m.fullName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                      Text(
-                        [m.role.label, ?m.phoneMasked].join(' · '),
-                        style: const TextStyle(color: HyColors.textSecondary),
-                      ),
-                    ],
+              ),
+              body: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  WordSafeText(m.fullName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                  WordSafeText(
+                    [m.role.label, ?m.phoneMasked].join(' · '),
+                    style: const TextStyle(color: HyColors.textSecondary),
                   ),
-                ),
-                ToneChip(m.statusLabel, tone),
-              ],
+                ],
+              ),
+              trailing: ToneChip(m.statusLabel, tone),
             ),
             const SizedBox(height: HySpacing.xs),
             Wrap(
@@ -445,8 +442,8 @@ class _CandidateCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(u.fullName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                  Text(
+                  WordSafeText(u.fullName, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                  WordSafeText(
                     [u.phoneMasked ?? 'Sin celular', ?u.cityName].join(' · '),
                     style: const TextStyle(color: HyColors.textSecondary),
                   ),

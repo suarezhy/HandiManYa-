@@ -68,22 +68,105 @@ Future<List<String>> _scan(WidgetTester tester, Size size, String where) async {
   return problems;
 }
 
+/// Lo último de la pantalla, al final del desplazamiento, no queda tapado por la barra de abajo.
+String? _hiddenBehindNav(WidgetTester tester, String where) {
+  final nav = find.byType(NavigationBar);
+  final scrollable = find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down);
+  if (nav.evaluate().isEmpty || scrollable.evaluate().isEmpty) return null;
+  final navTop = tester.getTopLeft(nav.first).dy;
+  final viewport = tester.getRect(scrollable.first);
+  if (viewport.bottom > navTop + 0.5) return '$where: la lista sigue debajo de la barra de abajo';
+  return null;
+}
+
+const _configs = [
+  (Size(360, 780), 1.0, 3.0),
+  (Size(360, 780), 1.15, 3.0),
+  (Size(320, 640), 1.3, 2.0),
+  (Size(412, 915), 1.6, 4.0),
+  (Size(320, 640), 1.6, 3.0),
+];
+
+Future<List<String>> _checkTabs(WidgetTester tester, String phone, String navPrefix, List<String> tabs) async {
+  final all = <String>[];
+  for (final (size, scale, dpr) in _configs) {
+    await _pump(tester, phone, size, scale, dpr: dpr);
+    for (final tab in tabs) {
+      final key = find.byKey(Key('$navPrefix$tab'));
+      if (key.evaluate().isEmpty) {
+        all.add('falta la pestaña $tab');
+        continue;
+      }
+      await tester.tap(key);
+      await tester.pumpAndSettle();
+      final where = '$tab ${size.width.toInt()}px x$scale dpr$dpr';
+      all.addAll(await _scan(tester, size, where));
+      final hidden = _hiddenBehindNav(tester, where);
+      if (hidden != null) all.add(hidden);
+    }
+  }
+  for (final p in all.toSet()) {
+    debugPrint(p);
+  }
+  return all;
+}
+
 void main() {
-  testWidgets('propietario: Resumen sin palabras partidas', (tester) async {
+  testWidgets('propietario: todas las pestañas', (tester) async {
     await loadAppFonts(tester);
-    final all = <String>[];
-    for (final (size, scale) in [
-      (const Size(360, 780), 1.0),
-      (const Size(360, 780), 1.15),
-      (const Size(360, 780), 1.3),
-      (const Size(320, 640), 1.6),
-    ]) {
-      await _pump(tester, DemoBackend.adminPhone, size, scale);
-      all.addAll(await _scan(tester, size, '${size.width.toInt()} x$scale'));
-    }
-    for (final p in all.toSet()) {
-      debugPrint(p);
-    }
+    final all = await _checkTabs(tester, DemoBackend.adminPhone, 'panel-nav-', [
+      'Resumen',
+      'Gestión',
+      'Centro IA',
+      'Equipo',
+      'Perfil',
+    ]);
+    expect(all, isEmpty);
+  });
+
+  testWidgets('gerente: todas las pestañas', (tester) async {
+    await loadAppFonts(tester);
+    final all = await _checkTabs(tester, DemoBackend.managerPhone, 'panel-nav-', [
+      'Resumen',
+      'Casos',
+      'Postulaciones',
+      'Equipo',
+      'Perfil',
+    ]);
+    expect(all, isEmpty);
+  });
+
+  testWidgets('empleado: todas las pestañas', (tester) async {
+    await loadAppFonts(tester);
+    final all = await _checkTabs(tester, DemoBackend.employeePhones.first, 'panel-nav-', [
+      'Mis casos',
+      'Actividad',
+      'Perfil',
+    ]);
+    expect(all, isEmpty);
+  });
+
+  testWidgets('cliente: todas las pestañas', (tester) async {
+    await loadAppFonts(tester);
+    final all = await _checkTabs(tester, DemoBackend.customerPhone, 'nav-', [
+      'Inicio',
+      'Buscar',
+      'Solicitudes',
+      'Mensajes',
+      'Perfil',
+    ]);
+    expect(all, isEmpty);
+  });
+
+  testWidgets('profesional: todas las pestañas', (tester) async {
+    await loadAppFonts(tester);
+    final all = await _checkTabs(tester, DemoBackend.professionalPhone, 'nav-', [
+      'Inicio',
+      'Solicitudes',
+      'Trabajos',
+      'Mensajes',
+      'Perfil',
+    ]);
     expect(all, isEmpty);
   });
 }

@@ -259,8 +259,8 @@ class PanelTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                Text(subtitle, style: const TextStyle(color: HyColors.textSecondary)),
+                WordSafeText(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                WordSafeText(subtitle, style: const TextStyle(color: HyColors.textSecondary)),
               ],
             ),
           ),

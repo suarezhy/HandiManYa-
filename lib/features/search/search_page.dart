@@ -79,7 +79,12 @@ class _SearchPageState extends ConsumerState<SearchPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Buscar profesionales'),
+        // Entero en una línea: se achica junto al botón de la ciudad.
+        title: const FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text('Buscar profesionales', maxLines: 1),
+        ),
         actions: [
           TextButton.icon(
             onPressed: () => showCityPicker(context, ref),

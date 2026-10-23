@@ -34,12 +34,21 @@ List<String> brokenWords(RenderParagraph p) {
   return broken;
 }
 
+/// Dentro de una pestaña que no se ve (las otras pestañas siguen armadas, ocultas).
+bool _hidden(RenderObject o) {
+  for (RenderObject? r = o.parent; r != null; r = r.parent) {
+    if (r is RenderOffstage && r.offstage) return true;
+    if (r is RenderSliverOffstage && r.offstage) return true;
+  }
+  return false;
+}
+
 /// Todos los textos visibles en pantalla con una palabra partida o cortados
 /// con "…" (cuando no son de una sola línea a propósito).
 List<String> textProblems(WidgetTester tester, Size screen) {
   final problems = <String>[];
   for (final p in tester.allRenderObjects.whereType<RenderParagraph>()) {
-    if (!p.attached || !p.hasSize) continue;
+    if (!p.attached || !p.hasSize || _hidden(p)) continue;
     final box = p.localToGlobal(Offset.zero) & p.size;
     // Solo lo que está en pantalla (las listas arman también lo de afuera).
     if (box.bottom < 0 || box.top > screen.height || box.right < 0 || box.left > screen.width) continue;
