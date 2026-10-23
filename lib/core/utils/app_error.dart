@@ -194,7 +194,7 @@ class AppError implements Exception {
     'HMY_CONFIRMATION_EXPIRED': 'La confirmación venció. Vuelve a confirmar que eres tú.',
     'HMY_CONFIRMATION_USED': 'Cada operación necesita una confirmación nueva. Vuelve a confirmar que eres tú.',
     'HMY_BIOMETRIC_DISABLED':
-        'La huella o el rostro no están activados. Confirma con un código o actívalos en Perfil → Seguridad.',
+        'La huella o el rostro no están activados. Confirma con un código o actívalos en Perfil > Seguridad.',
     // PostgREST: la función todavía no existe en el servidor (falta aplicar su migración).
     'PGRST202': 'Esta parte necesita una actualización del servidor que todavía no está aplicada.',
     'HMY_PRO_NOT_CLEARED': 'Este profesional todavía no está habilitado para este servicio. Elige a otra persona.',

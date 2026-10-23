@@ -175,7 +175,10 @@ class _BookingCard extends StatelessWidget {
             ],
           ),
           InfoLine(Icons.place_outlined, [?b.cityName, ?b.zoneName].join(' · ')),
-          InfoLine(Icons.person_outline, '${b.customerName} → ${b.professionalName ?? 'sin profesional todavía'}'),
+          InfoLine(
+            Icons.person_outline,
+            'Cliente: ${b.customerName} · Profesional: ${b.professionalName ?? 'sin asignar'}',
+          ),
           InfoLine(
             Icons.schedule,
             '${b.mode == BookingMode.now ? '¡Ya!' : 'Programado'} · ${Fmt.dateTime(b.createdAt)}',
@@ -695,7 +698,10 @@ class _OwnerWalletsPageState extends ConsumerState<OwnerWalletsPage> {
                   padding: const EdgeInsets.only(top: HySpacing.xxs),
                   child: Align(
                     alignment: AlignmentDirectional.centerStart,
-                    child: ToneChip('${w.pendingTopups} recarga(s) por revisar', StatusTone.brand),
+                    child: ToneChip(
+                      w.pendingTopups == 1 ? '1 recarga por revisar' : '${w.pendingTopups} recargas por revisar',
+                      StatusTone.brand,
+                    ),
                   ),
                 ),
               const SizedBox(height: HySpacing.xxs),

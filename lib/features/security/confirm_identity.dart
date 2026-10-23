@@ -122,7 +122,7 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> wit
   Future<void> _sendCode() async {
     final phone = _phone;
     if (phone == null) {
-      return setState(() => _error = 'Agrega tu celular en Perfil → Información personal para recibir códigos.');
+      return setState(() => _error = 'Agrega tu celular en Perfil > Información personal para recibir códigos.');
     }
     setState(() {
       _busy = true;
@@ -280,7 +280,7 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> wit
               const Padding(
                 padding: EdgeInsets.only(top: HySpacing.xs),
                 child: Text(
-                  'Puedes activar huella o rostro en Perfil → Seguridad.',
+                  'Puedes activar huella o rostro en Perfil > Seguridad.',
                   style: TextStyle(color: HyColors.textSecondary),
                 ),
               ),
