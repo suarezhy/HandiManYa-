@@ -343,8 +343,27 @@ class SupabaseBackend
   ) as num).toInt();
 
   // ---------------------------------------------------------------- Solicitudes
+  DateTime? _expiredAt;
+
+  // Cierra los pedidos de esta persona que vencieron sin respuesta (0046),
+  // a lo más cada 20 s. Si falla, no pasa nada: el servidor igual rechaza
+  // aceptar un pedido vencido.
+  Future<void> _expireOverdue() async {
+    final now = DateTime.now();
+    if (_expiredAt != null && now.difference(_expiredAt!) < const Duration(seconds: 20)) return;
+    _expiredAt = now;
+    try {
+      await _db.rpc('expire_my_overdue_bookings');
+    } on PostgrestException {
+      // Sin la migración 0046 (PGRST202) o un bloqueo pasajero: se sigue.
+    }
+  }
+
   @override
   Future<String> create(BookingDraft d) async {
+    // Lo vencido no cuenta para el máximo de pedidos abiertos.
+    _expiredAt = null;
+    await _expireOverdue();
     if (d.isYa) {
       return await _db.rpc(
         'create_ya_request',
@@ -385,13 +404,16 @@ class SupabaseBackend
   }
 
   @override
-  Future<List<BookingSummary>> myBookings({required bool asProfessional}) async =>
-      _rows(await _db.rpc('my_bookings', params: {'p_as': asProfessional ? 'professional' : 'customer'}))
-          .map((m) => BookingSummary.fromMap(m, photo: _publicPhoto))
-          .toList();
+  Future<List<BookingSummary>> myBookings({required bool asProfessional}) async {
+    await _expireOverdue();
+    return _rows(await _db.rpc('my_bookings', params: {'p_as': asProfessional ? 'professional' : 'customer'}))
+        .map((m) => BookingSummary.fromMap(m, photo: _publicPhoto))
+        .toList();
+  }
 
   @override
   Future<BookingDetail> detail(String bookingId) async {
+    await _expireOverdue();
     final m = Map<String, dynamic>.from(await _db.rpc('booking_detail', params: {'p_booking': bookingId}) as Map);
     // Las fotos están en un depósito privado: se firman por una hora.
     final paths = [for (final p in (m['photos'] as List? ?? const [])) (p as Map)['path'] as String];
