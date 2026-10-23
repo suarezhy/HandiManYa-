@@ -27,16 +27,19 @@ select test.eq((select count(*)::int from jsonb_array_elements_text(public.gener
 
 -- Alerta de costos: el título no repite el mensaje y la evidencia trae los intentos reales.
 update public.cost_vendors set status = 'off' where key = 'whatsapp_otp';
--- Si ya hay una alerta de este mes (en dev la hay), se aparta para crear una
--- nueva con el formato de 0040. En dev todo esto termina en ROLLBACK.
-update public.ai_items set dedupe_key = dedupe_key || ':antes-99i' where dedupe_key like 'cost:whatsapp_otp:blocked:%';
+-- La alerta del mes con el formato viejo (título = "Costos: " + mensaje, sin
+-- números). Si en dev ya existe, se usa esa; todo termina en ROLLBACK.
+insert into public.ai_items (agent_key, kind, severity, status, source, title, body, evidence, dedupe_key)
+values ('finance', 'alert', 'high', 'open', 'rule', 'Costos: mensaje viejo', 'mensaje viejo', '{}',
+        'cost:whatsapp_otp:blocked:' || to_char(public.hmy_month_start(), 'YYYY-MM'))
+on conflict (dedupe_key) do update set status = 'open', title = 'Costos: mensaje viejo', body = 'mensaje viejo', evidence = '{}';
 insert into public.cost_usage (vendor_key, units, sandbox, allowed, reason, billable_units, cost_usd, ref)
 select 'whatsapp_otp', 1, false, false, 'vendor_off', 0, 0, 'prueba-99i-' || g from generate_series(1, 3) g;
 select public.run_cost_monitors();
 create temp table a as
-  select * from public.ai_items where dedupe_key like 'cost:whatsapp_otp:blocked:%'
-    and dedupe_key not like '%:antes-99i' order by id desc limit 1;
-select test.eq((select title from a) like 'Costos: % · usos frenados', true, 'costos: título corto');
+  select * from public.ai_items where dedupe_key = 'cost:whatsapp_otp:blocked:' || to_char(public.hmy_month_start(), 'YYYY-MM');
+select test.eq((select count(*)::int from a), 1, 'costos: una sola alerta por servicio, nivel y mes');
+select test.eq((select title from a) like 'Costos: % · usos frenados', true, 'costos: título corto (también la alerta vieja)');
 select test.eq((select position(body in title) from a), 0, 'costos: el título no repite el detalle');
 select test.eq((select (evidence ->> 'blocked_attempts')::int >= 3 from a), true,
                'costos: los intentos frenados salen de cost_usage');
@@ -49,3 +52,17 @@ select test.eq((select (evidence ->> 'charged_usd')::numeric from a),
                (select coalesce(round(sum(cost_usd), 4), 0) from public.cost_usage where vendor_key = 'whatsapp_otp'
                   and allowed and not sandbox and occurred_at >= public.hmy_month_start()),
                'costos: lo cobrado sale de los registros');
+-- Más intentos frenados: la misma alerta abierta muestra el número nuevo.
+insert into public.cost_usage (vendor_key, units, sandbox, allowed, reason, billable_units, cost_usd, ref)
+values ('whatsapp_otp', 1, false, false, 'vendor_off', 0, 0, 'prueba-99i-4');
+select public.run_cost_monitors();
+select test.eq((select (evidence ->> 'blocked_attempts')::int from public.ai_items where id = (select id from a)),
+               (select (evidence ->> 'blocked_attempts')::int + 1 from a), 'costos: el conteo se actualiza en cada revisión');
+-- Una alerta ya decidida no se reescribe.
+update public.ai_items set status = 'dismissed' where id = (select id from a);
+create temp table a2 as select evidence from public.ai_items where id = (select id from a);
+insert into public.cost_usage (vendor_key, units, sandbox, allowed, reason, billable_units, cost_usd, ref)
+values ('whatsapp_otp', 1, false, false, 'vendor_off', 0, 0, 'prueba-99i-5');
+select public.run_cost_monitors();
+select test.eq((select evidence from public.ai_items where id = (select id from a)), (select evidence from a2),
+               'costos: una alerta decidida queda como estaba');

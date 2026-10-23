@@ -6,7 +6,8 @@
 --   no se tocan; la app los muestra con su fecha y avisa si son viejos.
 -- - Alertas de costos: el título ya no repite el mensaje. Título corto (servicio
 --   y qué pasó); el detalle va en el cuerpo y en la evidencia, con el número de
---   intentos frenados tomado de cost_usage.
+--   intentos frenados tomado de cost_usage. Cada revisión actualiza los números
+--   de la alerta abierta del mes (antes quedaba fijo el del primer aviso).
 
 create or replace function public.generate_daily_report(p_date date, p_tz text)
 returns jsonb
@@ -99,19 +100,20 @@ declare
   v_after bigint := (select coalesce(max(id), 0) from public.ai_items);
   v_t timestamptz := clock_timestamp();
   v_month text := to_char(public.hmy_month_start(), 'YYYY-MM');
+  v_key text;
+  v_title text;
+  v_evidence jsonb;
 begin
   begin
     for a in select * from jsonb_array_elements(public.hmy_cost_month((now() at time zone 'UTC')::date) -> 'alerts') loop
-      perform public.hmy_raise_item('finance', 'alert',
-        case a ->> 'level' when 'blocked' then 'high' when 'near_cap' then 'high' else 'medium' end, 'rule',
-        'Costos: ' || coalesce((select name from public.cost_vendors where key = a ->> 'vendor'), a ->> 'vendor')
+      v_key := format('cost:%s:%s:%s', a ->> 'vendor', a ->> 'level', v_month);
+      v_title := 'Costos: ' || coalesce((select name from public.cost_vendors where key = a ->> 'vendor'), a ->> 'vendor')
           || ' · ' || case a ->> 'level' when 'blocked' then 'usos frenados'
                                          when 'near_cap' then 'cerca del tope mensual'
                                          when 'near_free_limit' then 'cerca del límite gratis'
-                                         else 'aviso' end,
-        a ->> 'message',
-        -- Evidencia con los números reales del mes, contados en cost_usage.
-        a || jsonb_build_object(
+                                         else 'aviso' end;
+      -- Evidencia con los números reales del mes, contados en cost_usage.
+      v_evidence := a || jsonb_build_object(
           'blocked_attempts', (select count(*) from public.cost_usage u
                                where u.vendor_key = a ->> 'vendor' and not u.allowed and not u.sandbox
                                  and u.reason in ('free_tier_exhausted', 'monthly_cap', 'vendor_off')
@@ -119,8 +121,16 @@ begin
           'charged_usd', (select coalesce(round(sum(u.cost_usd), 4), 0) from public.cost_usage u
                           where u.vendor_key = a ->> 'vendor' and u.allowed and not u.sandbox
                             and u.occurred_at >= public.hmy_month_start()),
-          'counted_at', now()),
-        format('cost:%s:%s:%s', a ->> 'vendor', a ->> 'level', v_month), 'cost_vendors', a ->> 'vendor');
+          'counted_at', now());
+      perform public.hmy_raise_item('finance', 'alert',
+        case a ->> 'level' when 'blocked' then 'high' when 'near_cap' then 'high' else 'medium' end, 'rule',
+        v_title, a ->> 'message', v_evidence, v_key, 'cost_vendors', a ->> 'vendor');
+      -- Hay una sola alerta por servicio, nivel y mes: si sigue abierta, se
+      -- actualizan sus números (antes quedaba el conteo del primer aviso) y su
+      -- texto pasa al formato corto. Las ya decididas no se tocan.
+      update public.ai_items set title = v_title, body = a ->> 'message', evidence = v_evidence
+      where dedupe_key = v_key and status in ('open', 'more_info')
+        and (title is distinct from v_title or body is distinct from a ->> 'message' or evidence is distinct from v_evidence);
     end loop;
     return public.hmy_agent_run_ok('finance', v_t, v_after, 1);
   exception when others then
