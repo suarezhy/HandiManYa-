@@ -10,6 +10,8 @@ name: Base de datos Supabase (handimanya-flutter-dev)
 # - o a mano desde Actions, cuando este archivo ya esté en main.
 # La rama de aplicar solo se sube con la aprobación explícita del dueño del proyecto.
 # La contraseña de la base va en el secreto SUPABASE_DB_URL; nunca en el código.
+# Antes de aplicar se hace un respaldo comprobado y cifrado (respaldo-dev.yml).
+# Si el respaldo falla o no se pudo guardar, no se aplica ninguna migración.
 
 on:
   push:
@@ -35,7 +37,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  respaldo:
+    name: Respaldo antes de aplicar
+    if: inputs.accion == 'aplicar' || github.ref_name == 'supabase/aplicar-dev'
+    uses: ./.github/workflows/respaldo-dev.yml
+    secrets: inherit
+
   db:
+    needs: respaldo
+    if: ${{ !cancelled() && (needs.respaldo.result == 'success' || needs.respaldo.result == 'skipped') }}
     name: ${{ (inputs.accion == 'aplicar' || github.ref_name == 'supabase/aplicar-dev') && 'Aplicar migraciones' || ((inputs.accion == 'probar' || github.ref_name == 'supabase/probar-dev') && 'Probar la base' || 'Revisar la base (solo lectura)') }}
     runs-on: ubuntu-latest
     env:
@@ -43,6 +53,7 @@ jobs:
       EXPECTED_REF: yldqopeldibwgbwmdnzy
       APPLY: ${{ (inputs.accion == 'aplicar' && inputs.confirmar == 'APLICAR') || github.ref_name == 'supabase/aplicar-dev' }}
       WANTS_APPLY: ${{ inputs.accion == 'aplicar' || github.ref_name == 'supabase/aplicar-dev' }}
+      BACKUP: ${{ needs.respaldo.result }}
       CHECK: ${{ (inputs.accion == 'aplicar' && inputs.confirmar == 'APLICAR') || github.ref_name == 'supabase/aplicar-dev' || inputs.accion == 'probar' || github.ref_name == 'supabase/probar-dev' }}
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +86,10 @@ jobs:
           set -euo pipefail
           if [ "${APPLY}" != "true" ]; then
             echo "::error::Para aplicar, escribe APLICAR en el campo de confirmación."
+            exit 1
+          fi
+          if [ "${BACKUP}" != "success" ]; then
+            echo "::error::No hay un respaldo comprobado de esta corrida: no se aplica nada."
             exit 1
           fi
           # Solo se aplican las migraciones que todavía no están anotadas en

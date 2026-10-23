@@ -111,7 +111,7 @@ select test.expect_error($$select public.admin_set_setting('otra_cosa', '{}')$$,
 select test.expect_error($$select public.admin_set_setting('ai_budget', '{"monthly_usd": 20}', 'biometric')$$,
                          'HMY_BIOMETRIC_DISABLED');
 select test.logout();
-select test.login_pw('00000000-0000-0000-0000-00000000000a', 8);
+select test.login_pw('00000000-0000-0000-0000-00000000000a', 60); -- lejos del de arriba (7 s): si pasa un segundo entre ambos, serían el mismo inicio de sesión
 select public.admin_set_setting('ai_budget', '{"monthly_usd": 20, "per_user_daily_requests": 30}', 'password');
 select test.eq((select (value ->> 'monthly_usd')::numeric from public.app_settings where key = 'ai_budget'), 20::numeric,
                'presupuesto: el dueño lo fija con confirmación');
