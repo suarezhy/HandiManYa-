@@ -158,6 +158,16 @@ abstract interface class NotificationRepository {
   Future<List<AppNotification>> list();
   Stream<int> unreadCount();
   Future<void> markAllRead();
+
+  // Avisos push (0045). El token es el de Firebase Cloud Messaging de este teléfono.
+  Future<void> registerPushDevice(String token, String platform);
+  Future<void> unregisterPushDevice(String token);
+
+  /// Null si el servidor todavía no tiene avisos push.
+  Future<PushStatus?> pushStatus();
+
+  /// Manda un aviso de prueba a los teléfonos de la persona; devuelve a cuántos.
+  Future<int> sendTestPush();
 }
 
 abstract interface class ProRepository {

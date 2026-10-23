@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 
+import '../../core/services/push_tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../models/admin.dart';
 import '../models/ai_control.dart';
@@ -99,7 +100,19 @@ class SupabaseBackend
       _db.auth.verifyOTP(type: OtpType.email, email: email.trim().toLowerCase(), token: code.trim());
 
   @override
-  Future<void> signOut() => _db.auth.signOut();
+  Future<void> signOut() async {
+    // Primero se suelta el teléfono: la cuenta que sale deja de recibir avisos push aquí.
+    final token = PushTokens.current;
+    if (token != null) {
+      try {
+        await unregisterPushDevice(token);
+      } catch (_) {
+        // Sin conexión o sin la migración 0045: igual se cierra la sesión.
+      }
+      PushTokens.current = null;
+    }
+    await _db.auth.signOut();
+  }
 
   // ---------------------------------------------------------------- Cuenta
   @override
@@ -572,6 +585,27 @@ class SupabaseBackend
 
   @override
   Future<void> markAllRead() => _db.rpc('mark_notifications_read');
+
+  @override
+  Future<void> registerPushDevice(String token, String platform) =>
+      _db.rpc('register_push_device', params: {'p_token': token, 'p_platform': platform});
+
+  @override
+  Future<void> unregisterPushDevice(String token) => _db.rpc('unregister_push_device', params: {'p_token': token});
+
+  // Sin la migración 0045 (PGRST202) el servidor no tiene avisos push.
+  @override
+  Future<PushStatus?> pushStatus() async {
+    try {
+      return PushStatus.fromMap(Map<String, dynamic>.from(await _db.rpc('my_push_status') as Map));
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST202') return null;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<int> sendTestPush() async => ((await _db.rpc('send_test_push')) as num).toInt();
 
   // ---------------------------------------------------------------- Profesional
   @override

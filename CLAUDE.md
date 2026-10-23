@@ -18,9 +18,10 @@ export PATH=/opt/flutter-sdk/flutter/bin:$PATH
 flutter analyze && flutter test
 node --experimental-strip-types --no-warnings --test supabase/functions/_shared/didit.test.ts
 node --experimental-strip-types --no-warnings --test supabase/functions/send-otp/send-otp.test.ts
+node --experimental-strip-types --no-warnings --test supabase/functions/send-push/send-push.test.ts
 PGHOST=... PGPORT=... PGUSER=postgres supabase/tests/run_local.sh   # all migrations + SQL tests, local only
 ```
-Edge Function bundles for the dashboard: `supabase/scripts/bundle_didit.sh <dir>` and `bundle_send_otp.sh <dir>`, then always `deno check` the bundle.
+Edge Function bundles for the dashboard: `supabase/scripts/bundle_didit.sh <dir>`, `bundle_send_otp.sh <dir>` and `bundle_send_push.sh <dir>`, then always `deno check` the bundle.
 
 ## Database
 - Migrations are additive and numbered (`supabase/migrations/<timestamp>_<name>.sql`, in order); each one gets a test file in `supabase/tests/` and is listed in `supabase/tests/run_remote.sql`.

@@ -36,6 +36,45 @@ eligió la persona; la app lo guarda antes con `choose_code_channel`.
 `node --experimental-strip-types --test supabase/functions/send-otp/send-otp.test.ts`
 (corren también en CI; no llaman a ningún proveedor).
 
+## send-push — avisos push (Firebase Cloud Messaging)
+
+Aprobado por el dueño el 23-10-2026: solo Firebase Cloud Messaging (sin
+Firebase Auth ni base de datos de Firebase). **No está desplegada**: la
+migración 0045, el despliegue y los secretos se hacen con la aprobación del
+dueño para cada paso. Sin `FCM_SERVICE_ACCOUNT` no reclama nada
+(`HMY_PUSH_OFF`) y los avisos quedan en cola; nunca se marcan como enviados.
+
+La base decide qué se manda (`hmy_push_claim`): un aviso por teléfono activo,
+solo de las últimas 24 horas, y el texto nunca lleva lo que escribió una
+persona (solo el título y una frase fija por tipo, `hmy_push_text`). "sent" =
+Firebase lo aceptó, no que el teléfono lo mostró. Un token que Firebase da por
+no registrado apaga ese teléfono.
+
+### Activarla (cuando el dueño lo apruebe)
+
+1. Firebase: crear un proyecto (plan gratis Spark) y agregar las apps Android
+   (`bo.handimanya.handimanya`), iOS (mismo identificador) y Web. Copiar los identificadores públicos en
+   `config/firebase-dev.json` (ver `config/firebase-dev.example.json`) y la clave
+   VAPID (Cloud Messaging → Web Push certificates).
+2. iPhone (app nativa): en Apple Developer crear una clave APNs (.p8) y
+   cargarla en Firebase → Cloud Messaging → Apple app configuration. La web
+   agregada a la pantalla de inicio del iPhone (iOS 16.4 o más) no la necesita.
+3. Firebase → Configuración → Cuentas de servicio → generar una clave privada.
+   El JSON va solo como secreto de la función, nunca en el repositorio.
+4. Desplegar: `supabase functions deploy send-push --no-verify-jwt --project-ref yldqopeldibwgbwmdnzy`
+   (el secreto del webhook reemplaza al JWT), o pegar `supabase/scripts/bundle_send_push.sh <dir>`.
+5. Secretos de la función: `PUSH_WEBHOOK_SECRET` (una cadena larga al azar),
+   `FCM_SERVICE_ACCOUNT` (el JSON del paso 3) y opcional `PUSH_WEB_LINK`
+   (dirección de la web de prueba, para abrirla al tocar un aviso).
+6. Database → Webhooks → nuevo: tabla `push_outbox`, evento Insert, HTTP POST a
+   la URL de la función, encabezado `x-hmy-push-secret` = `PUSH_WEBHOOK_SECRET`.
+7. Probar: en la app, Notificaciones → Activar avisos → Enviar aviso de prueba.
+
+### Pruebas
+
+`node --experimental-strip-types --test supabase/functions/send-push/send-push.test.ts`
+(no llaman a Google ni a Firebase) y `supabase/tests/99n_push_notifications_tests.sql`.
+
 ## identity-check y didit-webhook — verificación de identidad (Didit)
 
 Decisión del dueño: **solo el sandbox gratis de Didit** hasta que autorice otra

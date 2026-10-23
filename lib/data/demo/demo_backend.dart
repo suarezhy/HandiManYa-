@@ -1704,6 +1704,19 @@ class DemoBackend
     yield* _changes.stream.map((_) => count());
   }
 
+  // En la demostración no hay avisos push (no hay servidor que los mande).
+  @override
+  Future<void> registerPushDevice(String token, String platform) async {}
+
+  @override
+  Future<void> unregisterPushDevice(String token) async {}
+
+  @override
+  Future<PushStatus?> pushStatus() async => null;
+
+  @override
+  Future<int> sendTestPush() async => throw const AppError('Los avisos push no existen en la demostración.');
+
   @override
   Future<void> markAllRead() async {
     final me = _session?.id;

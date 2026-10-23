@@ -13,7 +13,7 @@ declare
     'departments','disputes','identity_checks','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
     'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
-    'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets','staff_members','ops_cases','ops_case_notes','receiving_accounts'];
+    'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets','staff_members','ops_cases','ops_case_notes','receiving_accounts','push_devices','push_outbox'];
   v_buckets jsonb := '{"avatars":true,"portfolio":true,"booking-photos":false,"chat-images":false,"payment-qr":false,"professional-documents":false,"topup-proofs":false}';
   v_functions text[] := array['handle_new_user','create_booking','create_ya_request','claim_ya_request','ya_eligible_professionals',
     'accept_booking','cancel_booking','confirm_completion','booking_detail','can_see_booking_address','set_booking_approx_point',
@@ -33,7 +33,8 @@ declare
     'hmy_mask_account','hmy_require_strong_confirmation','owner_finance_summary','owner_finance_transactions','owner_topups_reconciliation','owner_reconcile_topup','owner_receiving_accounts','owner_save_receiving_account','owner_set_receiving_account','owner_finance_audit',
     'hmy_mask_phone','owner_staff_candidates',
     'hmy_booking_row','ops_bookings','ops_booking_detail','ops_open_booking_case','admin_people','ops_risk_items','owner_wallets',
-    'owner_finance_ledger','owner_finance_topups','commission_preview','owner_commission_debts','owner_demand_bookings'];
+    'owner_finance_ledger','owner_finance_topups','commission_preview','owner_commission_debts','owner_demand_bookings',
+    'register_push_device','unregister_push_device','my_push_status','send_test_push','hmy_push_claim','hmy_push_report','owner_push_overview'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -147,6 +148,12 @@ begin
      and exists (select 1 from pg_trigger where tgname = 'wallet_ledger_collect_debts')
      and (select count(*) from public.commission_rules where capture_at <> 'completed') = 0,
      'comisión: se reserva al aceptar y se cobra al completar; lo pendiente se cobra de la próxima recarga'),
+    (not has_function_privilege('authenticated', 'public.hmy_push_claim(integer)', 'EXECUTE')
+     and not has_function_privilege('authenticated', 'public.hmy_push_report(jsonb)', 'EXECUTE')
+     and not has_column_privilege('authenticated', 'public.push_devices', 'token', 'SELECT')
+     and not has_table_privilege('authenticated', 'public.push_devices', 'INSERT')
+     and exists (select 1 from pg_trigger where tgname = 'notifications_push'),
+     'avisos push: solo el servidor envía; nadie lee tokens ajenos ni escribe teléfonos directamente'),
     (to_regprocedure('public.owner_grant_staff(uuid, text)') is null and to_regprocedure('public.owner_grant_staff(uuid, text, text)') is not null,
      'equipo: dar un rol exige confirmación del propietario')
   ) as v(ok, what) loop

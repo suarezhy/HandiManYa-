@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/tokens.dart';
 import 'data/providers.dart';
+import 'features/notifications/push_controller.dart';
 import 'features/security/app_lock.dart';
 import 'router.dart';
 
@@ -15,6 +16,8 @@ class HandiManYaApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final demo = ref.watch(isDemoProvider);
+    // Avisos push: registra el teléfono al iniciar sesión y abre lo que se toca.
+    ref.listen(pushControllerProvider, (_, _) {});
     return MaterialApp.router(
       title: 'HandiMan ¡Ya!',
       debugShowCheckedModeBanner: false,

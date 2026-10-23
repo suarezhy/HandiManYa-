@@ -91,6 +91,7 @@ Qué datos guardamos
 • Profesionales: perfil, servicios, zona de trabajo, carnet y otros documentos, billetera y movimientos.
 • Verificación de identidad (profesionales): el resultado que nos envía Didit (aprobado o rechazado, tipo de documento, puntajes de coincidencia y de presencia, avisos). Las fotos y la selfie las procesa Didit.
 • Chat, calificaciones, reportes, disputas y mensajes a soporte.
+• Avisos push: si los activas, el identificador de avisos de cada teléfono y si cada aviso salió. Lo borras al desactivarlos o al cerrar sesión.
 • Qué versión de estos textos aceptaste y cuándo.
 
 Para qué los usamos
@@ -113,6 +114,7 @@ Quién ve tus datos
 Proveedores
 • Supabase (base de datos y archivos), cuyos servidores pueden estar fuera de Bolivia. [PENDIENTE: región y acuerdos con el proveedor.]
 • Didit (verificación de identidad de profesionales).
+• Firebase Cloud Messaging de Google (avisos push, solo si los activas). El aviso lleva un título y una frase general, nunca el texto de tus mensajes, descripciones ni direcciones.
 • El proveedor de WhatsApp o SMS que envía los códigos. [PENDIENTE: nombre del proveedor cuando se contrate.]
 
 Cuánto tiempo

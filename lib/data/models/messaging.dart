@@ -100,3 +100,23 @@ class AppNotification {
     );
   }
 }
+
+/// Avisos push de la persona (my_push_status, migración 0045). "sent" quiere
+/// decir que Firebase aceptó el aviso, no que el teléfono lo mostró.
+class PushStatus {
+  const PushStatus({required this.devices, this.lastStatus, this.lastError, this.lastKind, this.lastCreatedAt});
+
+  final int devices;
+  final String? lastStatus;
+  final String? lastError;
+  final String? lastKind;
+  final DateTime? lastCreatedAt;
+
+  factory PushStatus.fromMap(Map<String, dynamic> m) => PushStatus(
+    devices: (m['devices'] as num?)?.toInt() ?? 0,
+    lastStatus: m['last_status'] as String?,
+    lastError: m['last_error'] as String?,
+    lastKind: m['last_kind'] as String?,
+    lastCreatedAt: DateTime.tryParse(m['last_created_at'] as String? ?? '')?.toLocal(),
+  );
+}

@@ -61,6 +61,7 @@ jobs:
           node-version: 22
       - run: node --experimental-strip-types --no-warnings --test supabase/functions/send-otp/send-otp.test.ts
       - run: node --experimental-strip-types --no-warnings --test supabase/functions/_shared/didit.test.ts
+      - run: node --experimental-strip-types --no-warnings --test supabase/functions/send-push/send-push.test.ts
 
   demo:
     name: Publicar demo web (GitHub Pages)
