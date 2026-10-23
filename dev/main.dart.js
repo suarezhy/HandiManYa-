@@ -136154,7 +136154,7 @@ e.push(new A.jf(A.a([new A.c3("Pedidos de hoy",d.l6("bookings_today"),n,new A.bq
 e.push(B.aNP)
 e.push(new A.jf(A.a([new A.c3("Casos urgentes",d.iG("urgent_cases"),B.b6,new A.brl(g),n,n,B.b3P),new A.c3("Escalados a ti",d.iG("escalated_to_owner"),B.b6,new A.brn(g),n,n,n),new A.c3("Incidentes de seguridad",d.iG("safety_incidents"),B.b6,new A.bro(g),n,n,B.b47),new A.c3("Alertas de fraude",d.iG("fraud_alerts"),B.b6,new A.brp(g),n,n,n),new A.c3("Disputas abiertas",d.l6("open_disputes"),B.ac,new A.brq(g),n,n,n),new A.c3("Soporte abierto",d.l6("open_tickets"),B.cF,new A.brr(g),n,n,n)],f),150,n))
 e.push(B.aOc)
-e.push(new A.jf(A.a([new A.c3("Clientes",d.iG("customers"),n,new A.brs(g),n,n,B.b4Q),new A.c3("Profesionales",d.l6("approved_professionals"),n,new A.br0(g),n,n,n),new A.c3("Disponibles ahora",d.l6("available_professionals"),n,new A.br1(g),n,n,n),new A.c3("Solicitudes pendientes",d.l6("pending_applications"),B.cF,new A.br2(g),n,n,n),new A.c3("Revisar documentos",d.iG("pending_documents"),B.cF,new A.br3(g),n,n,n),new A.c3("Identidad en revisi\xf3n",d.iG("identity_in_review"),B.cF,new A.br4(g),n,n,n)],f),150,n))
+e.push(new A.jf(A.a([new A.c3("Clientes",d.iG("customers"),n,new A.brs(g),n,n,B.b4Q),new A.c3("Profesionales",d.l6("approved_professionals"),n,new A.br0(g),n,n,n),new A.c3("Disponibles ahora",d.l6("available_professionals"),n,new A.br1(g),n,n,n),new A.c3("Postulantes por revisar",d.l6("pending_applications"),B.cF,new A.br2(g),n,n,n),new A.c3("Revisar documentos",d.iG("pending_documents"),B.cF,new A.br3(g),n,n,n),new A.c3("Identidad en revisi\xf3n",d.iG("identity_in_review"),B.cF,new A.br4(g),n,n,n)],f),150,n))
 e.push(B.ZX)
 s=d.rG(m)
 s=s==null?n:$.d3().a9(s)
@@ -142867,7 +142867,7 @@ s=i.iF("pending_documents")
 if(s==null)s=0
 r=i.iF("flagged_documents")
 if(r==null)r=0
-r=A.a([new A.c3("Solicitudes pendientes",h,B.cF,new A.bgq(j),k,k,k),new A.c3("Revisar documentos",s,B.cF,new A.bgr(j),k,k,k),new A.c3("Documentos marcados",r,B.ac,k,k,k,k)],p)
+r=A.a([new A.c3("Postulantes por revisar",h,B.cF,new A.bgq(j),k,k,k),new A.c3("Revisar documentos",s,B.cF,new A.bgr(j),k,k,k),new A.c3("Documentos marcados",r,B.ac,k,k,k,k)],p)
 s=i.iF("open_tickets")
 h=s==null?0:s
 s=i.iF("open_reports")
@@ -145493,7 +145493,7 @@ p=B.d.ar(i.gct().b1(14)/14,2)
 h=A.cf(p,".",",")
 p=B.d.aN(i.a.a)
 o=i.ay?" \xb7 negrita":""
-s.push(new A.a2(B.eZ,A.t("Compilaci\xf3n de prueba 19 \xb7 "+("pantalla "+p+" \xb7 letra "+h+o),B.b2E,g,g,g,g,B.dG,B.aL,g,g),g))
+s.push(new A.a2(B.eZ,A.t("Compilaci\xf3n de prueba 20 \xb7 "+("pantalla "+p+" \xb7 letra "+h+o),B.b2E,g,g,g,g,B.dG,B.aL,g,g),g))
 return A.bX(r,g,A.d_(A.a([new A.d0(A.Y(s,B.w,g,B.e,B.f,0,B.i),B.aj,g)],q),g,g,g,B.oL,g,g,B.C,!1),g,g,g)}}
 A.aPI.prototype={
 amI(a){var s=0,r=A.n(t.H),q=this,p
