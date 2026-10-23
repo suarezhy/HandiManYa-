@@ -2,10 +2,18 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
+/// El estilo con que [Text] dibuja de verdad: el de [context] más [style] y,
+/// si el teléfono tiene "Fuente en negrita" (Samsung, Android), en negrita.
+/// Medir sin la negrita hacía que las palabras se partieran (Issue #12, Dev-17).
+TextStyle effectiveTextStyle(BuildContext context, TextStyle? style) {
+  final base = DefaultTextStyle.of(context).style.merge(style);
+  return MediaQuery.boldTextOf(context) ? base.merge(const TextStyle(fontWeight: FontWeight.bold)) : base;
+}
+
 /// Ancho de [text] en una sola línea, con la letra de [context] y sin escalar.
 double textWidth(BuildContext context, String text, TextStyle style) {
   final painter = TextPainter(
-    text: TextSpan(text: text, style: DefaultTextStyle.of(context).style.merge(style)),
+    text: TextSpan(text: text, style: effectiveTextStyle(context, style)),
     textDirection: TextDirection.ltr,
     textScaler: TextScaler.noScaling,
     maxLines: 1,

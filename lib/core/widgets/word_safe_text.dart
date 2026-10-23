@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../utils/text_fit.dart';
+
 /// Texto que corta líneas solo entre palabras: si la palabra más larga no
 /// entra en el ancho disponible (pantalla chica o letra grande del teléfono),
 /// se achica la letra lo justo para que entre, en vez de partirla
@@ -36,17 +38,29 @@ class WordSafeText extends StatelessWidget {
   /// El estilo con la letra achicada para que la palabra más larga entre en [maxWidth].
   static TextStyle fit(String text, TextStyle style, TextScaler scaler, double maxWidth, {double minScale = 0.7}) {
     if (!maxWidth.isFinite || maxWidth <= 0) return style;
-    final widest = longestWord(text, style, scaler);
-    if (widest <= maxWidth) return style;
-    final size = style.fontSize ?? 14;
     // Un poco de margen: el ancho medido y el dibujado pueden diferir en décimas.
-    final factor = math.max(minScale, (maxWidth - 0.5) / widest);
-    return style.copyWith(fontSize: (size * factor * 2).floorToDouble() / 2);
+    final room = maxWidth - 0.5;
+    if (longestWord(text, style, scaler) <= room) return style;
+    // Se busca el tamaño midiendo de nuevo cada vez: en Android 14 la letra
+    // grande del sistema no crece en proporción, así que achicar un 10 % no
+    // angosta la palabra un 10 %.
+    final size = style.fontSize ?? 14;
+    var lo = size * minScale;
+    var hi = size;
+    for (var i = 0; i < 10; i++) {
+      final mid = (lo + hi) / 2;
+      if (longestWord(text, style.copyWith(fontSize: mid), scaler) <= room) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return style.copyWith(fontSize: math.max(size * minScale, (lo * 2).floorToDouble() / 2));
   }
 
   @override
   Widget build(BuildContext context) {
-    final base = DefaultTextStyle.of(context).style.merge(style);
+    final base = effectiveTextStyle(context, style);
     final scaler = MediaQuery.textScalerOf(context);
     return LayoutBuilder(
       builder: (context, box) => Text(

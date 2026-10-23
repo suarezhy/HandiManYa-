@@ -1,7 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../core/utils/text_fit.dart';
 import '../../core/widgets/common.dart';
 import '../../core/widgets/equal_height_row.dart';
 import '../../core/widgets/word_safe_text.dart';
@@ -144,6 +147,9 @@ class PanelStat extends StatelessWidget {
   /// el nombre no se corte.
   final String? detail;
 
+  static const labelStyle = TextStyle(color: HyColors.textSecondary, height: 1.25);
+  static const detailStyle = TextStyle(color: HyColors.textMuted, fontSize: 13);
+
   @override
   Widget build(BuildContext context) => AppCard(
     onTap: onTap,
@@ -177,11 +183,11 @@ class PanelStat extends StatelessWidget {
           ],
         ),
         // Sin "…" ni palabras partidas: la tarjeta crece y la fila se empareja.
-        WordSafeText(label, style: const TextStyle(color: HyColors.textSecondary, height: 1.25)),
+        WordSafeText(label, style: labelStyle),
         if (detail != null)
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: WordSafeText(detail!, style: const TextStyle(color: HyColors.textMuted, fontSize: 13)),
+            child: WordSafeText(detail!, style: detailStyle),
           ),
       ],
     ),
@@ -205,7 +211,14 @@ class PanelGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, box) {
         // En un teléfono de 320 px va una por fila, para que ningún texto se corte.
-        final columns = (box.maxWidth / minWidth).floor().clamp(1, 5);
+        var columns = (box.maxWidth / minWidth).floor().clamp(1, 5);
+        // Y menos columnas si la palabra más larga de un nombre no entra entera
+        // con la letra y la negrita que tiene el teléfono (Issue #12, Dev-17):
+        // la tarjeta se ensancha en vez de achicar la letra o partir la palabra.
+        final widest = _widestWord(context);
+        while (columns > 1 && _innerWidth(box.maxWidth, columns) < widest) {
+          columns--;
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -221,6 +234,24 @@ class PanelGrid extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+extension on PanelGrid {
+  double _innerWidth(double width, int columns) =>
+      (width - HySpacing.sm * (columns - 1)) / columns - 2 * HySpacing.md - 2; // relleno y borde de la tarjeta
+
+  double _widestWord(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final label = effectiveTextStyle(context, PanelStat.labelStyle);
+    final detail = effectiveTextStyle(context, PanelStat.detailStyle);
+    var widest = 0.0;
+    for (final c in children) {
+      if (c is! PanelStat) continue;
+      widest = math.max(widest, WordSafeText.longestWord(c.label, label, scaler));
+      if (c.detail != null) widest = math.max(widest, WordSafeText.longestWord(c.detail!, detail, scaler));
+    }
+    return widest;
   }
 }
 

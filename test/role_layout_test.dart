@@ -18,7 +18,14 @@ import 'support/layout_checks.dart';
 const _top = 24.0; // barra de estado de Android
 const _bottom = 24.0; // barra de gestos de Android
 
-Future<DemoAppBackend> _pump(WidgetTester tester, String phone, Size size, double scale, {double dpr = 3}) async {
+Future<DemoAppBackend> _pump(
+  WidgetTester tester,
+  String phone,
+  Size size,
+  double scale, {
+  double dpr = 3,
+  bool bold = false,
+}) async {
   await initializeDateFormatting('es');
   SharedPreferences.setMockInitialValues({'onboarding_seen_v1': true});
   final prefs = await SharedPreferences.getInstance();
@@ -32,6 +39,9 @@ Future<DemoAppBackend> _pump(WidgetTester tester, String phone, Size size, doubl
   addTearDown(tester.view.reset);
   tester.platformDispatcher.textScaleFactorTestValue = scale;
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  // Samsung: Ajustes > Pantalla > Tamaño y estilo de fuente > Fuente en negrita.
+  tester.platformDispatcher.accessibilityFeaturesTestValue = FakeAccessibilityFeatures(boldText: bold);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [prefsProvider.overrideWithValue(prefs), backendProvider.overrideWithValue(backend)],
@@ -80,17 +90,21 @@ String? _hiddenBehindNav(WidgetTester tester, String where) {
 }
 
 const _configs = [
-  (Size(360, 780), 1.0, 3.0),
-  (Size(360, 780), 1.15, 3.0),
-  (Size(320, 640), 1.3, 2.0),
-  (Size(412, 915), 1.6, 4.0),
-  (Size(320, 640), 1.6, 3.0),
+  (Size(360, 780), 1.0, 3.0, false),
+  (Size(360, 780), 1.15, 3.0, false),
+  (Size(320, 640), 1.3, 2.0, false),
+  (Size(412, 915), 1.6, 4.0, false),
+  (Size(320, 640), 1.6, 3.0, false),
+  // Issue #12 en el Samsung (Dev-17): con "Fuente en negrita" las palabras se partían.
+  (Size(384, 832), 1.0, 3.0, true),
+  (Size(360, 780), 1.15, 3.0, true),
+  (Size(412, 915), 1.3, 3.0, true),
 ];
 
 Future<List<String>> _checkTabs(WidgetTester tester, String phone, String navPrefix, List<String> tabs) async {
   final all = <String>[];
-  for (final (size, scale, dpr) in _configs) {
-    await _pump(tester, phone, size, scale, dpr: dpr);
+  for (final (size, scale, dpr, bold) in _configs) {
+    await _pump(tester, phone, size, scale, dpr: dpr, bold: bold);
     for (final tab in tabs) {
       final key = find.byKey(Key('$navPrefix$tab'));
       if (key.evaluate().isEmpty) {
@@ -99,7 +113,7 @@ Future<List<String>> _checkTabs(WidgetTester tester, String phone, String navPre
       }
       await tester.tap(key);
       await tester.pumpAndSettle();
-      final where = '$tab ${size.width.toInt()}px x$scale dpr$dpr';
+      final where = '$tab ${size.width.toInt()}px x$scale dpr$dpr${bold ? ' negrita' : ''}';
       all.addAll(await _scan(tester, size, where));
       final hidden = _hiddenBehindNav(tester, where);
       if (hidden != null) all.add(hidden);

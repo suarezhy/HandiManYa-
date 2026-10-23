@@ -236,7 +236,9 @@ class ProfilePage extends ConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.only(top: HySpacing.sm),
                     child: Text(
-                      'Compilación de prueba $_buildNumber',
+                      // Con la pantalla y la letra del teléfono, para reproducir
+                      // exactamente lo que se ve en una captura (Issue #12).
+                      'Compilación de prueba $_buildNumber · ${_screenInfo(context)}',
                       key: const Key('profile-build'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: HyColors.textMuted, fontSize: 13),
@@ -252,6 +254,14 @@ class ProfilePage extends ConsumerWidget {
 }
 
 const _buildNumber = String.fromEnvironment('BUILD_NUMBER');
+
+/// "Pantalla 384 · letra 1,15 · negrita": ancho en puntos, tamaño de letra del
+/// sistema (en un texto de 14) y si está la fuente en negrita.
+String _screenInfo(BuildContext context) {
+  final m = MediaQuery.of(context);
+  final letter = (m.textScaler.scale(14) / 14).toStringAsFixed(2).replaceAll('.', ',');
+  return 'pantalla ${m.size.width.round()} · letra $letter${m.boldText ? ' · negrita' : ''}';
+}
 
 class _ModeChip extends StatelessWidget {
   const _ModeChip({required this.professional});
