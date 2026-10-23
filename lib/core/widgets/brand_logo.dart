@@ -7,6 +7,9 @@ import '../theme/tokens.dart';
 class BrandLogo extends StatelessWidget {
   const BrandLogo({super.key, this.height = 36, this.showWordmark = true, this.onDark = false});
 
+  /// Separación entre "HandiMan" y "¡Ya!", en proporción a la letra.
+  static const wordGap = 0.12;
+
   final double height;
   final bool showWordmark;
   final bool onDark;
@@ -37,9 +40,12 @@ class BrandLogo extends StatelessWidget {
                 TextSpan(
                   children: [
                     TextSpan(
-                      text: 'HandiMan ',
+                      text: 'HandiMan',
                       style: TextStyle(color: onDark ? Colors.white : HyColors.navy),
                     ),
+                    // Un espacio normal más el borde de la "¡" separaba demasiado
+                    // las dos palabras; esta separación las deja como una marca.
+                    WidgetSpan(child: SizedBox(width: height * 0.6 * wordGap)),
                     const TextSpan(
                       text: '¡Ya!',
                       style: TextStyle(color: HyColors.primary),

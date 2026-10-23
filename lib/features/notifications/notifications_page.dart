@@ -17,10 +17,19 @@ class NotificationsPage extends ConsumerStatefulWidget {
 }
 
 class _NotificationsPageState extends ConsumerState<NotificationsPage> {
+  // En dispose ya no se puede usar ref: se guarda al abrir.
+  late final AppBackend _backend;
+
+  @override
+  void initState() {
+    super.initState();
+    _backend = ref.read(backendProvider);
+  }
+
   @override
   void dispose() {
     // Al salir se marcan como leídas.
-    ref.read(backendProvider).markAllRead().catchError((_) {});
+    _backend.markAllRead().catchError((_) {});
     super.dispose();
   }
 

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:handimanya/app.dart';
+import 'package:handimanya/core/widgets/edge_swipe_back.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:handimanya/features/booking/request_flow_page.dart';
@@ -299,6 +300,6 @@ void main() {
     expect(ModalRoute.of(tester.element(find.byType(Scaffold).last)), isA<MaterialRouteTransitionMixin<dynamic>>());
     final theme = Theme.of(tester.element(find.byType(Scaffold).first));
     expect(theme.pageTransitionsTheme.builders[TargetPlatform.iOS], isA<CupertinoPageTransitionsBuilder>());
-    expect(theme.pageTransitionsTheme.builders[TargetPlatform.android], isA<PredictiveBackPageTransitionsBuilder>());
+    expect(theme.pageTransitionsTheme.builders[TargetPlatform.android], isA<SwipeBackPageTransitionsBuilder>());
   });
 }

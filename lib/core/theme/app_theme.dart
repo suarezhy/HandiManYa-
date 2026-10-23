@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
+import '../widgets/edge_swipe_back.dart';
 import 'tokens.dart';
 
 abstract final class AppTheme {
@@ -42,10 +43,11 @@ abstract final class AppTheme {
       visualDensity: VisualDensity.standard,
       // Atrás con gesto: en iOS se desliza desde el borde izquierdo; en
       // Android el gesto atrás predictivo muestra la pantalla anterior
-      // (android:enableOnBackInvokedCallback en AndroidManifest.xml).
+      // (android:enableOnBackInvokedCallback en AndroidManifest.xml) y, con la
+      // barra de tres botones, también se puede deslizar desde el borde.
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
-          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.android: SwipeBackPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
           TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
         },
