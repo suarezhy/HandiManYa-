@@ -1302,6 +1302,20 @@ class SupabaseBackend
   }
 
   @override
+  Future<DemandBookings?> demandBookings(DemandKind kind, String name, {String? department}) async {
+    try {
+      final v = await _db.rpc(
+        'owner_demand_bookings',
+        params: {'p_kind': kind.key, 'p_name': name, 'p_department': department},
+      );
+      return DemandBookings(_listed(v, OpsBooking.fromMap), professionals: (_obj(v)['professionals'] as num?)?.toInt());
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+      return null;
+    }
+  }
+
+  @override
   Future<Listed<OpsBooking>> opsBookings(BookingFilter filter, {String query = ''}) async => _listed(
     await _db.rpc('ops_bookings', params: {'p_filter': filter.key, 'p_query': query.trim().isEmpty ? null : query}),
     OpsBooking.fromMap,

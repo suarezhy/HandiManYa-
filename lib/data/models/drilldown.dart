@@ -345,3 +345,22 @@ class WalletList {
     reserved: _num(m['reserved']) ?? 0,
   );
 }
+
+/// Una fila de "Demanda de los últimos 30 días" (owner_demand_bookings).
+enum DemandKind {
+  municipality('municipio'),
+  department('departamento'),
+  category('categoria');
+
+  const DemandKind(this.key);
+  final String key;
+}
+
+/// Los pedidos que cuenta una fila de demanda y, para un municipio, cuántos
+/// profesionales aprobados tienen base allí.
+class DemandBookings {
+  const DemandBookings(this.bookings, {this.professionals});
+
+  final Listed<OpsBooking> bookings;
+  final int? professionals;
+}

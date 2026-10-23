@@ -13,6 +13,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../management/management_common.dart';
 import 'admin_common.dart';
+import 'drilldown_pages.dart' show DemandBookingsPage;
 
 /// Resumen del Panel del Propietario. Solo lo ve el propietario; además, el
 /// servidor (owner_dashboard) rechaza a cualquier otra cuenta. Cada número sale
@@ -240,7 +241,11 @@ class _Summary extends StatelessWidget {
               null,
               display: _bs(d.commissionMonth),
               key: const Key('owner-stat-commission'),
-              onTap: () => go('${Routes.adminFinanceMovements}?tipo=commission_capture'),
+              // Este mes, como dice la tarjeta.
+              onTap: () => go(
+                '${Routes.adminFinanceMovements}?tipo=commission_capture'
+                '&mes=${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}',
+              ),
             ),
             PanelStat(
               'Saldos disponibles',
@@ -283,15 +288,23 @@ class _Summary extends StatelessWidget {
         _DemandCard(
           key: const Key('owner-demand-municipality'),
           title: 'Por municipio',
+          kind: DemandKind.municipality,
           rows: d.demandMunicipality,
           available: d.hasDemand,
           detail: (r) => [?r.department, if (r.professionals != null) '${r.professionals} profesionales'].join(' · '),
         ),
-        _DemandCard(title: 'Por departamento', rows: d.demandDepartment, available: d.hasDemand),
-        _DemandCard(title: 'Por categoría', rows: d.demandCategory, available: d.hasDemand),
+        _DemandCard(
+          title: 'Por departamento',
+          kind: DemandKind.department,
+          rows: d.demandDepartment,
+          available: d.hasDemand,
+        ),
+        _DemandCard(title: 'Por categoría', kind: DemandKind.category, rows: d.demandCategory, available: d.hasDemand),
         _DemandCard(
           key: const Key('owner-coverage-gaps'),
           title: 'Sin cobertura',
+          kind: DemandKind.municipality,
+          coverageGap: true,
           subtitle: 'Municipios con pedidos y ningún profesional aprobado con base allí',
           rows: d.coverageGaps,
           available: d.hasDemand,
@@ -346,7 +359,12 @@ class _DemandCard extends StatelessWidget {
     this.subtitle,
     this.detail,
     this.empty = 'Sin pedidos en los últimos 30 días.',
+    required this.kind,
+    this.coverageGap = false,
   });
+
+  final DemandKind kind;
+  final bool coverageGap;
 
   final String title;
   final String? subtitle;
@@ -373,32 +391,46 @@ class _DemandCard extends StatelessWidget {
               Text(empty, style: const TextStyle(color: HyColors.textSecondary))
             else
               for (final r in rows)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(r.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          ),
-                          Text('${r.count}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                        ],
+                InkWell(
+                  key: Key('demand-${kind.key}${coverageGap ? '-gap' : ''}-${r.name}'),
+                  borderRadius: BorderRadius.circular(HyRadii.sm),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => DemandBookingsPage(
+                        kind: kind,
+                        name: r.name,
+                        department: kind == DemandKind.municipality ? r.department : null,
+                        coverageGap: coverageGap,
                       ),
-                      if (detail != null && detail!(r).isNotEmpty)
-                        Text(detail!(r), style: const TextStyle(color: HyColors.textSecondary, fontSize: 13)),
-                      const SizedBox(height: 2),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(HyRadii.pill),
-                        child: LinearProgressIndicator(
-                          value: r.count / max,
-                          minHeight: 6,
-                          backgroundColor: HyColors.primarySoft,
-                          color: HyColors.primary,
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(r.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                            ),
+                            Text('${r.count}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                          ],
                         ),
-                      ),
-                    ],
+                        if (detail != null && detail!(r).isNotEmpty)
+                          Text(detail!(r), style: const TextStyle(color: HyColors.textSecondary, fontSize: 13)),
+                        const SizedBox(height: 2),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(HyRadii.pill),
+                          child: LinearProgressIndicator(
+                            value: r.count / max,
+                            minHeight: 6,
+                            backgroundColor: HyColors.primarySoft,
+                            color: HyColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
           ],

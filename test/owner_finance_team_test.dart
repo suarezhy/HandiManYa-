@@ -309,6 +309,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('panel: cada fila de demanda y de "Sin cobertura" abre sus pedidos, con el mismo número', (tester) async {
+    final (backend, c) = await _pump(tester);
+    final d = (await tester.runAsync(backend.adminDashboard))!;
+    expect(d.demandMunicipality, isNotEmpty, reason: 'la demostración tiene pedidos recientes');
+    final cases = [
+      for (final r in d.demandMunicipality.take(2)) ('municipio', r),
+      for (final r in d.demandDepartment.take(1)) ('departamento', r),
+      for (final r in d.demandCategory.take(2)) ('categoria', r),
+      for (final r in d.coverageGaps.take(1)) ('municipio-gap', r),
+    ];
+    for (final (kind, r) in cases) {
+      final row = find.byKey(Key('demand-$kind-${r.name}'));
+      await tester.scrollUntilVisible(row, 300, scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(find.text(r.count == 1 ? '1 pedido' : '${r.count} pedidos'), findsOneWidget, reason: '$kind ${r.name}');
+      if (kind.startsWith('municipio')) expect(find.byKey(const Key('demand-coverage')), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('cuenta de cobro: atrás con cambios pregunta, guardar pide código y la muestra enmascarada', (
     tester,
   ) async {

@@ -4027,6 +4027,34 @@ class DemoBackend
   }
 
   @override
+  Future<DemandBookings?> demandBookings(DemandKind kind, String name, {String? department}) async {
+    await _latency(150);
+    _admin();
+    final last30 = DateTime.now().subtract(const Duration(days: 30));
+    bool hit(_Booking b) {
+      final city = DemoData.cities.firstWhere((c) => c.id == b.draft.cityId);
+      return switch (kind) {
+        DemandKind.municipality => city.name == name && (department == null || city.department == department),
+        DemandKind.department => (city.department ?? 'Sin departamento') == name,
+        DemandKind.category => _catName(b.draft.categoryId) == name,
+      };
+    }
+
+    final list = [
+      for (final b in _bookings.values)
+        if (b.status != BookingStatus.draft && b.createdAt.isAfter(last30) && hit(b)) _opsBooking(b),
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    int? pros;
+    if (kind == DemandKind.municipality) {
+      final ids = DemoData.cities.where((c) => c.name == name && (department == null || c.department == department));
+      pros = _pros.values
+          .where((p) => p.status == VerificationStatus.approved && ids.any((c) => c.id == p.cityId))
+          .length;
+    }
+    return DemandBookings(Listed(list.take(100).toList(), list.length), professionals: pros);
+  }
+
+  @override
   Future<Listed<OpsBooking>> opsBookings(BookingFilter filter, {String query = ''}) async {
     await _latency(150);
     _need('bookings.monitor');

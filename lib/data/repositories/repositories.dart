@@ -430,6 +430,10 @@ abstract interface class FinanceRepository {
 /// propietario); billeteras, solo el propietario.
 abstract interface class DrilldownRepository {
   Future<Listed<OpsBooking>> opsBookings(BookingFilter filter, {String query = ''});
+
+  /// Los pedidos de 30 días de una fila de demanda (solo propietario). null:
+  /// el servidor todavía no tiene 0044.
+  Future<DemandBookings?> demandBookings(DemandKind kind, String name, {String? department});
   Future<OpsBookingDetail> opsBookingDetail(String bookingId);
 
   /// Abre (o devuelve el abierto) un caso para revisar el pedido.

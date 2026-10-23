@@ -149,6 +149,80 @@ class _OpsBookingsPageState extends ConsumerState<OpsBookingsPage> {
   }
 }
 
+final _demandProvider = FutureProvider.autoDispose.family<DemandBookings?, (DemandKind, String, String?)>(
+  (ref, k) => ref.watch(backendProvider).demandBookings(k.$1, k.$2, department: k.$3),
+);
+
+/// Los pedidos de los últimos 30 días que cuenta una fila de demanda del
+/// panel (municipio, departamento o categoría), con la misma definición.
+class DemandBookingsPage extends ConsumerWidget {
+  const DemandBookingsPage({
+    super.key,
+    required this.kind,
+    required this.name,
+    this.department,
+    this.coverageGap = false,
+  });
+
+  final DemandKind kind;
+  final String name;
+  final String? department;
+
+  /// Abierta desde "Sin cobertura".
+  final bool coverageGap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final key = (kind, name, department);
+    final value = ref.watch(_demandProvider(key));
+    return Scaffold(
+      appBar: AppBar(title: Text(name)),
+      body: AdminList<OpsBooking>(
+        value: value.whenData((d) => d?.bookings.items ?? const []),
+        onRefresh: () => ref.refresh(_demandProvider(key).future),
+        emptyIcon: Icons.receipt_long_outlined,
+        emptyTitle: value.value == null && value.hasValue
+            ? 'Esta lista se activa con la próxima actualización del servidor.'
+            : 'Sin pedidos en los últimos 30 días.',
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              [
+                switch (kind) {
+                  DemandKind.municipality => 'Municipio',
+                  DemandKind.department => 'Departamento',
+                  DemandKind.category => 'Categoría',
+                },
+                ?department,
+                'pedidos de los últimos 30 días (sin borradores)',
+              ].join(' · '),
+              style: const TextStyle(color: HyColors.textSecondary),
+            ),
+            const SizedBox(height: HySpacing.xs),
+            if (value.value case final d?) ...[
+              _countLine(d.bookings.items.length, d.bookings.total, d.bookings.total == 1 ? 'pedido' : 'pedidos'),
+              if (d.professionals != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: HySpacing.sm),
+                  child: InfoBanner(
+                    key: const Key('demand-coverage'),
+                    icon: d.professionals == 0 ? Icons.location_off_outlined : Icons.groups_outlined,
+                    text: d.professionals == 0
+                        ? 'Ningún profesional aprobado tiene base en este municipio. '
+                              'Puede haber quien atienda desde otro municipio por radio.'
+                        : '${d.professionals} profesional(es) aprobado(s) con base aquí.',
+                  ),
+                ),
+            ],
+          ],
+        ),
+        itemBuilder: (context, b) => _BookingCard(booking: b),
+      ),
+    );
+  }
+}
+
 class _BookingCard extends StatelessWidget {
   const _BookingCard({required this.booking});
 
