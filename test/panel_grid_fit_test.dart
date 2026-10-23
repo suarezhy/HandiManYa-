@@ -23,7 +23,7 @@ const _labels = [
   'Clientes',
   'Profesionales',
   'Disponibles ahora',
-  'Solicitudes pendientes',
+  'Postulantes por revisar',
   'Postulaciones pendientes',
   'Revisar documentos',
   'Documentos por revisar',

@@ -83,7 +83,7 @@ class _ManagerSummary extends StatelessWidget {
         PanelGrid(
           children: [
             PanelStat(
-              'Solicitudes pendientes',
+              'Postulantes por revisar',
               d.pendingApplications,
               tone: StatusTone.brand,
               onTap: () => go(Routes.adminApplications),

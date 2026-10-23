@@ -207,7 +207,7 @@ class _Summary extends StatelessWidget {
               onTap: () => go(Routes.adminUsersFiltered(PeopleFilter.available)),
             ),
             PanelStat(
-              'Solicitudes pendientes',
+              'Postulantes por revisar',
               d.pendingApplications,
               tone: StatusTone.brand,
               onTap: () => go(Routes.adminApplications),
