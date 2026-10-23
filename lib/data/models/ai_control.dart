@@ -565,3 +565,122 @@ List<(String, String)> aiEvidenceLines(Map<String, dynamic> evidence) => [
 String _dt(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year} '
     '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+
+/// Cada número de "Estado general" y la lista que abre. Las definiciones son
+/// las de admin_ai_overview, para que el total de la lista sea el número.
+enum AiCard {
+  approval('aprobacion', 'Esperan tu aprobación', 'Pedidos de un agente que esperan tu decisión.'),
+  open('abiertos', 'Abiertos', 'Alertas y recomendaciones abiertas o con más información pedida.'),
+  critical('criticas', 'Críticas', 'Gravedad crítica, abiertas o esperando tu aprobación.'),
+  high('altas', 'Altas', 'Gravedad alta, abiertas o esperando tu aprobación.'),
+  aiRecommendations(
+    'recomendaciones',
+    'Recomendaciones de IA',
+    'Propuestas de un modelo de IA, abiertas. No son hechos.',
+  ),
+  completed7d('completadas', 'Completadas (7 días)', 'Marcadas como resueltas en los últimos 7 días.'),
+  failed7d('fallidas', 'Fallidas (7 días)', 'Marcadas como fallidas en los últimos 7 días.');
+
+  const AiCard(this.key, this.label, this.definition);
+
+  final String key;
+  final String label;
+  final String definition;
+
+  static const pendingStatuses = ['open', 'more_info', 'pending_approval'];
+  static const window = Duration(days: 7);
+
+  /// La misma regla que la base, para la demostración y las pruebas.
+  bool matches(AiItem i, DateTime now) {
+    final s = i.status.key;
+    return switch (this) {
+      approval => s == 'pending_approval',
+      open => s == 'open' || s == 'more_info',
+      critical => pendingStatuses.contains(s) && i.severity == AiSeverity.critical,
+      high => pendingStatuses.contains(s) && i.severity == AiSeverity.high,
+      aiRecommendations => i.fromAi && (s == 'open' || s == 'more_info'),
+      completed7d => s == 'completed' && (i.completedAt?.isAfter(now.subtract(window)) ?? false),
+      failed7d => s == 'failed' && (i.decidedAt?.isAfter(now.subtract(window)) ?? false),
+    };
+  }
+}
+
+/// Una ejecución real de un agente, tomada del historial (ai_agent_runs).
+class AiRun {
+  const AiRun({
+    required this.id,
+    required this.agentKey,
+    required this.startedAt,
+    required this.status,
+    this.finishedAt,
+    this.summary,
+    this.error,
+    this.model,
+    this.tokensIn = 0,
+    this.tokensOut = 0,
+    this.costUsd = 0,
+  });
+
+  final int id;
+  final String agentKey;
+  final DateTime startedAt;
+  final DateTime? finishedAt;
+
+  /// running, ok, failed o skipped.
+  final String status;
+  final String? summary;
+  final String? error;
+
+  /// Modelo de IA usado; null = revisión con reglas (sin modelo pagado).
+  final String? model;
+  final int tokensIn;
+  final int tokensOut;
+  final double costUsd;
+
+  bool get usedAiModel => (model ?? '').isNotEmpty;
+
+  Duration? get duration => finishedAt?.difference(startedAt);
+
+  factory AiRun.fromMap(Map<String, dynamic> m) => AiRun(
+    id: (m['id'] as num).toInt(),
+    agentKey: m['agent_key'] as String,
+    startedAt: DateTime.parse(m['started_at'] as String),
+    finishedAt: m['finished_at'] == null ? null : DateTime.parse(m['finished_at'] as String),
+    status: m['status'] as String,
+    summary: m['summary'] as String?,
+    error: m['error'] as String?,
+    model: m['model'] as String?,
+    tokensIn: (m['tokens_in'] as num?)?.toInt() ?? 0,
+    tokensOut: (m['tokens_out'] as num?)?.toInt() ?? 0,
+    costUsd: (m['cost_usd'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+/// Las ejecuciones de una ventana: la lista (hasta [AiRuns.limit]) y los
+/// totales reales contados en la base.
+class AiRuns {
+  const AiRuns({
+    required this.items,
+    required this.total,
+    required this.withAiModel,
+    required this.from,
+    required this.to,
+  });
+
+  static const limit = 500;
+
+  final List<AiRun> items;
+  final int total;
+
+  /// Cuántas de esas usaron un modelo de IA (las demás son reglas).
+  final int withAiModel;
+  final DateTime from;
+  final DateTime to;
+
+  bool get isPartial => items.length < total;
+
+  /// Cuántas por agente, solo si la lista está completa.
+  Map<String, int>? get byAgent => isPartial
+      ? null
+      : {for (final r in items) r.agentKey: 0}.map((k, _) => MapEntry(k, items.where((r) => r.agentKey == k).length));
+}

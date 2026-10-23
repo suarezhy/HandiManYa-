@@ -308,6 +308,78 @@ void main() {
     expect((await backend.auditLog()).first.details['note'], 'Recarga verificada a mano');
   });
 
+  testWidgets('cada número de Estado general abre sus registros, con el mismo total', (tester) async {
+    final backend = await pumpCenter(tester, const Size(390, 844));
+    final o = (await tester.runAsync(backend.aiOverview))!;
+    final counts = {
+      AiCard.approval: o.pendingApproval,
+      AiCard.open: o.open,
+      AiCard.critical: o.critical,
+      AiCard.high: o.high,
+      AiCard.aiRecommendations: o.aiRecommendationsOpen,
+      AiCard.completed7d: o.completed7d,
+      AiCard.failed7d: o.failed7d,
+    };
+    expect(o.critical + o.high, greaterThan(0), reason: 'la demostración trae alertas');
+    for (final MapEntry(key: card, value: n) in counts.entries) {
+      final f = find.byKey(Key('ai-card-${card.key}'));
+      await tester.ensureVisible(f);
+      await tester.pumpAndSettle();
+      await tester.tap(f);
+      await tester.pumpAndSettle();
+      expect(find.text(card.definition), findsOneWidget, reason: card.key);
+      if (n == 0) {
+        expect(find.text('No hay nada aquí ahora.'), findsOneWidget, reason: card.key);
+      } else {
+        expect(find.text(n == 1 ? '1 registro' : '$n registros'), findsOneWidget, reason: card.key);
+        // Cada registro trae su estado y lo que se puede hacer.
+        await tester.tap(find.text('Ver detalles').first);
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Agente: '), findsOneWidget, reason: card.key);
+        expect(find.textContaining('Regla: '), findsOneWidget, reason: card.key);
+        expect(find.textContaining('Qué puedes hacer: '), findsOneWidget, reason: card.key);
+      }
+      await tester.binding.handlePopRoute(); // atrás del sistema
+      await tester.pumpAndSettle();
+      expect(find.byKey(Key('ai-card-${card.key}')), findsOneWidget, reason: 'vuelve desde ${card.key}');
+    }
+
+    // Ejecuciones: cero hasta "Revisar ahora"; después, las del historial.
+    await tester.ensureVisible(find.byKey(const Key('ai-card-runs-ok')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('ai-card-runs-ok')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No hay ejecuciones correctas registradas'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Revisar ahora'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Revisar ahora'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('ai-card-runs-ok')));
+    await tester.pumpAndSettle();
+    final after = (await tester.runAsync(backend.aiOverview))!;
+    final runs = (await tester.runAsync(() => backend.aiRuns(status: 'ok')))!;
+    expect(runs.total, after.runsOk24h, reason: 'el número es el del historial');
+    expect(runs.total, greaterThan(0));
+    expect(
+      find.descendant(of: find.byKey(const Key('ai-card-runs-ok')), matching: find.text('${runs.total}')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('ai-card-runs-ok')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('${runs.total} ejecuciones del '), findsOneWidget);
+    expect(find.textContaining('Ninguna usó un modelo de IA pagado'), findsOneWidget);
+    expect(find.byKey(Key('ai-run-${runs.items.first.id}')), findsOneWidget);
+    expect(find.textContaining('Con reglas, sin modelo de IA'), findsWidgets);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('ai-card-runs-failed')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Ninguna ejecución falló'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('las alertas altas del resumen dicen de dónde vienen', (tester) async {
     await pumpCenter(tester, const Size(390, 844));
     await tester.ensureVisible(find.text('Alertas críticas y altas'));

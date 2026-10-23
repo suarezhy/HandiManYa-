@@ -160,4 +160,23 @@ do $$ begin
     raise notice 'Tareas programadas: pg_cron no está instalado';
   end if;
 end $$;
+-- Ejecuciones de agentes en 24 horas (solo lectura): de dónde sale el número
+-- "Ejecuciones correctas (24 h)" del Centro de Control IA, por agente y si
+-- alguna usó un modelo de IA (las demás son reglas, sin costo).
+do $$
+declare
+  v_ok int; v_failed int; v_model int; v_cost numeric; v_hours int; v_by text;
+begin
+  select count(*) filter (where status = 'ok'), count(*) filter (where status = 'failed'),
+         count(*) filter (where status = 'ok' and coalesce(model, '') <> ''), coalesce(sum(cost_usd), 0),
+         count(distinct date_trunc('hour', started_at)) filter (where status = 'ok')
+    into v_ok, v_failed, v_model, v_cost, v_hours
+  from public.ai_agent_runs where started_at > now() - interval '24 hours';
+  select string_agg(agent_key || ' ' || n, ', ' order by n desc, agent_key) into v_by
+  from (select agent_key, count(*) as n from public.ai_agent_runs
+        where status = 'ok' and started_at > now() - interval '24 hours' group by agent_key) x;
+  raise notice 'Ejecuciones 24 h: % correctas, % fallidas, % con modelo de IA, US$ % de costo, en % hora(s) distintas',
+    v_ok, v_failed, v_model, v_cost, v_hours;
+  raise notice 'Ejecuciones 24 h por agente: %', coalesce(v_by, 'ninguna');
+end $$;
 \echo 'COMPROBACIÓN COMPLETA: todo en orden.'

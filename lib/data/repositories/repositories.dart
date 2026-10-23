@@ -302,6 +302,13 @@ abstract interface class AiControlRepository {
   /// [statuses]: claves de estado (open, pending_approval, completed, ...). Vacío = todos.
   Future<List<AiItem>> aiItems({List<String> statuses = const []});
 
+  /// La lista que abre un número de "Estado general", con su total real.
+  Future<Listed<AiItem>> aiCardItems(AiCard card);
+
+  /// Ejecuciones reales de los agentes en las últimas [window] con [status]
+  /// ('ok' o 'failed'), del historial.
+  Future<AiRuns> aiRuns({required String status, Duration window = const Duration(hours: 24)});
+
   /// Un aviso con su origen (agente, regla, registro, hora) y su historial.
   Future<AiItemDetail> aiItemDetail(int itemId);
 

@@ -2183,23 +2183,25 @@ class DemoBackend
   Future<AiOverview> aiOverview() async {
     await _latency(150);
     _admin();
-    bool open(AiItem i) => i.status.isPending;
-    final dayAgo = DateTime.now().subtract(const Duration(hours: 24));
-    final recent = _agents.values.where((a) => a.lastRunAt != null && a.lastRunAt!.isAfter(dayAgo));
+    final now = DateTime.now();
+    // Las mismas definiciones que la base y que las listas que abren.
+    int n(AiCard c) => _aiItems.where((i) => c.matches(i, now)).length;
+    final dayAgo = now.subtract(const Duration(hours: 24));
     return AiOverview(
-      pendingApproval: _aiItems.where((i) => i.status == AiItemStatus.pendingApproval).length,
-      open: _aiItems.where((i) => i.status == AiItemStatus.open || i.status == AiItemStatus.moreInfo).length,
-      critical: _aiItems.where((i) => open(i) && i.severity == AiSeverity.critical).length,
-      high: _aiItems.where((i) => open(i) && i.severity == AiSeverity.high).length,
-      completed7d: _aiItems.where((i) => i.status == AiItemStatus.completed).length,
-      failed7d: _aiItems.where((i) => i.status == AiItemStatus.failed).length,
-      aiRecommendationsOpen: _aiItems.where((i) => i.fromAi && open(i)).length,
+      pendingApproval: n(AiCard.approval),
+      open: n(AiCard.open),
+      critical: n(AiCard.critical),
+      high: n(AiCard.high),
+      completed7d: n(AiCard.completed7d),
+      failed7d: n(AiCard.failed7d),
+      aiRecommendationsOpen: n(AiCard.aiRecommendations),
       aiCostMonthUsd: 0,
       aiBudgetMonthUsd: 0,
       lastReportDate: _dailyReports.isEmpty ? null : _dailyReports.first.date,
       lastMonitorRun: _agents['boss']?.lastOkRunAt,
-      runsOk24h: recent.fold(0, (n, a) => n + a.runsOk24h),
-      runsFailed24h: recent.fold(0, (n, a) => n + a.runsFailed24h),
+      // Del historial, como la base: el mismo número que abre la lista.
+      runsOk24h: _aiRuns.where((r) => r.status == 'ok' && r.startedAt.isAfter(dayAgo)).length,
+      runsFailed24h: _aiRuns.where((r) => r.status == 'failed' && r.startedAt.isAfter(dayAgo)).length,
     );
   }
 
@@ -2217,10 +2219,48 @@ class DemoBackend
     ];
   }
 
+  /// Historial de ejecuciones de la demostración (como ai_agent_runs).
+  final _aiRuns = <AiRun>[];
+
   void _recordRun(String key, String summary) {
     final a = _agents[key];
     if (a == null) return;
-    _agents[key] = a.withRun(at: DateTime.now(), status: 'ok', summary: summary);
+    final now = DateTime.now();
+    _agents[key] = a.withRun(at: now, status: 'ok', summary: summary);
+    _aiRuns.add(
+      AiRun(id: _aiRuns.length + 1, agentKey: key, startedAt: now, finishedAt: now, status: 'ok', summary: summary),
+    );
+  }
+
+  @override
+  Future<Listed<AiItem>> aiCardItems(AiCard card) async {
+    await _latency(100);
+    _admin();
+    final now = DateTime.now();
+    final list = [
+      for (final i in _aiItems)
+        if (card.matches(i, now)) i,
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return Listed(list.take(100).toList(), list.length);
+  }
+
+  @override
+  Future<AiRuns> aiRuns({required String status, Duration window = const Duration(hours: 24)}) async {
+    await _latency(100);
+    _admin();
+    final to = DateTime.now();
+    final from = to.subtract(window);
+    final list = [
+      for (final r in _aiRuns.reversed)
+        if (r.status == status && r.startedAt.isAfter(from)) r,
+    ];
+    return AiRuns(
+      items: list.take(AiRuns.limit).toList(),
+      total: list.length,
+      withAiModel: list.where((r) => r.usedAiModel).length,
+      from: from,
+      to: to,
+    );
   }
 
   @override

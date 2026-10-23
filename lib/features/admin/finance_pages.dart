@@ -223,7 +223,8 @@ class _FinanceSummaryView extends StatelessWidget {
         const Padding(
           padding: EdgeInsets.only(top: HySpacing.xs),
           child: Text(
-            'Lo único que gana la plataforma es la comisión que se cobra de la billetera del profesional. '
+            'Lo único que gana la plataforma es la comisión que se cobra de la billetera del profesional: '
+            'se reserva al aceptar y se cobra al completar, o al aceptar si la regla lo indica. '
             'Lo que el cliente paga por el trabajo (en efectivo o QR) lo recibe el profesional y no pasa por aquí.',
             style: note,
           ),

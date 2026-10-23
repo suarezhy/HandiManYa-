@@ -1224,6 +1224,53 @@ class SupabaseBackend
   }
 
   @override
+  Future<Listed<AiItem>> aiCardItems(AiCard card) async {
+    // Las mismas condiciones que admin_ai_overview (20261022003600).
+    final since = DateTime.now().toUtc().subtract(AiCard.window).toIso8601String();
+    var q = _db.from('ai_items').select();
+    q = switch (card) {
+      AiCard.approval => q.eq('status', 'pending_approval'),
+      AiCard.open => q.inFilter('status', ['open', 'more_info']),
+      AiCard.critical => q.inFilter('status', AiCard.pendingStatuses).eq('severity', 'critical'),
+      AiCard.high => q.inFilter('status', AiCard.pendingStatuses).eq('severity', 'high'),
+      AiCard.aiRecommendations => q.eq('source', 'ai').inFilter('status', ['open', 'more_info']),
+      AiCard.completed7d => q.eq('status', 'completed').gt('completed_at', since),
+      AiCard.failed7d => q.eq('status', 'failed').gt('updated_at', since),
+    };
+    final r = await q.order('created_at', ascending: false).limit(100).count(CountOption.exact);
+    return Listed([for (final m in r.data) AiItem.fromMap(Map<String, dynamic>.from(m))], r.count);
+  }
+
+  @override
+  Future<AiRuns> aiRuns({required String status, Duration window = const Duration(hours: 24)}) async {
+    final to = DateTime.now().toUtc();
+    final from = to.subtract(window);
+    final r = await _db
+        .from('ai_agent_runs')
+        .select()
+        .eq('status', status)
+        .gt('started_at', from.toIso8601String())
+        .order('started_at', ascending: false)
+        .limit(AiRuns.limit)
+        .count(CountOption.exact);
+    final paid = await _db
+        .from('ai_agent_runs')
+        .select('id')
+        .eq('status', status)
+        .gt('started_at', from.toIso8601String())
+        .not('model', 'is', null)
+        .limit(1)
+        .count(CountOption.exact);
+    return AiRuns(
+      items: [for (final m in r.data) AiRun.fromMap(Map<String, dynamic>.from(m))],
+      total: r.count,
+      withAiModel: paid.count,
+      from: from,
+      to: to,
+    );
+  }
+
+  @override
   Future<void> decideAiItem(int itemId, AiDecision decision, {String? note, String? authMethod}) => _db.rpc(
     'admin_decide_ai_item',
     params: {'p_item': itemId, 'p_decision': decision.key, 'p_note': note, 'p_auth_method': authMethod},

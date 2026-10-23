@@ -7,6 +7,7 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/ai_control.dart';
 import '../../data/models/booking.dart';
+import '../../data/models/drilldown.dart';
 import '../../data/providers.dart';
 import '../security/confirm_identity.dart';
 import 'admin_costs_page.dart' show costDashboardProvider;
@@ -16,6 +17,12 @@ final aiOverviewProvider = FutureProvider<AiOverview>((ref) => ref.watch(backend
 final aiAgentsProvider = FutureProvider<List<AiAgent>>((ref) => ref.watch(backendProvider).aiAgents());
 final aiItemsProvider = FutureProvider.family<List<AiItem>, String>(
   (ref, filter) => ref.watch(backendProvider).aiItems(statuses: _filters[filter] ?? const []),
+);
+final aiCardItemsProvider = FutureProvider.family<Listed<AiItem>, AiCard>(
+  (ref, card) => ref.watch(backendProvider).aiCardItems(card),
+);
+final aiRunsProvider = FutureProvider.family<AiRuns, String>(
+  (ref, status) => ref.watch(backendProvider).aiRuns(status: status),
 );
 final dailyReportsProvider = FutureProvider<List<DailyReport>>((ref) => ref.watch(backendProvider).dailyReports());
 final aiItemDetailProvider = FutureProvider.family<AiItemDetail, int>(
@@ -63,6 +70,8 @@ void _refreshAll(WidgetRef ref) => ref
   ..invalidate(aiItemsProvider)
   ..invalidate(aiAgentsProvider)
   ..invalidate(aiItemDetailProvider)
+  ..invalidate(aiCardItemsProvider)
+  ..invalidate(aiRunsProvider)
   ..invalidate(dailyReportsProvider);
 
 /// Nombre del agente para mostrar el origen de un aviso.
@@ -133,21 +142,42 @@ class _OverviewTab extends ConsumerWidget {
                   _Grid(
                     minItemWidth: 140,
                     children: [
-                      _Stat('Esperan tu aprobación', value.pendingApproval, HyColors.primary),
-                      _Stat('Abiertos (alertas y recomendaciones)', value.open, HyColors.navy),
-                      _Stat('Críticas', value.critical, HyColors.danger),
-                      _Stat('Altas', value.high, HyColors.warning),
-                      _Stat('Recomendaciones de IA', value.aiRecommendationsOpen, HyColors.info),
-                      _Stat('Completadas (7 días)', value.completed7d, HyColors.green),
-                      _Stat('Fallidas (7 días)', value.failed7d, HyColors.danger),
-                      _Stat('Ejecuciones correctas (24 h)', value.runsOk24h, HyColors.green),
-                      _Stat('Ejecuciones fallidas (24 h)', value.runsFailed24h, HyColors.danger),
+                      for (final (card, n, color) in [
+                        (AiCard.approval, value.pendingApproval, HyColors.primary),
+                        (AiCard.open, value.open, HyColors.navy),
+                        (AiCard.critical, value.critical, HyColors.danger),
+                        (AiCard.high, value.high, HyColors.warning),
+                        (AiCard.aiRecommendations, value.aiRecommendationsOpen, HyColors.info),
+                        (AiCard.completed7d, value.completed7d, HyColors.green),
+                        (AiCard.failed7d, value.failed7d, HyColors.danger),
+                      ])
+                        _Stat(
+                          card == AiCard.open ? 'Abiertos (alertas y recomendaciones)' : card.label,
+                          n,
+                          color,
+                          key: Key('ai-card-${card.key}'),
+                          onTap: () => _push(context, AiCardItemsPage(card: card)),
+                        ),
+                      _Stat(
+                        'Ejecuciones correctas (24 h)',
+                        value.runsOk24h,
+                        HyColors.green,
+                        key: const Key('ai-card-runs-ok'),
+                        onTap: () => _push(context, const AiRunsPage(status: 'ok')),
+                      ),
+                      _Stat(
+                        'Ejecuciones fallidas (24 h)',
+                        value.runsFailed24h,
+                        HyColors.danger,
+                        key: const Key('ai-card-runs-failed'),
+                        onTap: () => _push(context, const AiRunsPage(status: 'failed')),
+                      ),
                     ],
                   ),
                   const SizedBox(height: HySpacing.xs),
                   const Text(
                     'Críticas y Altas cuentan alertas abiertas y pedidos que esperan tu aprobación. '
-                    'Toca una alerta para ver qué agente y qué regla la crearon.',
+                    'Toca un número para ver sus registros, o una alerta para ver qué agente y qué regla la crearon.',
                     style: TextStyle(color: HyColors.textSecondary, fontSize: 13),
                   ),
                   const SizedBox(height: HySpacing.md),
@@ -214,33 +244,45 @@ class _OverviewTab extends ConsumerWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat(this.label, this.value, this.color);
+  const _Stat(this.label, this.value, this.color, {super.key, this.onTap});
 
   final String label;
   final int value;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => AppCard(
     padding: const EdgeInsets.symmetric(horizontal: HySpacing.sm, vertical: HySpacing.xs),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
+    onTap: onTap,
+    child: Row(
       children: [
-        Text(
-          '$value',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: color),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$value',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: color),
+              ),
+              Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
+              ),
+            ],
+          ),
         ),
-        Text(
-          label,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
-        ),
+        if (onTap != null) const Icon(Icons.chevron_right, color: HyColors.textMuted),
       ],
     ),
   );
 }
+
+void _push(BuildContext context, Widget page) =>
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
 
 void _openItem(BuildContext context, int id) =>
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => AiItemDetailPage(itemId: id)));
@@ -890,6 +932,178 @@ class _AgentCard extends StatelessWidget {
             Text('Falta: ${a.needs}', style: const TextStyle(color: HyColors.warning, fontSize: 12.5)),
           Text('Fase ${a.phase}${a.addedByClaude ? ' · Agregado por Claude' : ''}', style: small),
         ],
+      ),
+    );
+  }
+}
+
+/// Lo que cuenta un número de "Estado general": los mismos avisos, con
+/// agente, regla, hora, estado y lo que puedes hacer.
+class AiCardItemsPage extends ConsumerWidget {
+  const AiCardItemsPage({super.key, required this.card});
+
+  final AiCard card;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(aiCardItemsProvider(card));
+    return Scaffold(
+      appBar: AppBar(title: Text(card.label)),
+      body: RefreshIndicator(
+        onRefresh: () => ref.refresh(aiCardItemsProvider(card).future),
+        child: ListView(
+          padding: bottomSafePadding(context),
+          children: [
+            PageBody(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: HySpacing.sm),
+                  Text(card.definition, style: const TextStyle(color: HyColors.textSecondary)),
+                  const SizedBox(height: HySpacing.sm),
+                  ...switch (value) {
+                    AsyncData(:final value) when value.total == 0 => [
+                      const EmptyState(icon: Icons.check_circle_outline, title: 'No hay nada aquí ahora.'),
+                    ],
+                    AsyncData(:final value) => [
+                      Text(
+                        value.total == 1 ? '1 registro' : '${value.total} registros',
+                        key: const Key('ai-card-count'),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      if (value.isPartial)
+                        Text(
+                          'Mostrando los ${value.items.length} más recientes.',
+                          style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
+                        ),
+                      const SizedBox(height: HySpacing.xs),
+                      for (final i in value.items) _ItemCard(item: i),
+                    ],
+                    AsyncError(:final error) => [
+                      ErrorView(error: error, onRetry: () => ref.invalidate(aiCardItemsProvider(card))),
+                    ],
+                    _ => [const LoadingView()],
+                  },
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// El historial real de ejecuciones de las últimas 24 horas. Una revisión con
+/// reglas no es una ejecución de un modelo de IA pagado, y se dice.
+class AiRunsPage extends ConsumerWidget {
+  const AiRunsPage({super.key, required this.status});
+
+  /// 'ok' o 'failed'.
+  final String status;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(aiRunsProvider(status));
+    final ok = status == 'ok';
+    return Scaffold(
+      appBar: AppBar(title: Text(ok ? 'Ejecuciones correctas (24 h)' : 'Ejecuciones fallidas (24 h)')),
+      body: RefreshIndicator(
+        onRefresh: () => ref.refresh(aiRunsProvider(status).future),
+        child: ListView(
+          padding: bottomSafePadding(context),
+          children: [
+            PageBody(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: HySpacing.sm),
+                  ...switch (value) {
+                    AsyncData(:final value) => [
+                      Text(
+                        '${value.total} ${value.total == 1 ? 'ejecución' : 'ejecuciones'} '
+                        'del ${Fmt.dateTime(value.from.toLocal())} al ${Fmt.dateTime(value.to.toLocal())}',
+                        key: const Key('ai-runs-count'),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        value.withAiModel == 0
+                            ? 'Ninguna usó un modelo de IA pagado: son revisiones con reglas sobre datos reales.'
+                            : '${value.withAiModel} usaron un modelo de IA; las demás son revisiones con reglas.',
+                        key: const Key('ai-runs-model'),
+                        style: const TextStyle(color: HyColors.textSecondary),
+                      ),
+                      if (value.byAgent case final by? when by.isNotEmpty) ...[
+                        const SizedBox(height: HySpacing.xs),
+                        Text(
+                          [for (final e in by.entries) '${_agentLabel(ref, e.key)}: ${e.value}'].join(' · '),
+                          key: const Key('ai-runs-by-agent'),
+                          style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
+                        ),
+                      ],
+                      if (value.isPartial)
+                        Text(
+                          'Mostrando las ${value.items.length} más recientes de ${value.total}.',
+                          style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
+                        ),
+                      const SizedBox(height: HySpacing.sm),
+                      if (value.items.isEmpty)
+                        EmptyState(
+                          icon: ok ? Icons.history : Icons.check_circle_outline,
+                          title: ok
+                              ? 'No hay ejecuciones correctas registradas en estas 24 horas.'
+                              : 'Ninguna ejecución falló en estas 24 horas.',
+                        )
+                      else
+                        for (final r in value.items) _RunTile(run: r),
+                    ],
+                    AsyncError(:final error) => [
+                      ErrorView(error: error, onRetry: () => ref.invalidate(aiRunsProvider(status))),
+                    ],
+                    _ => [const LoadingView()],
+                  },
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RunTile extends ConsumerWidget {
+  const _RunTile({required this.run});
+
+  final AiRun run;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final d = run.duration;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: HySpacing.xs),
+      child: AppCard(
+        key: Key('ai-run-${run.id}'),
+        padding: const EdgeInsets.symmetric(horizontal: HySpacing.sm, vertical: HySpacing.xs),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_agentLabel(ref, run.agentKey), style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text(
+              [
+                Fmt.dateTime(run.startedAt.toLocal()),
+                if (d != null) d.inSeconds < 1 ? 'menos de 1 s' : '${d.inSeconds} s',
+                run.usedAiModel
+                    ? 'Modelo ${run.model} · US\$ ${run.costUsd.toStringAsFixed(4)}'
+                    : 'Con reglas, sin modelo de IA',
+              ].join(' · '),
+              style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
+            ),
+            if ((run.summary ?? '').isNotEmpty) Text(run.summary!, style: const TextStyle(fontSize: 14)),
+            if ((run.error ?? '').isNotEmpty)
+              Text('Error: ${run.error}', style: const TextStyle(color: HyColors.danger, fontSize: 14)),
+          ],
+        ),
       ),
     );
   }
