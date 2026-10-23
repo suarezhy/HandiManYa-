@@ -20,6 +20,9 @@
 # En los registros solo salen nombres de tablas y cantidades: nunca datos.
 set -euo pipefail
 export LC_ALL=C
+# OUT relativo es relativo a donde se llamó, no a supabase/.
+: "${OUT:?Falta OUT}"
+OUT="$(mkdir -p "$OUT" && cd "$OUT" && pwd)"
 cd "$(dirname "$0")/.."
 
 : "${DB_URL:?Falta DB_URL}"
