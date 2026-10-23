@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/booking.dart';
 import 'buttons.dart';
+import 'word_safe_text.dart';
 import '../theme/tokens.dart';
 import '../utils/app_error.dart';
 import '../utils/formatters.dart';
@@ -71,15 +72,25 @@ class SectionHeader extends StatelessWidget {
   final String? actionLabel;
   final VoidCallback? onAction;
 
+  static const padding = EdgeInsets.only(top: HySpacing.xl, bottom: HySpacing.sm);
+
+  /// Ancho que se deja para el botón de la derecha al medir el título.
+  static const actionWidth = 120.0;
+
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: HySpacing.xl, bottom: HySpacing.sm),
+    padding: padding,
     child: Row(
       children: [
         Expanded(
-          child: Semantics(header: true, child: Text(title, style: Theme.of(context).textTheme.titleLarge)),
+          // Corta líneas solo entre palabras, aun con letra grande.
+          child: Semantics(header: true, child: WordSafeText(title, style: Theme.of(context).textTheme.titleLarge)),
         ),
-        if (actionLabel != null) TextButton(onPressed: onAction, child: Text(actionLabel!)),
+        if (actionLabel != null)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: actionWidth),
+            child: TextButton(onPressed: onAction, child: Text(actionLabel!)),
+          ),
       ],
     ),
   );

@@ -47,21 +47,23 @@ class AdminHomePage extends ConsumerWidget {
           refreshOps(ref);
           return ref.refresh(adminDashboardProvider.future);
         },
-        child: ListView(
-          padding: bottomSafePadding(context),
-          children: [
-            PageBody(
-              child: switch (dash) {
-                AsyncData(:final value) => _Summary(d: value),
-                AsyncError(:final error) => ErrorView(
-                  error: error,
-                  onRetry: () => ref.invalidate(adminDashboardProvider),
-                ),
-                _ => const LoadingView(),
-              },
-            ),
-          ],
-        ),
+        child: switch (dash) {
+          AsyncData(:final value) => _Summary(d: value),
+          _ => ListView(
+            padding: bottomSafePadding(context),
+            children: [
+              PageBody(
+                child: switch (dash) {
+                  AsyncError(:final error) => ErrorView(
+                    error: error,
+                    onRetry: () => ref.invalidate(adminDashboardProvider),
+                  ),
+                  _ => const LoadingView(),
+                },
+              ),
+            ],
+          ),
+        },
       ),
     );
   }
@@ -77,9 +79,8 @@ class _Summary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     void go(String route) => context.push(route);
-    return Column(
+    return PanelSections(
       key: const Key('owner-summary'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const SizedBox(height: HySpacing.md),
         if (!d.isOwnerView) ...[
