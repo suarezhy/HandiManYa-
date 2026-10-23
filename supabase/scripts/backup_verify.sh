@@ -83,43 +83,47 @@ for t in public.profiles public.bookings public.professional_profiles auth.users
   grep -q "^$t " "$work/live.txt" || { echo "::error::Falta la tabla $t"; exit 1; }
 done
 
-echo "== 2. Restauración de prueba (base local desechable)"
-restore_db=hmy_restore_check
-psql "$RESTORE_ADMIN_URL" -X -q -v ON_ERROR_STOP=1 -c "drop database if exists $restore_db" -c "create database $restore_db"
-restore_url="${RESTORE_ADMIN_URL%/*}/$restore_db"
-rdb() { psql "$restore_url" -X -q -v ON_ERROR_STOP=1 "$@"; }
-rdb -f tests/00_supabase_stub.sql > /dev/null 2>&1
-for f in migrations/*.sql; do
-  b="$(basename "$f" .sql)"
-  if [ -n "$versions" ] && ! tr ',' '\n' <<< "$versions" | grep -qx "${b%%_*}"; then
-    echo "No está en la base, no se aplica: $b"
-    continue
+restore_test() { # $1: carpeta con public.dump
+  restore_db=hmy_restore_check
+  psql "$RESTORE_ADMIN_URL" -X -q -v ON_ERROR_STOP=1 -c "drop database if exists $restore_db" -c "create database $restore_db"
+  restore_url="${RESTORE_ADMIN_URL%/*}/$restore_db"
+  rdb() { psql "$restore_url" -X -q -v ON_ERROR_STOP=1 "$@"; }
+  rdb -f tests/00_supabase_stub.sql > /dev/null 2>&1
+  for f in migrations/*.sql; do
+    b="$(basename "$f" .sql)"
+    if [ -n "$versions" ] && ! tr ',' '\n' <<< "$versions" | grep -qx "${b%%_*}"; then
+      echo "No está en la base, no se aplica: $b"
+      continue
+    fi
+    rdb -f "$f" > /dev/null 2>&1 || { echo "::error::La migración $b no corre en la base local"; exit 1; }
+  done
+  # Las migraciones traen datos iniciales (ciudades, servicios): se vacían para
+  # que quede exactamente lo del respaldo.
+  rdb -At -c "select 'truncate ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' cascade'
+              from pg_tables where schemaname = 'public'" > "$work/truncate.sql"
+  rdb -f "$work/truncate.sql"
+  if ! pg_restore --data-only --disable-triggers --no-owner --schema=public -d "$restore_url" \
+       "$1/public.dump" 2> "$work/restore.err"; then
+    # Los mensajes de error pueden traer datos: solo se dice cuántos y en qué tablas.
+    echo "::error::La restauración falló: $(grep -c 'error' "$work/restore.err") errores en" \
+      "$(grep -o 'COPY [a-z_]*' "$work/restore.err" | sort -u | tr '\n' ' ')"
+    exit 1
   fi
-  rdb -f "$f" > /dev/null 2>&1 || { echo "::error::La migración $b no corre en la base local"; exit 1; }
-done
-# Las migraciones traen datos iniciales (ciudades, servicios): se vacían para
-# que quede exactamente lo del respaldo.
-rdb -At -c "select 'truncate ' || string_agg(format('%I.%I', schemaname, tablename), ', ') || ' cascade'
-            from pg_tables where schemaname = 'public'" > "$work/truncate.sql"
-rdb -f "$work/truncate.sql"
-if ! pg_restore --data-only --disable-triggers --no-owner --schema=public -d "$restore_url" \
-     "$work/public.dump" 2> "$work/restore.err"; then
-  # Los mensajes de error pueden traer datos: solo se dice cuántos y en qué tablas.
-  echo "::error::La restauración falló: $(grep -c 'error' "$work/restore.err") errores en" \
-    "$(grep -o 'COPY [a-z_]*' "$work/restore.err" | sort -u | tr '\n' ' ')"
-  exit 1
-fi
-psql "$restore_url" -X -At -v ON_ERROR_STOP=1 -c "$count_sql" | grep '^public\.' | sort > "$work/restored.txt"
-grep '^public\.' "$work/dump.txt" > "$work/dump_public.txt" || true
-compare "$work/restored.txt" "$work/dump_public.txt" "la restauración"
-echo "Datos de public restaurados: $(wc -l < "$work/restored.txt") tablas, todo cuadra."
-psql "$RESTORE_ADMIN_URL" -X -q -c "drop database $restore_db"
+  psql "$restore_url" -X -At -v ON_ERROR_STOP=1 -c "$count_sql" | grep '^public\.' | sort > "$work/restored.txt"
+  grep '^public\.' "$work/dump.txt" > "$1/dump_public.txt" || true
+  compare "$work/restored.txt" "$1/dump_public.txt" "la restauración"
+  echo "Datos de public restaurados: $(wc -l < "$work/restored.txt") tablas, todo cuadra."
+  psql "$RESTORE_ADMIN_URL" -X -q -c "drop database $restore_db"
+}
 
-echo "== 3. Guardar cifrado"
+
 if [ -z "${BACKUP_PASSPHRASE:-}" ]; then
+  echo "== 2. Restauración de prueba (base local desechable)"
+  restore_test "$work"
   echo "::error::Respaldo comprobado pero NO guardado: falta el secreto BACKUP_PASSPHRASE."
   exit 3
 fi
+echo "== 2. Guardar cifrado"
 stamp="$(date -u +%Y%m%d-%H%M%S)"
 {
   echo "respaldo $stamp"
@@ -132,6 +136,14 @@ file="$OUT/respaldo-dev-$stamp.tar.gpg"
 tar -C "$work" -cf - manifest.txt public.dump auth_storage.dump |
   gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 --symmetric --cipher-algo AES256 \
       -o "$file" 3<<< "$BACKUP_PASSPHRASE"
-listed="$(gpg --batch --quiet --pinentry-mode loopback --passphrase-fd 3 -d "$file" 3<<< "$BACKUP_PASSPHRASE" | tar -tf - | sort | tr '\n' ' ')"
-[ "$listed" = "auth_storage.dump manifest.txt public.dump " ] || { echo "::error::El archivo cifrado no se abre bien"; exit 1; }
-echo "Guardado: $(basename "$file") ($(du -h "$file" | cut -f1)), se descifra y abre bien."
+echo "Cifrado: $(basename "$file") ($(du -h "$file" | cut -f1))."
+
+echo "== 3. Restauración de prueba desde el archivo cifrado (base local desechable)"
+# Se restaura lo que de verdad se guarda: el archivo cifrado, descifrado de nuevo.
+mkdir "$work/check"
+gpg --batch --quiet --pinentry-mode loopback --passphrase-fd 3 -d "$file" 3<<< "$BACKUP_PASSPHRASE" | tar -C "$work/check" -xf -
+(cd "$work/check" && grep -E ' (public|auth_storage)\.dump$' manifest.txt | sha256sum -c --quiet) ||
+  { echo "::error::El archivo cifrado no coincide con el respaldo comprobado"; exit 1; }
+cp "$work/dump.txt" "$work/check/"
+restore_test "$work/check"
+echo "Guardado y restaurado desde el archivo cifrado: $(basename "$file")."
