@@ -6,6 +6,7 @@
 // cuentas temporales (supabase/e2e/setup.sql) y después borra todo
 // (supabase/e2e/cleanup.sql). Sin E2E_URL, E2E_ANON_KEY y E2E_PASSWORD se salta.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:handimanya/core/services/device_auth.dart';
 import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/data/models/admin.dart';
 import 'package:handimanya/data/models/booking.dart';
@@ -135,7 +136,7 @@ void main() {
             methodId: methods.first.id,
             reference: 'E2E',
             authMethod: 'password',
-            clientKey: 'e2e-${DateTime.now().millisecondsSinceEpoch}',
+            clientKey: newOperationKey(),
           );
           expect((await pro.wallet()).available, 0, reason: 'pedir recarga no acredita saldo');
           await admin.reviewTopup(id, approve: true);
