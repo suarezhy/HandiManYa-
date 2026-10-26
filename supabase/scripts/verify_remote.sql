@@ -35,7 +35,8 @@ declare
     'hmy_booking_row','ops_bookings','ops_booking_detail','ops_open_booking_case','admin_people','ops_risk_items','owner_wallets',
     'owner_finance_ledger','owner_finance_topups','commission_preview','owner_commission_debts','owner_demand_bookings',
     'register_push_device','unregister_push_device','my_push_status','send_test_push','hmy_push_claim','hmy_push_report','owner_push_overview',
-    'hmy_booking_deadline_guard','expire_my_overdue_bookings','hmy_response_deadline'];
+    'hmy_booking_deadline_guard','expire_my_overdue_bookings','hmy_response_deadline',
+    'hmy_professional_active','hmy_booking_pro_active_guard','hmy_cancel_unstarted_bookings','hmy_pro_inactive_cleanup','hmy_suspension_cleanup'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -158,6 +159,11 @@ begin
     (exists (select 1 from pg_trigger where tgname = 'bookings_deadline_guard' and tgrelid = 'public.bookings'::regclass)
      and not has_function_privilege('anon', 'public.expire_my_overdue_bookings()', 'EXECUTE'),
      'pedidos vencidos: nadie acepta ni cotiza tarde; sin sesión no se vence nada'),
+    (exists (select 1 from pg_trigger where tgname = 'bookings_pro_active_guard' and tgrelid = 'public.bookings'::regclass)
+     and exists (select 1 from pg_trigger where tgname = 'professional_profiles_inactive_cleanup')
+     and exists (select 1 from pg_trigger where tgname = 'profiles_suspension_cleanup')
+     and not has_function_privilege('authenticated', 'public.hmy_cancel_unstarted_bookings(uuid, text)', 'EXECUTE'),
+     'suspendidos: un profesional no aprobado no acepta ni sale, y sus pedidos sin empezar se cancelan'),
     (to_regprocedure('public.owner_grant_staff(uuid, text)') is null and to_regprocedure('public.owner_grant_staff(uuid, text, text)') is not null,
      'equipo: dar un rol exige confirmación del propietario')
   ) as v(ok, what) loop

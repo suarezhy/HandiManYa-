@@ -153,7 +153,7 @@ class AppError implements Exception {
     'HMY_FORBIDDEN': 'No tienes permiso para hacer esto.',
     'HMY_NOT_FOUND': 'No encontramos lo que buscas.',
     'HMY_ROLE_NOT_GRANTED': 'Tu cuenta todavía no tiene acceso de profesional.',
-    'HMY_PROFESSIONAL_NOT_APPROVED': 'Tu perfil profesional todavía no fue aprobado.',
+    'HMY_PROFESSIONAL_NOT_APPROVED': 'Tu perfil profesional no está activo: todavía no fue aprobado o está en pausa.',
     'HMY_PROFESSIONAL_NOT_AVAILABLE':
         'Este profesional no está disponible ahora. Prueba con otro o programa para después.',
     'HMY_CANNOT_BOOK_SELF': 'No puedes solicitarte un servicio a ti mismo.',
