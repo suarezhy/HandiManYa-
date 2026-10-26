@@ -195,6 +195,7 @@ const expectedProblems = {
     'Montaje de mesas y sillas',
     'Churrasquero (parrillero)',
     'Banda',
+    'Mariachis',
     'Atención de invitados',
     'Otro servicio',
   ],
@@ -296,7 +297,8 @@ void main() {
       // Grúa y Banda (0049), también.
       final added =
           File('supabase/migrations/20261021003300_catalog_churrasquero_notario.sql').readAsStringSync() +
-          File('supabase/migrations/20261026004900_catalog_grua_banda.sql').readAsStringSync();
+          File('supabase/migrations/20261026004900_catalog_grua_banda.sql').readAsStringSync() +
+          File('supabase/migrations/20261026005000_catalog_mariachis.sql').readAsStringSync();
       for (final c in DemoData.categories) {
         for (final p in DemoData.problems.where((p) => p.categoryId == c.id)) {
           final other = p.isOther ? 'true' : 'false';

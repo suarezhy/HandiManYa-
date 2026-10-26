@@ -6,7 +6,7 @@ select test.eq((select count(*)::int from public.service_problems p join public.
                  where c.slug = 'eventos' and p.name = 'Churrasquero (parrillero)' and p.is_active), 1,
                'catálogo: Eventos ofrece Churrasquero');
 select test.eq((select description from public.service_categories where slug = 'eventos'),
-               'Meseros, churrasqueros, bandas, decoración y ayuda para fiestas', 'catálogo: la búsqueda de Eventos incluye churrasqueros (y bandas, 0049)');
+               'Meseros, churrasqueros, bandas, mariachis, decoración y ayuda para fiestas', 'catálogo: la búsqueda de Eventos incluye churrasqueros (y bandas y mariachis, 0049-0050)');
 select test.eq((select (required_doc, allows_ya, is_active)::text from public.service_categories where slug = 'notario'),
                '(nombramiento_notarial,f,t)', 'catálogo: Notario pide su nombramiento y no es ¡Ya!');
 select test.eq((select id from public.service_categories where slug = 'asesoria-legal'), 18, 'catálogo: Asesoría legal conserva su id');

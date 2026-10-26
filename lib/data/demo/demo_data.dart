@@ -143,7 +143,7 @@ abstract final class DemoData {
       slug: 'eventos',
       name: 'Eventos',
       icon: 'celebration',
-      description: 'Meseros, churrasqueros, bandas, decoración y ayuda para fiestas',
+      description: 'Meseros, churrasqueros, bandas, mariachis, decoración y ayuda para fiestas',
     ),
     ServiceCategory(
       id: 18,
@@ -351,6 +351,7 @@ abstract final class DemoData {
     ServiceProblem(id: 149, categoryId: 19, name: 'Otro trámite notarial', icon: 'other', sortOrder: 50, isOther: true),
     // 0049: Banda en Eventos; Grúa (en Mecánica lleva a su categoría).
     ServiceProblem(id: 150, categoryId: 17, name: 'Banda', icon: 'music_note', sortOrder: 67),
+    ServiceProblem(id: 156, categoryId: 17, name: 'Mariachis', icon: 'music_note', sortOrder: 68),
     ServiceProblem(id: 151, categoryId: 20, name: 'Remolque de vehículo', icon: 'local_shipping', sortOrder: 10),
     ServiceProblem(id: 152, categoryId: 20, name: 'Auxilio en carretera', icon: 'car_repair', sortOrder: 20),
     ServiceProblem(id: 153, categoryId: 20, name: 'Traslado al taller', icon: 'build', sortOrder: 30),
