@@ -20,6 +20,7 @@ const _docLabels = {
   'antecedentes': 'Antecedentes',
   'certificado': 'Certificado o matrícula',
   'nombramiento_notarial': 'Nombramiento notarial',
+  'documentos_grua': 'Documentos de la grúa',
 };
 
 /// Lista de casos. El gerente y el propietario eligen qué bandeja ver; el

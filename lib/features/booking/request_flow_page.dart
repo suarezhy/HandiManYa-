@@ -49,6 +49,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
   final _description = TextEditingController();
   final _address = TextEditingController();
   final _reference = TextEditingController();
+  final _destination = TextEditingController();
   final _categorySearch = TextEditingController();
   String _categoryQuery = '';
 
@@ -81,6 +82,11 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
   bool _locating = false;
   List<PhotoUpload> _photos = const [];
 
+  /// Grúa: tipo de vehículo (obligatorio) y destino.
+  String? _vehicle;
+  String? _vehicleError;
+  static const vehicleTypes = ['Auto', 'Camioneta', 'Moto', 'Minibús', 'Camión'];
+
   bool get _isYa => widget.professionalId == null;
 
   /// Ya hay algo del pedido que se perdería al salir.
@@ -89,12 +95,12 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
       _categoryId != widget.initialCategoryId ||
       _selected.isNotEmpty ||
       _photos.isNotEmpty ||
-      [_otherText, _description, _address, _reference].any((c) => c.text.trim().isNotEmpty);
+      [_otherText, _description, _address, _reference, _destination].any((c) => c.text.trim().isNotEmpty);
   _Step get _step => _steps[_index];
 
   @override
   void dispose() {
-    for (final c in [_otherText, _description, _address, _reference, _categorySearch]) {
+    for (final c in [_otherText, _description, _address, _reference, _destination, _categorySearch]) {
       c.dispose();
     }
     super.dispose();
@@ -105,6 +111,16 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
 
   List<ServiceProblem> get _problems =>
       _categoryId == null ? const [] : (ref.read(problemsProvider(_categoryId!)).value ?? const []);
+
+  bool get _isTow => _category?.slug == 'grua';
+
+  /// Una opción que lleva a otra categoría (en Mecánica, "Grúa"): se pasa a
+  /// esa categoría y se eligen sus opciones.
+  void _openCategory(int id) => setState(() {
+    _categoryId = id;
+    _selected.clear();
+    _otherText.clear();
+  });
 
   bool get _otherSelected => _problems.any((p) => p.isOther && _selected.contains(p.id));
 
@@ -126,7 +142,9 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
       case _Step.category:
         if (_categoryId == null) return;
       case _Step.problems:
-        if (_selected.isEmpty || !_problemsForm.currentState!.validate()) return;
+        final formOk = _problemsForm.currentState!.validate();
+        if (_isTow) setState(() => _vehicleError = _vehicle == null ? 'Elige el tipo de vehículo' : null);
+        if (_selected.isEmpty || !formOk || (_isTow && _vehicle == null)) return;
       case _Step.details:
         if (!_describeForm.currentState!.validate()) return;
         if (!_isYa && _mode == BookingMode.scheduled) {
@@ -163,7 +181,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
       categoryId: _categoryId!,
       cityId: cityId,
       mode: mode,
-      description: _description.text.trim(),
+      description: _isTow ? 'Vehículo: $_vehicle. ${_description.text.trim()}'.trim() : _description.text.trim(),
       address: _address.text.trim(),
       addressReference: _reference.text.trim().isEmpty ? null : _reference.text.trim(),
       zoneId: _zoneId,
@@ -178,6 +196,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
           if (_selected.contains(p.id)) p.id,
       ],
       otherText: _otherSelected ? _otherText.text.trim() : null,
+      destination: _isTow ? _destination.text.trim() : null,
     );
   }
 
@@ -451,8 +470,52 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
                   : orderProblems(list, categorySlug: category.slug, name: (p) => p.name, isOther: (p) => p.isOther),
               selected: _selected,
               icon: category?.icon ?? 'build',
-              onToggle: (p) => setState(() => _selected.contains(p.id) ? _selected.remove(p.id) : _selected.add(p.id)),
+              onToggle: (p) => p.opensCategoryId != null
+                  ? _openCategory(p.opensCategoryId!)
+                  : setState(() => _selected.contains(p.id) ? _selected.remove(p.id) : _selected.add(p.id)),
             ),
+            if (category?.slug == 'grua') ...[
+              const SizedBox(height: HySpacing.lg),
+              Text('Tipo de vehículo', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: HySpacing.xs),
+              Wrap(
+                spacing: HySpacing.xs,
+                runSpacing: HySpacing.xs,
+                children: [
+                  for (final v in vehicleTypes)
+                    ChoiceChip(
+                      key: ValueKey('vehicle-$v'),
+                      label: Text(v),
+                      selected: _vehicle == v,
+                      onSelected: (_) => setState(() {
+                        _vehicle = v;
+                        _vehicleError = null;
+                      }),
+                    ),
+                ],
+              ),
+              if (_vehicleError != null) ...[
+                const SizedBox(height: HySpacing.xxs),
+                Text(_vehicleError!, style: const TextStyle(color: HyColors.danger)),
+              ],
+              const SizedBox(height: HySpacing.md),
+              TextFormField(
+                key: const ValueKey('tow-destination'),
+                controller: _destination,
+                textCapitalization: TextCapitalization.sentences,
+                maxLength: 300,
+                decoration: const InputDecoration(
+                  labelText: '¿A dónde lo llevamos?',
+                  hintText: 'Taller, casa u otra dirección',
+                  prefixIcon: Icon(Icons.flag_outlined),
+                ),
+                validator: (v) => (v ?? '').trim().length < 3 ? 'Escribe el destino' : null,
+              ),
+              const Text(
+                'Solo lo verá quien acepte tu pedido.',
+                style: TextStyle(color: HyColors.textMuted, fontSize: 14),
+              ),
+            ],
             if (_otherSelected) ...[
               const SizedBox(height: HySpacing.md),
               TextFormField(
@@ -597,10 +660,10 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             controller: _address,
             textCapitalization: TextCapitalization.sentences,
             autofillHints: const [AutofillHints.fullStreetAddress],
-            decoration: const InputDecoration(
-              labelText: 'Dirección',
-              hintText: 'Calle, número y barrio',
-              prefixIcon: Icon(Icons.home_outlined),
+            decoration: InputDecoration(
+              labelText: _isTow ? '¿Dónde está el vehículo?' : 'Dirección',
+              hintText: _isTow ? 'Calle, carretera o km' : 'Calle, número y barrio',
+              prefixIcon: Icon(_isTow ? Icons.directions_car_outlined : Icons.home_outlined),
             ),
             validator: (v) => (v ?? '').trim().length < 5 ? 'Escribe la dirección' : null,
           ),

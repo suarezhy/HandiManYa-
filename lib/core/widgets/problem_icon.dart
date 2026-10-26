@@ -112,6 +112,7 @@ IconData problemIcon(String name) => switch (name) {
   'work' => Icons.work,
   'yard' => Icons.yard,
   'outdoor_grill' => Icons.outdoor_grill,
+  'local_shipping' => Icons.local_shipping,
   'other' => Icons.edit_note_rounded,
   _ => Icons.handyman,
 };
@@ -183,6 +184,7 @@ const problemIconNames = [
   'local_florist',
   'lock',
   'lock_open',
+  'local_shipping',
   'lock_reset',
   'luggage',
   'menu_book',

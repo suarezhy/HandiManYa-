@@ -93,7 +93,8 @@ class ServiceCategory {
   final bool allowsYa;
 
   /// Documento que el profesional debe tener aceptado para atender esta
-  /// categoría: `antecedentes` o `certificado`.
+  /// categoría: `antecedentes`, `certificado`, `nombramiento_notarial` o
+  /// `documentos_grua` (este último pide además antecedentes: ver [requiredDocs]).
   final String? requiredDoc;
 
   /// Regla de seguridad que ve el cliente al pedir.
@@ -105,6 +106,13 @@ class ServiceCategory {
   final int sortOrder;
 
   bool get isSensitive => requiredDoc != null;
+
+  /// Todos los documentos que se piden (como hmy_pro_cleared en el servidor).
+  List<String> get requiredDocs => switch (requiredDoc) {
+    null => const [],
+    'documentos_grua' => const ['documentos_grua', 'antecedentes'],
+    final d => [d],
+  };
 
   factory ServiceCategory.fromMap(Map<String, dynamic> m) => ServiceCategory(
     id: (m['id'] as num).toInt(),
@@ -168,6 +176,7 @@ class ServiceProblem {
     this.isOther = false,
     this.isActive = true,
     this.sortOrder = 100,
+    this.opensCategoryId,
   });
 
   final int id;
@@ -180,6 +189,10 @@ class ServiceProblem {
   final bool isActive;
   final int sortOrder;
 
+  /// Opción que lleva a otra categoría (en Mecánica, "Grúa" abre Grúa). No se
+  /// pide como opción de esta categoría.
+  final int? opensCategoryId;
+
   factory ServiceProblem.fromMap(Map<String, dynamic> m) => ServiceProblem(
     id: (m['id'] as num).toInt(),
     categoryId: (m['category_id'] as num).toInt(),
@@ -188,6 +201,7 @@ class ServiceProblem {
     isOther: m['is_other'] as bool? ?? false,
     isActive: m['is_active'] as bool? ?? true,
     sortOrder: (m['sort_order'] as num?)?.toInt() ?? 100,
+    opensCategoryId: (m['opens_category_id'] as num?)?.toInt(),
   );
 
   Map<String, dynamic> toMap() => {
@@ -208,6 +222,7 @@ class ServiceProblem {
         isOther: isOther ?? this.isOther,
         isActive: isActive ?? this.isActive,
         sortOrder: sortOrder ?? this.sortOrder,
+        opensCategoryId: opensCategoryId,
       );
 }
 

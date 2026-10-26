@@ -167,6 +167,7 @@ class AdminDocument {
     'ci_reverso' => 'Carnet de identidad (reverso)',
     'certificado' => 'Certificado o título',
     'nombramiento_notarial' => 'Resolución de nombramiento de notario',
+    'documentos_grua' => 'Licencia, RUAT y SOAT de la grúa',
     'antecedentes' => 'Certificado de antecedentes',
     _ => 'Otro documento',
   };

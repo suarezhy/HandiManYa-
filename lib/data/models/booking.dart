@@ -201,10 +201,13 @@ class BookingEvent {
 }
 
 class BookingAddress {
-  const BookingAddress({required this.line, this.reference, this.latitude, this.longitude});
+  const BookingAddress({required this.line, this.reference, this.latitude, this.longitude, this.destination});
 
   final String line;
   final String? reference;
+
+  /// Grúa: a dónde se lleva el vehículo. Privado como la dirección.
+  final String? destination;
   final double? latitude;
   final double? longitude;
 
@@ -384,6 +387,7 @@ class BookingDetail {
               reference: addr['reference'] as String?,
               latitude: _dn(addr['latitude']),
               longitude: _dn(addr['longitude']),
+              destination: addr['destination'] as String?,
             ),
       conversationId: m['conversation_id'] as String?,
       hasReview: m['has_review'] as bool? ?? false,
@@ -418,6 +422,7 @@ class BookingDraft {
     this.longitude,
     this.problemIds = const [],
     this.otherText,
+    this.destination,
   });
 
   final int categoryId;
@@ -442,6 +447,9 @@ class BookingDraft {
   final List<int> problemIds;
   final String? otherText;
 
+  /// Grúa: a dónde llevar el vehículo (obligatorio solo en Grúa).
+  final String? destination;
+
   bool get isYa => mode == BookingMode.now && professionalId == null;
 
   /// La misma solicitud dirigida a un profesional elegido, para otro momento.
@@ -462,6 +470,7 @@ class BookingDraft {
         longitude: longitude,
         problemIds: problemIds,
         otherText: otherText,
+        destination: destination,
       );
 }
 

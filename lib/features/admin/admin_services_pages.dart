@@ -48,6 +48,7 @@ const _docLabels = {
   'antecedentes': 'Antecedentes (FELCC)',
   'certificado': 'Título o matrícula',
   'nombramiento_notarial': 'Nombramiento de notario (DIRNOPLU)',
+  'documentos_grua': 'Licencia, RUAT y SOAT de la grúa (y antecedentes)',
 };
 
 /// Quita tildes y espacios para armar el identificador de una categoría nueva.

@@ -22,7 +22,7 @@ const priorityCategoryKeys = [
 /// ninguna lista (una categoría nueva del administrador) va al final,
 /// en el orden de la base de datos.
 const _groupKeys = [
-  ['carpinteria', 'mecanica'],
+  ['carpinteria', 'mecanica', 'grua'],
   ['belleza', 'manicure', 'ninera', 'mascotas'],
   ['clases', 'eventos', 'asesoria-legal', 'notario'],
 ];

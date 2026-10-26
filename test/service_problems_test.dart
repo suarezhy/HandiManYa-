@@ -114,6 +114,7 @@ const expectedProblems = {
     'Problema con el motor',
     'Cambio de llanta',
     'Diagnóstico mecánico',
+    'Grúa',
     'Otro problema',
   ],
   'aire-acondicionado': [
@@ -193,6 +194,7 @@ const expectedProblems = {
     'Limpieza después del evento',
     'Montaje de mesas y sillas',
     'Churrasquero (parrillero)',
+    'Banda',
     'Atención de invitados',
     'Otro servicio',
   ],
@@ -213,6 +215,7 @@ const expectedProblems = {
     'Minutas y escrituras',
     'Otro trámite notarial',
   ],
+  'grua': ['Remolque de vehículo', 'Auxilio en carretera', 'Traslado al taller', 'Otro servicio'],
 };
 
 class _FakeLocation implements LocationService {
@@ -272,7 +275,7 @@ int _problemId(int categoryId, String name) =>
 void main() {
   group('catálogo de problemas', () {
     test('las 19 categorías tienen exactamente las opciones pedidas, en orden', () {
-      expect(DemoData.categories, hasLength(19));
+      expect(DemoData.categories, hasLength(20));
       for (final c in DemoData.categories) {
         final names = [
           for (final p
@@ -290,7 +293,10 @@ void main() {
     test('las migraciones siembran las mismas opciones que la app de demostración', () {
       final sql = File('supabase/migrations/20261020001000_service_problems.sql').readAsStringSync();
       // Churrasquero y Notario (0033) se agregan con otro formato.
-      final added = File('supabase/migrations/20261021003300_catalog_churrasquero_notario.sql').readAsStringSync();
+      // Grúa y Banda (0049), también.
+      final added =
+          File('supabase/migrations/20261021003300_catalog_churrasquero_notario.sql').readAsStringSync() +
+          File('supabase/migrations/20261026004900_catalog_grua_banda.sql').readAsStringSync();
       for (final c in DemoData.categories) {
         for (final p in DemoData.problems.where((p) => p.categoryId == c.id)) {
           final other = p.isOther ? 'true' : 'false';
@@ -318,7 +324,11 @@ void main() {
         expect(bySlug[slug]!.safetyNote, isNotEmpty, reason: slug);
         expect(bySlug[slug]!.proNote, isNotEmpty, reason: slug);
       }
-      expect(DemoData.categories.where((c) => c.isSensitive), hasLength(5));
+      expect(DemoData.categories.where((c) => c.isSensitive), hasLength(6));
+      expect(bySlug['grua']!.requiredDocs, [
+        'documentos_grua',
+        'antecedentes',
+      ], reason: 'grúa pide también antecedentes');
     });
   });
 
@@ -350,6 +360,31 @@ void main() {
       expect(d.description, 'Fuga de agua. Otro problema: el tanque hace ruido');
       final list = await backend.myBookings(asProfessional: false);
       expect(list.firstWhere((b) => b.id == id).problems, d.problems);
+    });
+
+    test('grúa: el destino es obligatorio y "Grúa" de Mecánica no se pide como mecánica', () async {
+      await asCustomer();
+      final remolque = _problemId(20, 'Remolque de vehículo');
+      Future<Object?> err(BookingDraft d) async {
+        try {
+          await backend.create(d);
+          return null;
+        } catch (e) {
+          return e;
+        }
+      }
+
+      expect((await err(ya(20, [remolque])) as AppError).code, 'HMY_DESTINATION_REQUIRED');
+      expect((await err(ya(9, [_problemId(9, 'Grúa')])) as AppError).code, 'HMY_INVALID_PROBLEM');
+      final mec = BookingDraft(
+        categoryId: 9,
+        cityId: 1,
+        mode: BookingMode.now,
+        description: '',
+        address: 'Calle 5',
+        destination: 'Taller',
+      );
+      expect((await err(mec) as AppError).code, 'HMY_INVALID_PROBLEM', reason: 'solo Grúa lleva destino');
     });
 
     test('valida la selección', () async {
@@ -445,6 +480,15 @@ void main() {
           // Elegir la primera opción habilita "Continuar" y lleva a "Cuéntanos más".
           final first = DemoData.problems.firstWhere((p) => p.categoryId == c.id);
           await _tap(tester, _problem(first.id));
+          if (c.slug == 'grua') {
+            // Grúa pide además el tipo de vehículo y el destino.
+            await _tapText(tester, 'Continuar');
+            expect(find.text('Elige el tipo de vehículo'), findsOneWidget);
+            expect(find.text('Escribe el destino'), findsOneWidget);
+            await _tap(tester, find.byKey(const ValueKey('vehicle-Camioneta')));
+            await tester.enterText(find.byKey(const ValueKey('tow-destination')), 'Taller Central');
+            await tester.pumpAndSettle();
+          }
           await _tapText(tester, 'Continuar');
           expect(find.text('Cuéntanos más'), findsOneWidget, reason: c.name);
           expect(find.text(first.name), findsOneWidget, reason: '${c.name}: resumen de lo elegido');
@@ -463,6 +507,18 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets('en Mecánica, "Grúa" lleva a las opciones de grúa', (tester) async {
+      await _pumpApp(tester);
+      await _login(tester);
+      await _go(tester, Routes.service(9));
+      await _tap(tester, _problem(_problemId(9, 'Grúa')));
+      expect(find.text('Remolque de vehículo'), findsOneWidget);
+      expect(find.text('Traslado al taller'), findsOneWidget);
+      expect(find.text('El auto no arranca'), findsNothing);
+      expect(find.byKey(const ValueKey('tow-destination')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('"Otro problema" pide escribir lo que necesitas', (tester) async {
       await _pumpApp(tester);

@@ -29,7 +29,7 @@ Future<void> loadShotFonts() async {
 Future<void> shot(WidgetTester tester, String name) async {
   final view = tester.binding.renderViews.first;
   final layer = view.debugLayer! as OffsetLayer;
-  
+
   await tester.runAsync(() async {
     final image = await layer.toImage(Offset.zero & tester.view.physicalSize, pixelRatio: 0.5);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);

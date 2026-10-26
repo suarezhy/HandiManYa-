@@ -396,6 +396,7 @@ class SupabaseBackend
           'p_longitude': d.longitude,
           'p_problem_ids': d.problemIds.isEmpty ? null : d.problemIds,
           'p_other_text': d.otherText,
+          'p_destination': d.destination,
         },
       ) as String;
     }
@@ -416,6 +417,7 @@ class SupabaseBackend
         'p_longitude': d.longitude,
         'p_problem_ids': d.problemIds.isEmpty ? null : d.problemIds,
         'p_other_text': d.otherText,
+        'p_destination': d.destination,
       },
     ) as String;
   }

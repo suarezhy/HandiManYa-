@@ -233,6 +233,18 @@ class _Content extends StatelessWidget {
                       Text(b.address!.line, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                       if ((b.address!.reference ?? '').isNotEmpty)
                         Text(b.address!.reference!, style: const TextStyle(color: HyColors.textSecondary)),
+                      if ((b.address!.destination ?? '').isNotEmpty) ...[
+                        const SizedBox(height: HySpacing.xs),
+                        const Text(
+                          'Destino',
+                          style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          b.address!.destination!,
+                          key: const Key('booking-destination'),
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                        ),
+                      ],
                     ],
                   ),
                 ),

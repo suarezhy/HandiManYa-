@@ -190,6 +190,7 @@ class AppError implements Exception {
     'HMY_INVALID_STATUS': 'Esta acción ya no está disponible. Actualiza la pantalla.',
     'HMY_INVALID_PROBLEM': 'Una de las opciones elegidas ya no está disponible. Vuelve a elegir.',
     'HMY_OTHER_REQUIRED': 'Cuéntanos qué necesitas en "Otro".',
+    'HMY_DESTINATION_REQUIRED': 'Escribe a dónde hay que llevar el vehículo.',
     'HMY_TOO_MANY_PROBLEMS': 'Elige hasta 8 opciones.',
     'HMY_YA_NOT_ALLOWED': 'Este servicio no se pide con ¡Ya!. Elige a la persona y programa el día.',
     'HMY_NOT_AUTHENTICATED': 'Ingresa a tu cuenta para continuar.',

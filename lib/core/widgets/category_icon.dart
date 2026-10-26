@@ -15,6 +15,7 @@ IconData categoryIcon(String name) => switch (name) {
   'yard' => Icons.yard,
   'home_repair_service' => Icons.home_repair_service,
   'directions_car' => Icons.directions_car,
+  'local_shipping' => Icons.local_shipping,
   'ac_unit' => Icons.ac_unit,
   'key' => Icons.key,
   'content_cut' => Icons.content_cut,
@@ -34,7 +35,7 @@ IconData categoryIcon(String name) => switch (name) {
   'plumbing' || 'ac_unit' => (const Color(0xFF1F6FC5), const Color(0xFFE8F1FB)),
   'electrical_services' || 'key' => (const Color(0xFFB37400), const Color(0xFFFFF5DC)),
   'yard' || 'format_paint' || 'pets' => (HyColors.greenDark, HyColors.greenSoft),
-  'directions_car' || 'construction' || 'carpenter' => (HyColors.primaryDark, HyColors.primarySoft),
+  'directions_car' || 'local_shipping' || 'construction' || 'carpenter' => (HyColors.primaryDark, HyColors.primarySoft),
   'cleaning_services' ||
   'content_cut' ||
   'spa' ||

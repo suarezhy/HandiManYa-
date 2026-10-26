@@ -439,16 +439,20 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                           c.proNote ??
                           'Para ofrecer ${c.name} necesitas un documento adicional aceptado por el equipo.',
                     ),
-                    const SizedBox(height: HySpacing.xs),
-                    SecondaryButton(
-                      label: switch (c.requiredDoc) {
-                        'certificado' => 'Subir título o matrícula',
-                        'nombramiento_notarial' => 'Subir resolución de nombramiento',
-                        _ => 'Subir certificado de antecedentes',
-                      },
-                      icon: Icons.upload_file,
-                      onPressed: _uploading ? null : () => _pickDocument(c.requiredDoc!),
-                    ),
+                    for (final doc in c.requiredDocs) ...[
+                      const SizedBox(height: HySpacing.xs),
+                      SecondaryButton(
+                        key: Key('doc-${c.slug}-$doc'),
+                        label: switch (doc) {
+                          'certificado' => 'Subir título o matrícula',
+                          'nombramiento_notarial' => 'Subir nombramiento',
+                          'documentos_grua' => 'Subir licencia, RUAT y SOAT',
+                          _ => 'Subir antecedentes',
+                        },
+                        icon: Icons.upload_file,
+                        onPressed: _uploading ? null : () => _pickDocument(doc),
+                      ),
+                    ],
                   ],
                   const SizedBox(height: HySpacing.xs),
                   if (_uploading)

@@ -37,7 +37,8 @@ declare
     'register_push_device','unregister_push_device','my_push_status','send_test_push','hmy_push_claim','hmy_push_report','owner_push_overview',
     'hmy_booking_deadline_guard','expire_my_overdue_bookings','hmy_response_deadline',
     'hmy_professional_active','hmy_booking_pro_active_guard','hmy_cancel_unstarted_bookings','hmy_pro_inactive_cleanup','hmy_suspension_cleanup',
-    'hmy_map_jitter','home_map_professionals'];
+    'hmy_map_jitter','home_map_professionals',
+    'hmy_check_booking_extras','_create_booking_problems','_create_ya_request_problems','_booking_detail_problems'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -168,6 +169,11 @@ begin
     (not has_function_privilege('anon', 'public.home_map_professionals(smallint)', 'EXECUTE')
      and not has_function_privilege('authenticated', 'public.hmy_map_jitter(uuid, integer)', 'EXECUTE'),
      'mapa del inicio: solo con sesión y con puntos aproximados'),
+    (not exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace
+                 and proname in ('hmy_check_booking_extras', '_create_booking_problems', '_create_ya_request_problems', '_booking_detail_problems')
+                 and has_function_privilege('authenticated', oid, 'EXECUTE'))
+     and exists (select 1 from public.service_categories where slug = 'grua' and required_doc = 'documentos_grua'),
+     'grúa: solo profesionales habilitados y destino privado'),
     (to_regprocedure('public.owner_grant_staff(uuid, text)') is null and to_regprocedure('public.owner_grant_staff(uuid, text, text)') is not null,
      'equipo: dar un rol exige confirmación del propietario')
   ) as v(ok, what) loop

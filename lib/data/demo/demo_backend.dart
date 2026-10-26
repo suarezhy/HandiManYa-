@@ -974,6 +974,15 @@ class DemoBackend
     await _latency(500);
     final me = _me;
     final labels = _problemLabels(input.categoryId, input.problemIds, input.otherText);
+    // Como el servidor: Grúa exige el destino y nadie más lo acepta; una
+    // opción que solo lleva a otra categoría no se pide.
+    final tow = _cats.where((c) => c.id == input.categoryId).firstOrNull?.slug == 'grua';
+    final destination = (input.destination ?? '').trim();
+    if (_problems.any((p) => input.problemIds.contains(p.id) && p.opensCategoryId != null)) {
+      throw AppError.from('HMY_INVALID_PROBLEM');
+    }
+    if (tow && destination.length < 3) throw AppError.from('HMY_DESTINATION_REQUIRED');
+    if (!tow && destination.isNotEmpty) throw AppError.from('HMY_INVALID_PROBLEM');
     if (input.isYa && !(_cats.where((c) => c.id == input.categoryId).firstOrNull?.allowsYa ?? true)) {
       throw AppError.from('HMY_YA_NOT_ALLOWED');
     }
@@ -995,6 +1004,7 @@ class DemoBackend
             longitude: input.longitude,
             problemIds: input.problemIds,
             otherText: input.otherText,
+            destination: input.destination,
           );
     if (me.suspendedAt != null) throw AppError.from('HMY_ACCOUNT_SUSPENDED');
     if (d.professionalId == me.id) throw AppError.from('HMY_CANNOT_BOOK_SELF');
@@ -1193,6 +1203,7 @@ class DemoBackend
               reference: b.draft.addressReference,
               latitude: b.draft.latitude,
               longitude: b.draft.longitude,
+              destination: b.draft.destination,
             )
           : null,
       conversationId: b.conversationId,

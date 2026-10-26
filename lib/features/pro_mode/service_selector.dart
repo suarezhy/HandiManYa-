@@ -156,6 +156,7 @@ class _ServiceSelectorSheetState extends State<ServiceSelectorSheet> {
         : Text(switch (c.requiredDoc) {
             'certificado' => 'Pide título o matrícula y revisión del equipo',
             'nombramiento_notarial' => 'Pide la resolución de nombramiento (DIRNOPLU) y revisión del equipo',
+            'documentos_grua' => 'Pide licencia, RUAT, SOAT y antecedentes, con revisión del equipo',
             _ => 'Pide antecedentes y revisión del equipo',
           }, style: const TextStyle(color: HyColors.textSecondary)),
     onChanged: (v) => setState(() => v == true ? _picked.add(c.id) : _picked.remove(c.id)),
