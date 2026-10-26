@@ -81,6 +81,9 @@ abstract interface class ProfessionalRepository {
   Future<List<ProfessionalSummary>> search(SearchFilters filters, {int limit = 20, int offset = 0});
   Future<ProfessionalDetail?> professionalDetail(String id);
   Future<List<Review>> reviews(String professionalId);
+
+  /// Profesionales disponibles ahora en la ciudad, con un punto aproximado.
+  Future<HomeMapData> homeMap(int cityId);
   Future<int> countYaAvailable({
     required int categoryId,
     required int cityId,

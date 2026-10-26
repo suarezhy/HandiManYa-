@@ -7,13 +7,14 @@ import 'package:handimanya/app.dart';
 import 'package:handimanya/core/services/location_service.dart';
 import 'package:handimanya/core/theme/tokens.dart';
 import 'package:handimanya/core/utils/category_order.dart';
-import 'package:handimanya/core/widgets/buttons.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/demo/demo_data.dart';
 import 'package:handimanya/data/models/booking.dart';
 import 'package:handimanya/data/models/geo.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:handimanya/features/booking/request_flow_page.dart';
+import 'package:handimanya/features/common/professional_card.dart';
+import 'package:handimanya/features/professional/professional_profile_page.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,6 +25,8 @@ import 'support/demo_login.dart';
 const _sizes = <String, Size>{
   '320x568 (Android chico / iPhone SE 1ra)': Size(320, 568),
   '360x640 (Android chico)': Size(360, 640),
+  '360x800 (Samsung Galaxy A)': Size(360, 800),
+  '384x832 (Samsung Galaxy S)': Size(384, 832),
   '375x667 (iPhone SE / 8)': Size(375, 667),
   '390x844 (iPhone 14)': Size(390, 844),
   '412x915 (Android grande)': Size(412, 915),
@@ -89,12 +92,14 @@ Future<_SpyBackend> _pumpHome(
         prefsProvider.overrideWithValue(prefs),
         backendProvider.overrideWithValue(backend),
         locationServiceProvider.overrideWithValue(location ?? _FakeLocation()),
+        // Las pruebas no piden mosaicos del mapa a internet.
+        mapTileUrlProvider.overrideWithValue(null),
       ],
       child: const HandiManYaApp(),
     ),
   );
   await tester.pumpAndSettle();
-  expect(find.byType(YaButton), findsOneWidget, reason: 'debería estar en el inicio del cliente');
+  expect(find.byKey(const Key('home-ya-fab')), findsOneWidget, reason: 'debería estar en el inicio del cliente');
   return backend;
 }
 
@@ -276,18 +281,57 @@ void main() {
         final why = '${entry.key} x$scale';
         expect(tester.takeException(), isNull, reason: why);
 
-        // "Lo necesito ahora": la acción principal, visible sin desplazar y
-        // antes del buscador y de los servicios.
-        final ya = tester.getRect(find.byType(YaButton));
+        // "Pedir ¡Ya!": píldora flotante, entera a la vista, sobre la barra de
+        // abajo y en una línea. Es la única forma de pedir ya en el inicio.
+        final fab = find.byKey(const Key('home-ya-fab'));
         final navTop = tester.getRect(find.byKey(const Key('app-bottom-nav'))).top;
-        expect(ya.top, greaterThanOrEqualTo(0), reason: why);
-        expect(ya.bottom, lessThanOrEqualTo(navTop), reason: '$why: ¡Ya! entero en pantalla');
-        expect(ya.top, lessThan(tester.getRect(find.byType(TextField).first).top), reason: why);
-        expect(ya.width, closeTo((size.width - 40) > 600 ? 600 : size.width - 40, 1), reason: '$why: ancho completo');
-        for (final e in find.descendant(of: find.byType(YaButton), matching: find.byType(RichText)).evaluate()) {
-          final p = e.renderObject! as RenderParagraph;
-          expect(_brokenWords(p), isEmpty, reason: '$why: palabra partida en "${p.text.toPlainText()}"');
+        void checkFab(String when) {
+          final r = tester.getRect(fab);
+          expect(r.left, greaterThanOrEqualTo(0), reason: '$why $when');
+          expect(r.right, lessThanOrEqualTo(size.width), reason: '$why $when');
+          expect(r.bottom, lessThanOrEqualTo(navTop), reason: '$why $when: sobre la barra de abajo');
+          expect(r.bottom, greaterThan(navTop - 40), reason: '$why $when: pegado a la barra');
+          expect((r.center.dx - size.width / 2).abs(), lessThan(1), reason: '$why $when: centrado');
         }
+
+        checkFab('al abrir');
+        expect(
+          _lines(_paragraph(tester, find.descendant(of: fab, matching: find.text('Pedir ¡Ya!')))),
+          1,
+          reason: why,
+        );
+        expect(find.text('Pedir ¡Ya!'), findsOneWidget, reason: '$why: sin botones repetidos');
+        expect(find.textContaining('Encuéntral'), findsNothing, reason: '$why: sin banner de promoción');
+        expect(find.byKey(const Key('home-promo')), findsNothing, reason: why);
+
+        // Mapa (o aviso) antes de los servicios, del ancho de la página.
+        final map = find.byKey(const Key('home-map'));
+        expect(map, findsOneWidget, reason: '$why: en Santa Cruz hay profesionales disponibles');
+        final mapRect = tester.getRect(map);
+        expect(mapRect.height, inInclusiveRange(200, 240), reason: why);
+        expect(mapRect.left, greaterThanOrEqualTo(0), reason: why);
+        expect(mapRect.right, lessThanOrEqualTo(size.width), reason: why);
+        expect(mapRect.top, greaterThan(tester.getRect(find.byType(TextField).first).bottom), reason: why);
+        expect(find.text('Buscar profesionales'), findsOneWidget, reason: '$why: acción secundaria');
+
+        // Al final de la lista, el botón sigue a la vista y no tapa lo último.
+        final list = tester.state<ScrollableState>(
+          find.descendant(of: find.byKey(const Key('home-list')), matching: find.byType(Scrollable)).first,
+        );
+        list.position.jumpTo(list.position.maxScrollExtent);
+        await tester.pumpAndSettle();
+        checkFab('al final');
+        final cards = find.byType(ProfessionalCard);
+        final last = cards.evaluate().isEmpty
+            ? find.byKey(Key('home-category-${_homeCategoryOrder(tester).last}'))
+            : cards.last;
+        expect(
+          tester.getRect(last).bottom,
+          lessThanOrEqualTo(tester.getRect(fab).top),
+          reason: '$why: lo último no queda tapado',
+        );
+        list.position.jumpTo(0);
+        await tester.pumpAndSettle();
 
         _checkBottomNav(tester, size, why);
 
@@ -305,21 +349,6 @@ void main() {
         expect(find.text('Reparaciones'), findsOneWidget, reason: 'etiqueta corta');
         expect(find.bySemanticsLabel('Reparaciones del hogar'), findsOneWidget, reason: 'nombre completo accesible');
 
-        // Banner: entero, sin texto cortado ni palabras partidas.
-        final promo = find.byKey(const Key('home-promo'));
-        await tester.ensureVisible(promo);
-        await tester.pumpAndSettle();
-        final promoRect = tester.getRect(promo);
-        expect(promoRect.left, greaterThanOrEqualTo(0));
-        expect(promoRect.right, lessThanOrEqualTo(size.width));
-        final title = find.byKey(const Key('home-promo-title'));
-        final tp = tester.renderObject<RenderParagraph>(title);
-        expect(tp.didExceedMaxLines, isFalse, reason: why);
-        expect(_brokenWords(tp), isEmpty, reason: '$why: banner');
-        expect(_inside(promoRect, tester.getRect(title)), isTrue, reason: '$why: título dentro del banner');
-        final cta = find.descendant(of: promo, matching: find.byType(FilledButton));
-        expect(_inside(promoRect, tester.getRect(cta)), isTrue, reason: '$why: botón dentro del banner');
-        expect(_lines(_paragraph(tester, cta)), 1, reason: '$why: botón del banner en una línea');
         expect(tester.takeException(), isNull, reason: why);
       });
     }
@@ -329,26 +358,67 @@ void main() {
     testWidgets('sin profesionales cerca: aviso útil y sin espacio vacío (x$scale)', (tester) async {
       // Uyuni (Potosí): en la demostración no hay profesionales ahí.
       await _pumpHome(tester, size: const Size(360, 640), textScale: scale, cityId: 239);
-      final card = find.byKey(const Key('home-no-pros'));
-      await tester.ensureVisible(card);
-      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('home-map')), findsNothing, reason: 'sin mapa vacío');
+      final card = find.byKey(const Key('home-map-empty'));
       expect(card, findsOneWidget);
-      expect(find.text('Nadie disponible cerca en este momento'), findsOneWidget);
-      expect(find.text('Pedir ¡Ya!'), findsOneWidget);
-      expect(find.text('Buscar profesionales'), findsOneWidget);
-      expect(find.textContaining('Todavía no hay profesionales en tu ciudad'), findsNothing);
-      expect(find.textContaining('otra ciudad'), findsNothing);
-      final header = tester.getRect(find.text('Profesionales cerca de ti'));
-      final cardRect = tester.getRect(card);
-      expect(cardRect.top - header.bottom, lessThan(32), reason: 'sin hueco bajo el título');
       expect(
-        find.widgetWithText(TextButton, 'Ver más'),
-        findsNothing,
-        reason: 'no ofrece "Ver más" de una lista vacía',
+        find.text(
+          'Aún no hay profesionales disponibles en tu zona. Puedes solicitar un servicio ahora o '
+          'programarlo para después.',
+        ),
+        findsOneWidget,
       );
+      expect(
+        tester.getRect(card).height,
+        lessThan(switch (scale) {
+          1.0 => 130,
+          1.3 => 200,
+          _ => 320,
+        }),
+        reason: 'aviso corto, menos que el mapa',
+      );
+      expect(find.text('Buscar profesionales'), findsOneWidget);
+      expect(find.text('Pedir ¡Ya!'), findsOneWidget, reason: 'solo el botón flotante');
+      expect(find.text('Profesionales cerca de ti'), findsNothing, reason: 'no repite el aviso');
       expect(tester.takeException(), isNull);
     });
   }
+
+  for (final size in [const Size(360, 640), const Size(360, 800)]) {
+    testWidgets('mapa ${size.width.toInt()}x${size.height.toInt()}: un punto abre la vista previa y el perfil', (
+      tester,
+    ) async {
+      await _pumpHome(tester, size: size);
+      final pins = find.byWidgetPredicate(
+        (w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('home-map-pin-'),
+      );
+      expect(pins, findsWidgets, reason: 'Santa Cruz tiene profesionales disponibles en la demostración');
+      expect(find.text('${pins.evaluate().length} disponibles ahora'), findsOneWidget);
+      // Sin mosaicos en las pruebas, pero la atribución va siempre que haya mosaicos.
+      expect(find.byKey(const Key('home-map-attribution')), findsNothing);
+      final map = tester.getRect(find.byKey(const Key('home-map')));
+      for (final e in pins.evaluate()) {
+        final r = tester.getRect(find.byWidget(e.widget));
+        expect(map.contains(r.center), isTrue, reason: 'el punto queda dentro del mapa');
+      }
+      await tester.tap(pins.first);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('home-map-preview')), findsOneWidget);
+      expect(find.text('Disponible ahora. La ubicación del mapa es aproximada.'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('home-map-preview-profile')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ProfessionalProfilePage), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('el botón flotante abre el pedido ¡Ya!', (tester) async {
+    await _pumpHome(tester, size: const Size(360, 800));
+    await tester.tap(find.byKey(const Key('home-ya-fab')));
+    await tester.pumpAndSettle();
+    expect(find.byType(RequestFlowPage), findsOneWidget);
+    expect(find.text('Paso 1 de 4'), findsOneWidget);
+  });
 
   testWidgets('la barra de abajo es la misma en todas las pestañas del cliente', (tester) async {
     const size = Size(320, 568);
@@ -368,7 +438,7 @@ void main() {
   });
 
   Future<void> openYa(WidgetTester tester) async {
-    await tester.tap(find.byType(YaButton));
+    await tester.tap(find.byKey(const Key('home-ya-fab')));
     await tester.pumpAndSettle();
     expect(find.text('Paso 1 de 4'), findsOneWidget);
   }

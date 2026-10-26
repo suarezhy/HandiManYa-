@@ -145,6 +145,20 @@ final nearbyProfessionalsProvider = FutureProvider.autoDispose<List<Professional
   return ref.watch(backendProvider).search(SearchFilters(cityId: city?.id, sort: SortOption.recommended));
 });
 
+/// Mapa del inicio: quiénes están disponibles ahora en la ciudad, con puntos
+/// aproximados. Se pide al abrir el inicio, al deslizar para actualizar y cada
+/// pocos minutos mientras el inicio está a la vista (ver HomeMapSection).
+final homeMapProvider = FutureProvider.autoDispose<HomeMapData?>((ref) async {
+  final cities = await ref.watch(citiesProvider.future);
+  final city = ref.watch(currentCityProvider);
+  if (cities.isEmpty || city == null) return null;
+  return ref.watch(backendProvider).homeMap(city.id);
+});
+
+/// Dirección de los mosaicos del mapa; null no los dibuja (las pruebas no
+/// salen a internet).
+final mapTileUrlProvider = Provider<String?>((ref) => Env.mapTileUrl.isEmpty ? null : Env.mapTileUrl);
+
 final professionalDetailProvider = FutureProvider.autoDispose.family<ProfessionalDetail?, String>(
   (ref, id) => ref.watch(backendProvider).professionalDetail(id),
 );

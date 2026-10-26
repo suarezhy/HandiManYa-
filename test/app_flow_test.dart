@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:handimanya/app.dart';
 import 'package:handimanya/core/services/location_service.dart';
-import 'package:handimanya/core/widgets/buttons.dart';
 import 'package:handimanya/data/models/booking.dart';
 import 'package:handimanya/data/models/geo.dart';
 import 'package:handimanya/features/booking/request_flow_page.dart';
@@ -31,6 +30,7 @@ Future<DemoAppBackend> _pumpApp(WidgetTester tester, {double textScale = 1}) asy
         prefsProvider.overrideWithValue(prefs),
         backendProvider.overrideWithValue(backend),
         locationServiceProvider.overrideWithValue(const _FakeLocation()),
+        mapTileUrlProvider.overrideWithValue(null),
       ],
       child: MediaQuery(
         data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
@@ -67,7 +67,8 @@ void main() {
     await _login(tester, professional: false);
 
     expect(find.text('¡Hola, Carla!'), findsOneWidget);
-    expect(find.text('Programar para después'), findsOneWidget);
+    expect(find.byKey(const Key('home-ya-fab')), findsOneWidget);
+    expect(find.text('Buscar profesionales'), findsOneWidget);
     expect(find.text('Inicio'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -106,7 +107,7 @@ void main() {
   testWidgets('el pedido ¡Ya! se abre desde el inicio', (tester) async {
     await _pumpApp(tester);
     await _login(tester, professional: false);
-    await tester.tap(find.byType(YaButton));
+    await tester.tap(find.byKey(const Key('home-ya-fab')));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byType(RequestFlowPage), findsOneWidget);
@@ -194,7 +195,7 @@ void main() {
   testWidgets('el detalle de una solicitud muestra su contenido y la barra de acciones', (tester) async {
     await _pumpApp(tester);
     await _login(tester, professional: false);
-    await tester.tap(find.byType(YaButton));
+    await tester.tap(find.byKey(const Key('home-ya-fab')));
     await tester.pumpAndSettle();
     final router = GoRouter.of(tester.element(find.byType(RequestFlowPage)));
     final backend = ProviderScope.containerOf(tester.element(find.byType(RequestFlowPage))).read(backendProvider);

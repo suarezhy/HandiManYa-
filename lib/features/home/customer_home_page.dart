@@ -9,7 +9,6 @@ import '../../core/utils/category_order.dart';
 import '../../core/utils/text_fit.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/brand_logo.dart';
-import '../../core/widgets/buttons.dart';
 import '../../core/widgets/category_icon.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/catalog.dart';
@@ -17,32 +16,41 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/city_picker.dart';
 import '../common/professional_card.dart';
+import 'home_map.dart';
 
 class CustomerHomePage extends ConsumerWidget {
   const CustomerHomePage({super.key});
+
+  /// Espacio al final de la lista para que el botón flotante "Pedir ¡Ya!"
+  /// nunca tape lo último (alto del botón y su margen, con aire).
+  static const fabClearance = 96.0;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final account = ref.watch(accountProvider).value;
     final categories = ref.watch(categoriesProvider);
     final nearby = ref.watch(nearbyProfessionalsProvider);
-    final promos = ref.watch(promotionsProvider).value ?? const [];
     final text = Theme.of(context).textTheme;
 
     Future<void> refresh() async {
       ref.invalidate(nearbyProfessionalsProvider);
-      ref.invalidate(promotionsProvider);
-      await ref.read(nearbyProfessionalsProvider.future);
+      ref.invalidate(homeMapProvider);
+      await Future.wait([ref.read(nearbyProfessionalsProvider.future), ref.read(homeMapProvider.future)]);
     }
 
     return Scaffold(
+      // Una sola forma de pedir ya: el botón flotante, siempre a la vista
+      // sobre la barra de abajo.
+      floatingActionButton: const _YaFab(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           color: HyColors.primary,
           onRefresh: refresh,
           child: ListView(
-            padding: bottomSafePadding(context, bottom: HySpacing.lg),
+            key: const Key('home-list'),
+            padding: bottomSafePadding(context, bottom: fabClearance),
             children: [
               const _Header(),
               PageBody(
@@ -50,8 +58,7 @@ class CustomerHomePage extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // En pantallas bajas o con letra grande el saludo se achica y
-                    // la segunda línea se omite (el buscador ya la pregunta), así
-                    // "Lo necesito ahora" queda entero a la vista sin desplazar.
+                    // la segunda línea se omite (el buscador ya la pregunta).
                     Builder(
                       builder: (context) {
                         final media = MediaQuery.of(context);
@@ -76,16 +83,18 @@ class CustomerHomePage extends ConsumerWidget {
                         );
                       },
                     ),
-                    const _YaHero(),
+                    const _SearchBar(),
+                    const SizedBox(height: HySpacing.md),
+                    const HomeMapSection(),
+                    const SizedBox(height: HySpacing.xs),
                     Center(
                       child: TextButton.icon(
+                        key: const Key('home-search-pros'),
                         onPressed: () => context.go(Routes.search),
-                        icon: const Icon(Icons.event_outlined),
-                        label: const Text('Programar para después'),
+                        icon: const Icon(Icons.search),
+                        label: const Text('Buscar profesionales'),
                       ),
                     ),
-                    const SizedBox(height: HySpacing.xs),
-                    const _SearchBar(),
                     SectionHeader(
                       title: 'Servicios',
                       actionLabel: 'Ver todos',
@@ -96,17 +105,18 @@ class CustomerHomePage extends ConsumerWidget {
                       loading: () => const LoadingView(),
                       error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(categoriesProvider)),
                     ),
-                    if (promos.isNotEmpty) ...[const SizedBox(height: HySpacing.lg), _PromoBanner(promo: promos.first)],
-                    SectionHeader(
-                      title: 'Profesionales cerca de ti',
-                      actionLabel: (nearby.value?.isNotEmpty ?? false) ? 'Ver más' : null,
-                      onAction: () => context.go(Routes.search),
-                    ),
                     nearby.when(
+                      // Sin nadie cerca no se repite el aviso: ya lo dice el mapa.
                       data: (list) => list.isEmpty
-                          ? const _NoProsNearby()
+                          ? const SizedBox.shrink()
                           : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                SectionHeader(
+                                  title: 'Profesionales cerca de ti',
+                                  actionLabel: 'Ver más',
+                                  onAction: () => context.go(Routes.search),
+                                ),
                                 for (final p in list.take(6)) ...[
                                   ProfessionalCard(pro: p),
                                   const SizedBox(height: HySpacing.sm),
@@ -130,102 +140,40 @@ class CustomerHomePage extends ConsumerWidget {
   }
 }
 
-/// "Lo necesito ahora": la letra crece con la del sistema hasta donde cada
-/// palabra entra entera en el botón; nunca se parte una palabra.
-class _YaHero extends StatelessWidget {
-  const _YaHero();
+/// "Pedir ¡Ya!": píldora naranja que flota sobre la barra de abajo. La letra
+/// queda en una línea (si la del sistema es muy grande, se achica en vez de
+/// partirse) y en negrita de 18 px por el contraste sobre naranja.
+class _YaFab extends StatelessWidget {
+  const _YaFab();
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, box) {
-        // Ancho del texto dentro de YaButton: relleno (20 + 20), círculo ¡Ya!
-        // (60), separación (16) y flecha (30).
-        final width = box.maxWidth - 146 - 2;
-        final title = wordFitScale(
-          context,
-          texts: const ['Lo necesito ahora'],
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-          width: width,
-        );
-        final subtitle = width / title < 190 ? 'Cerca de ti, ahora' : 'Un profesional cerca de ti, ahora';
-        final sub = wordFitScale(
-          context,
-          texts: [subtitle],
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-          width: width,
-        );
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(math.min(title, sub))),
-          child: YaButton(
-            onPressed: () => context.push(Routes.ya),
-            // En un botón angosto, la frase corta para que no ocupe media pantalla.
-            subtitle: subtitle,
+    final screen = MediaQuery.sizeOf(context).width;
+    final maxWidth = screen > 0 ? screen - 2 * HySpacing.page : double.infinity;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: FloatingActionButton.extended(
+        key: const Key('home-ya-fab'),
+        heroTag: 'home-ya-fab',
+        onPressed: () => context.push(Routes.ya),
+        backgroundColor: HyColors.primary,
+        foregroundColor: HyColors.onPrimary,
+        elevation: 3,
+        highlightElevation: 5,
+        shape: const StadiumBorder(),
+        extendedPadding: const EdgeInsets.symmetric(horizontal: 28),
+        icon: const Icon(Icons.bolt_rounded, size: 26),
+        label: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth - 28 * 2 - 26 - 12),
+          child: const FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'Pedir ¡Ya!',
+              maxLines: 1,
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+            ),
           ),
-        );
-      },
-    );
-  }
-}
-
-/// Sin profesionales conectados cerca: explica qué pasa y ofrece qué hacer,
-/// sin espacio en blanco de sobra.
-class _NoProsNearby extends StatelessWidget {
-  const _NoProsNearby();
-
-  @override
-  Widget build(BuildContext context) {
-    return AppCard(
-      key: const Key('home-no-pros'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: const BoxDecoration(color: HyColors.primarySoft, shape: BoxShape.circle),
-                child: const Icon(Icons.person_search_outlined, color: HyColors.primaryDark),
-              ),
-              const SizedBox(width: HySpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Nadie disponible cerca en este momento', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: HySpacing.xxs),
-                    const Text(
-                      'Los profesionales verificados se conectan a lo largo del día. Pide ¡Ya! y avisamos a '
-                      'quienes estén disponibles en tu zona, o busca y programa el servicio para después.',
-                      style: TextStyle(color: HyColors.textSecondary, fontSize: 15),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: HySpacing.md),
-          Wrap(
-            spacing: HySpacing.xs,
-            runSpacing: HySpacing.xs,
-            children: [
-              FilledButton.icon(
-                onPressed: () => context.push(Routes.ya),
-                style: FilledButton.styleFrom(minimumSize: const Size(0, HySizes.touch)),
-                icon: const Icon(Icons.bolt_rounded),
-                label: const Text('Pedir ¡Ya!'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => context.go(Routes.search),
-                style: OutlinedButton.styleFrom(minimumSize: const Size(0, HySizes.touch)),
-                icon: const Icon(Icons.search),
-                label: const Text('Buscar profesionales'),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -322,108 +270,6 @@ class _SearchBar extends StatelessWidget {
         ),
       ),
       onSubmitted: (q) => context.go('${Routes.search}?q=${Uri.encodeQueryComponent(q.trim())}'),
-    );
-  }
-}
-
-class _PromoBanner extends StatelessWidget {
-  const _PromoBanner({required this.promo});
-
-  final Promotion promo;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, box) {
-        // Ninguna palabra del banner se parte ni se corta: la letra crece con
-        // la del sistema solo hasta donde cada palabra entra entera.
-        final inner = box.maxWidth - 2 * HySpacing.lg;
-        final scale = math.min(
-          wordFitScale(
-            context,
-            texts: ['${promo.title} ¡Encuéntrala Ya!'],
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-            width: inner - 2,
-          ),
-          wordFitScale(
-            context,
-            // El botón va en una sola línea: se mide la frase entera.
-            texts: [promo.subtitle ?? '', promo.ctaLabel.replaceAll(' ', '\u00A0')],
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            width: inner - 2 * HySpacing.xl - 2,
-          ),
-        );
-        return MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
-          child: Container(
-            key: const Key('home-promo'),
-            width: double.infinity,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(HyRadii.xl),
-              gradient: const LinearGradient(
-                colors: [HyColors.navy, HyColors.navySoft],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -30,
-                  bottom: -30,
-                  child: IgnorePointer(
-                    child: Container(
-                      width: 140,
-                      height: 140,
-                      decoration: BoxDecoration(color: HyColors.green.withValues(alpha: 0.25), shape: BoxShape.circle),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(HySpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text.rich(
-                        key: const Key('home-promo-title'),
-                        TextSpan(
-                          children: [
-                            TextSpan(text: '${promo.title} '),
-                            const TextSpan(
-                              text: '¡Encuéntrala Ya!',
-                              style: TextStyle(color: HyColors.primary),
-                            ),
-                          ],
-                        ),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          height: 1.2,
-                        ),
-                      ),
-                      if (promo.subtitle != null) ...[
-                        const SizedBox(height: HySpacing.xs),
-                        Text(promo.subtitle!, style: const TextStyle(color: Colors.white, fontSize: 16)),
-                      ],
-                      const SizedBox(height: HySpacing.md),
-                      FilledButton(
-                        onPressed: () =>
-                            context.push(promo.ctaRoute.startsWith('/buscar') ? Routes.ya : promo.ctaRoute),
-                        style: FilledButton.styleFrom(minimumSize: const Size(0, HySizes.touch)),
-                        // Siempre en una línea: si no entra, la letra se achica en vez de partirse.
-                        child: FittedBox(fit: BoxFit.scaleDown, child: Text(promo.ctaLabel, maxLines: 1)),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }

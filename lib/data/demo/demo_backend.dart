@@ -815,6 +815,36 @@ class DemoBackend
   }
 
   @override
+  Future<HomeMapData> homeMap(int cityId) async {
+    await _latency(200);
+    final city = DemoData.cities.firstWhere((c) => c.id == cityId);
+    final me = _session?.id;
+    final rnd = Random(cityId);
+    final pros = _pros.values
+        .where((p) => p.status == VerificationStatus.approved && p.available && p.id != me && p.cityId == cityId)
+        .toList();
+    return HomeMapData(
+      cityName: city.name,
+      cityLatitude: city.latitude,
+      cityLongitude: city.longitude,
+      professionals: [
+        if (city.latitude != null && city.longitude != null)
+          for (final p in pros)
+            MapProfessional(
+              id: p.id,
+              displayName: p.displayName,
+              category: _catName(p.primaryCategoryId),
+              ratingAvg: p.ratingAvg,
+              ratingCount: p.ratingCount,
+              // Como el servidor: un punto aproximado, nunca la ubicación.
+              latitude: city.latitude! + (rnd.nextDouble() - 0.5) * 0.06,
+              longitude: city.longitude! + (rnd.nextDouble() - 0.5) * 0.06,
+            ),
+      ],
+    );
+  }
+
+  @override
   Future<int> countYaAvailable({
     required int categoryId,
     required int cityId,

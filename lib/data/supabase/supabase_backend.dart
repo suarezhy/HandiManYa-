@@ -327,6 +327,21 @@ class SupabaseBackend
           .toList();
 
   @override
+  Future<HomeMapData> homeMap(int cityId) async {
+    final m = Map<String, dynamic>.from(await _db.rpc('home_map_professionals', params: {'p_city': cityId}) as Map);
+    final city = Map<String, dynamic>.from(m['city'] as Map);
+    return HomeMapData(
+      cityName: city['name'] as String? ?? '',
+      cityLatitude: (city['latitude'] as num?)?.toDouble(),
+      cityLongitude: (city['longitude'] as num?)?.toDouble(),
+      professionals: [
+        for (final p in (m['professionals'] as List? ?? const []))
+          MapProfessional.fromMap(Map<String, dynamic>.from(p as Map), photo: _publicPhoto),
+      ],
+    );
+  }
+
+  @override
   Future<int> countYaAvailable({
     required int categoryId,
     required int cityId,

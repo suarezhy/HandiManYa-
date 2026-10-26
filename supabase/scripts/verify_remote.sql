@@ -36,7 +36,8 @@ declare
     'owner_finance_ledger','owner_finance_topups','commission_preview','owner_commission_debts','owner_demand_bookings',
     'register_push_device','unregister_push_device','my_push_status','send_test_push','hmy_push_claim','hmy_push_report','owner_push_overview',
     'hmy_booking_deadline_guard','expire_my_overdue_bookings','hmy_response_deadline',
-    'hmy_professional_active','hmy_booking_pro_active_guard','hmy_cancel_unstarted_bookings','hmy_pro_inactive_cleanup','hmy_suspension_cleanup'];
+    'hmy_professional_active','hmy_booking_pro_active_guard','hmy_cancel_unstarted_bookings','hmy_pro_inactive_cleanup','hmy_suspension_cleanup',
+    'hmy_map_jitter','home_map_professionals'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -164,6 +165,9 @@ begin
      and exists (select 1 from pg_trigger where tgname = 'profiles_suspension_cleanup')
      and not has_function_privilege('authenticated', 'public.hmy_cancel_unstarted_bookings(uuid, text)', 'EXECUTE'),
      'suspendidos: un profesional no aprobado no acepta ni sale, y sus pedidos sin empezar se cancelan'),
+    (not has_function_privilege('anon', 'public.home_map_professionals(smallint)', 'EXECUTE')
+     and not has_function_privilege('authenticated', 'public.hmy_map_jitter(uuid, integer)', 'EXECUTE'),
+     'mapa del inicio: solo con sesión y con puntos aproximados'),
     (to_regprocedure('public.owner_grant_staff(uuid, text)') is null and to_regprocedure('public.owner_grant_staff(uuid, text, text)') is not null,
      'equipo: dar un rol exige confirmación del propietario')
   ) as v(ok, what) loop

@@ -203,3 +203,49 @@ class Review {
     createdAt: DateTime.parse(m['created_at'] as String),
   );
 }
+
+/// Un profesional disponible en el mapa del inicio. El punto es aproximado
+/// (unos 2 km): lo calcula el servidor y nunca es su ubicación guardada.
+class MapProfessional {
+  const MapProfessional({
+    required this.id,
+    required this.displayName,
+    required this.latitude,
+    required this.longitude,
+    this.photoUrl,
+    this.category,
+    this.ratingAvg = 0,
+    this.ratingCount = 0,
+  });
+
+  factory MapProfessional.fromMap(Map<String, dynamic> m, {String? Function(String?)? photo}) => MapProfessional(
+    id: m['id'] as String,
+    displayName: m['display_name'] as String? ?? '',
+    photoUrl: photo?.call(m['photo_path'] as String?),
+    category: m['category'] as String?,
+    ratingAvg: (m['rating_avg'] as num?)?.toDouble() ?? 0,
+    ratingCount: (m['rating_count'] as num?)?.toInt() ?? 0,
+    latitude: (m['latitude'] as num).toDouble(),
+    longitude: (m['longitude'] as num).toDouble(),
+  );
+
+  final String id;
+  final String displayName;
+  final String? photoUrl;
+  final String? category;
+  final double ratingAvg;
+  final int ratingCount;
+  final double latitude;
+  final double longitude;
+}
+
+/// Lo que muestra el mapa del inicio: la ciudad (para centrarlo) y quiénes
+/// están disponibles ahora.
+class HomeMapData {
+  const HomeMapData({required this.cityName, required this.professionals, this.cityLatitude, this.cityLongitude});
+
+  final String cityName;
+  final double? cityLatitude;
+  final double? cityLongitude;
+  final List<MapProfessional> professionals;
+}
