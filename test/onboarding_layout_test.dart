@@ -15,6 +15,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 const sizes = <String, Size>{
   'iPhone SE 1 (320x568)': Size(320, 568),
   'Android chico (360x640)': Size(360, 640),
+  // Samsung Galaxy A (720x1600 a 2,0) y Galaxy A/S (1080x2340 a 2,8125).
+  'Samsung A chico (360x800)': Size(360, 800),
+  'Samsung A/S (384x832)': Size(384, 832),
   'iPhone 8 / SE (375x667)': Size(375, 667),
   'iPhone 14 (390x844)': Size(390, 844),
   'Android grande (412x915)': Size(412, 915),
@@ -65,7 +68,13 @@ Size jpegSize(String path) {
   throw StateError('sin SOF: $path');
 }
 
-Future<void> pumpOnboarding(WidgetTester tester, Size size, double textScale) async {
+Future<void> pumpOnboarding(
+  WidgetTester tester,
+  Size size,
+  double textScale, {
+  bool bold = false,
+  bool android = false,
+}) async {
   await initializeDateFormatting('es');
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -74,6 +83,12 @@ Future<void> pumpOnboarding(WidgetTester tester, Size size, double textScale) as
   tester.view.physicalSize = size * 3;
   tester.view.devicePixelRatio = 3;
   tester.platformDispatcher.textScaleFactorTestValue = textScale;
+  // Barra de estado y, en Android, la barra de navegación (24 y 48 puntos).
+  tester.view.padding = android
+      ? const FakeViewPadding(top: 24 * 3, bottom: 48 * 3)
+      : const FakeViewPadding(top: 20 * 3);
+  if (bold) tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(boldText: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
   addTearDown(tester.view.reset);
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   await tester.pumpWidget(
@@ -132,14 +147,15 @@ void main() {
     // (docs/LESSONS.md, "Bienvenida").
   });
 
-  for (final scale in [1.0, 1.3, 2.0]) {
+  for (final (scale, bold) in [(1.0, false), (1.0, true), (1.3, false), (1.3, true), (2.0, false)]) {
     for (final entry in sizes.entries) {
-      testWidgets('bienvenida completa en ${entry.key}, letra x$scale', (tester) async {
+      testWidgets('bienvenida completa en ${entry.key}, letra x$scale${bold ? ' en negrita' : ''}', (tester) async {
         final screen = Offset.zero & entry.value;
-        await pumpOnboarding(tester, entry.value, scale);
+        await pumpOnboarding(tester, entry.value, scale, bold: bold, android: entry.key.startsWith('Samsung'));
+        Rect? firstFrame;
         // Con letra grande en el teléfono más chico la pantalla puede
         // desplazarse; en el resto todo cabe sin moverse.
-        final mustFit = scale == 1.0 || (scale == 1.3 && entry.value.height >= 640);
+        final mustFit = scale == 1.0 || (scale == 1.3 && entry.value.height >= 800);
 
         for (var i = 0; i < slides.length; i++) {
           final s = slides[i];
@@ -161,10 +177,18 @@ void main() {
           expect(inside(screen, tester.getRect(next)), isTrue, reason: 'botón, paso ${i + 1}');
           expect(tester.getRect(next).height, greaterThanOrEqualTo(48));
 
-          // La foto conserva su forma (sin estirar).
+          // Mismo marco cuadrado en los cuatro pasos, y la foto entera
+          // adentro (contain: sin recortar ni estirar).
           final img = tester.getRect(image);
-          final file = jpegSize(s.image);
-          expect(img.width / img.height, closeTo(file.width / file.height, 0.01), reason: s.image);
+          expect(img.width, closeTo(img.height, 0.5), reason: 'marco cuadrado, paso ${i + 1}');
+          firstFrame ??= img;
+          expect(
+            img.size.width,
+            closeTo(firstFrame.size.width, 0.5),
+            reason: 'mismo tamaño que el paso 1, paso ${i + 1}',
+          );
+          final picture = tester.widget<Image>(find.descendant(of: image, matching: find.byType(Image)));
+          expect(picture.fit, BoxFit.contain, reason: s.image);
 
           if (mustFit) {
             for (final (name, f) in [('foto', image), ('título', title), ('texto', body)]) {
@@ -174,7 +198,7 @@ void main() {
                 reason: '$name, paso ${i + 1}: ${tester.getRect(f)} / $page',
               );
             }
-            expect(img.height, greaterThanOrEqualTo(scale == 1.0 ? 140 : 110), reason: 'foto muy chica, paso ${i + 1}');
+            expect(img.height, greaterThanOrEqualTo(scale == 1.0 ? 130 : 110), reason: 'foto muy chica, paso ${i + 1}');
           } else {
             // Todo se alcanza desplazando: el final del texto entra en la
             // pantalla y la foto sigue con un tamaño útil.

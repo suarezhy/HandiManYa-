@@ -20,6 +20,9 @@ dependencies:
   image_picker: ^1.2.4
   intl: ^0.20.3
   local_auth: ^3.0.2
+  # Ya venían con local_auth; directos solo para poner en español el cuadro de la huella.
+  local_auth_android: ^2.3.0
+  local_auth_darwin: ^2.0.5
   shared_preferences: ^2.5.6
   supabase_flutter: ^2.18.3
   url_launcher: ^6.3.3

@@ -24,9 +24,11 @@ var _supabaseReady = false;
 Future<void> _start() async {
   try {
     // Pantallas pensadas para el teléfono en vertical (igual que en iPhone).
-    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    await initializeDateFormatting('es');
-    final prefs = await SharedPreferences.getInstance();
+    final (_, _, prefs) = await (
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]),
+      initializeDateFormatting('es'),
+      SharedPreferences.getInstance(),
+    ).wait;
     if (Env.hasBackend && !_supabaseReady) {
       await Supabase.initialize(
         url: Env.supabaseUrl,

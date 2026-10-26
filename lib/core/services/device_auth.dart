@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:local_auth_android/local_auth_android.dart';
+import 'package:local_auth_darwin/local_auth_darwin.dart';
 
 /// Biometría del teléfono (Face ID, reconocimiento facial o huella de Android).
 /// La verifica el sistema operativo: la app solo recibe "sí" o "no" y nunca
@@ -55,7 +57,11 @@ class LocalDeviceAuth implements DeviceAuth {
   @override
   Future<DeviceAuthResult> authenticate(String reason) async {
     try {
-      final ok = await _auth.authenticate(localizedReason: reason, biometricOnly: true);
+      final ok = await _auth.authenticate(
+        localizedReason: reason,
+        authMessages: spanishAuthMessages,
+        biometricOnly: true,
+      );
       return ok ? DeviceAuthResult.success : DeviceAuthResult.failed;
     } on LocalAuthException catch (e) {
       return switch (e.code) {
@@ -77,6 +83,18 @@ class LocalDeviceAuth implements DeviceAuth {
     }
   }
 }
+
+/// Textos del cuadro de huella o rostro que dibuja el sistema. Sin ellos,
+/// Android los muestra en inglés ("Authentication required", "Verify
+/// identity", "Cancel") aunque el teléfono esté en español.
+const spanishAuthMessages = <AuthMessages>[
+  AndroidAuthMessages(
+    signInTitle: 'Autenticación requerida',
+    signInHint: 'Verifica tu identidad',
+    cancelButton: 'Cancelar',
+  ),
+  IOSAuthMessages(cancelButton: 'Cancelar'),
+];
 
 /// En la web no hay biometría: solo contraseña.
 class NoDeviceAuth implements DeviceAuth {

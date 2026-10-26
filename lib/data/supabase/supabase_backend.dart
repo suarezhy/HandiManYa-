@@ -117,15 +117,17 @@ class SupabaseBackend
   // ---------------------------------------------------------------- Cuenta
   @override
   Future<UserProfile> myAccount() async {
+    // Las cuatro consultas a la vez: al abrir la app se espera una sola vuelta.
     final results = await Future.wait<dynamic>([
       _db.rpc('my_account'),
       _db.rpc('my_status'),
       _db.from('profiles').select('avatar_path').eq('id', _uid).maybeSingle(),
+      _myStaffAccess(),
     ]);
     final m = Map<String, dynamic>.from(results[0] as Map);
     final st = Map<String, dynamic>.from(results[1] as Map? ?? const {});
     final avatar = (results[2] as Map?)?['avatar_path'] as String?;
-    final staff = await _myStaffAccess();
+    final staff = results[3] as StaffAccess;
     return UserProfile(
       id: m['id'] as String,
       email: m['email'] as String? ?? '',

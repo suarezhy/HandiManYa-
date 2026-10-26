@@ -20,13 +20,16 @@ class _FakeDeviceAuth implements DeviceAuth {
   _FakeDeviceAuth(this.results);
 
   final List<DeviceAuthResult> results;
+  int calls = 0;
 
   @override
   Future<Set<DeviceBiometric>> available() async => const {DeviceBiometric.face};
 
   @override
-  Future<DeviceAuthResult> authenticate(String reason) async =>
-      results.isEmpty ? DeviceAuthResult.success : results.removeAt(0);
+  Future<DeviceAuthResult> authenticate(String reason) async {
+    calls++;
+    return results.isEmpty ? DeviceAuthResult.success : results.removeAt(0);
+  }
 }
 
 const _newPhone = '+59167778888';
@@ -302,13 +305,30 @@ void main() {
           biometricPrefKey('demo-cliente'): true,
           appLockPrefKey('demo-cliente'): true,
         },
+        // El cuadro se abre solo y falla; después, el botón.
         deviceAuth: _FakeDeviceAuth([DeviceAuthResult.failed]),
         before: (b) => b.signInAs(DemoBackend.customerPhone),
       );
-      expect(find.byKey(const Key('app-lock')), findsOneWidget);
-      await tap(tester, find.byKey(const Key('app-unlock')));
       expect(find.byKey(const Key('app-lock')), findsOneWidget, reason: 'falló: sigue bloqueada');
+      expect(find.textContaining('No pudimos confirmar'), findsOneWidget);
       await tap(tester, find.byKey(const Key('app-unlock')));
+      expect(find.byKey(const Key('app-lock')), findsNothing);
+      expect(find.text('¡Hola, Carla!'), findsOneWidget);
+    });
+
+    testWidgets('con el bloqueo activado, el cuadro de huella se abre solo y entra sin tocar nada', (tester) async {
+      final auth = _FakeDeviceAuth([DeviceAuthResult.success]);
+      await pumpApp(
+        tester,
+        prefs: {
+          'onboarding_seen_v1': true,
+          biometricPrefKey('demo-cliente'): true,
+          appLockPrefKey('demo-cliente'): true,
+        },
+        deviceAuth: auth,
+        before: (b) => b.signInAs(DemoBackend.customerPhone),
+      );
+      expect(auth.calls, 1, reason: 'se pidió la huella una vez, sin tocar el botón');
       expect(find.byKey(const Key('app-lock')), findsNothing);
       expect(find.text('¡Hola, Carla!'), findsOneWidget);
     });
@@ -321,16 +341,17 @@ void main() {
           biometricPrefKey('demo-cliente'): true,
           appLockPrefKey('demo-cliente'): true,
         },
-        deviceAuth: _FakeDeviceAuth([]),
+        deviceAuth: _FakeDeviceAuth([DeviceAuthResult.canceled]),
         before: (b) => b.signInAs(DemoBackend.customerPhone),
       );
-      expect(find.byKey(const Key('app-lock')), findsOneWidget);
+      expect(find.byKey(const Key('app-lock')), findsOneWidget, reason: 'cancelada: no se vuelve a abrir sola');
       await tap(tester, find.text('Entrar con un código'));
       expect(find.byKey(const Key('app-lock')), findsNothing);
       expect(find.text('¡Hola, Carla!'), findsNothing, reason: 'sin sesión no se ve la cuenta');
     });
 
     testWidgets('volver a la app enseguida no vuelve a pedir la biometría', (tester) async {
+      final auth = _FakeDeviceAuth([]);
       await pumpApp(
         tester,
         prefs: {
@@ -338,10 +359,10 @@ void main() {
           biometricPrefKey('demo-cliente'): true,
           appLockPrefKey('demo-cliente'): true,
         },
-        deviceAuth: _FakeDeviceAuth([]),
+        deviceAuth: auth,
         before: (b) => b.signInAs(DemoBackend.customerPhone),
       );
-      await tap(tester, find.byKey(const Key('app-unlock')));
+      expect(find.byKey(const Key('app-lock')), findsNothing);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -350,6 +371,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('app-lock')), findsNothing);
       expect(find.text('¡Hola, Carla!'), findsOneWidget);
+      expect(auth.calls, 1, reason: 'solo la vez de abrir la app');
     });
   });
 }

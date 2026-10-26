@@ -1,25 +1,26 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../core/utils/text_fit.dart';
 import '../../core/widgets/brand_logo.dart';
 import '../../core/widgets/buttons.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 
 class _Slide {
-  const _Slide(this.image, this.aspectRatio, this.title, this.body, this.icon);
+  const _Slide(this.image, this.aspectRatio, this.title, this.body);
 
   final String image;
 
-  /// Ancho / alto del archivo. La foto se muestra entera con esta forma, sin
-  /// recortar ni estirar (test/onboarding_layout_test.dart lo compara con el
-  /// archivo).
+  /// Ancho / alto del archivo (test/onboarding_layout_test.dart lo compara
+  /// con el archivo).
   final double aspectRatio;
   final String title;
   final String body;
-  final IconData icon;
 }
 
 const _slides = [
@@ -28,28 +29,24 @@ const _slides = [
     570 / 568,
     'Profesionales de confianza cerca de ti',
     'Plomeros, electricistas, albañiles, limpieza y mucho más en toda Bolivia. Todos verificados.',
-    Icons.verified_user_outlined,
   ),
   _Slide(
     'assets/images/onboarding_2.jpg',
     518 / 570,
     '¿Lo necesitas ahora? Pídelo ¡Ya!',
     'Toca "Lo necesito ahora", cuéntanos qué pasó y avisamos al instante a los profesionales disponibles más cerca de ti.',
-    Icons.bolt_rounded,
   ),
   _Slide(
     'assets/images/onboarding_3.jpg',
     720 / 689,
     'Conversa y coordina desde la app',
     'Chatea con el profesional, recibe su cotización y sigue el estado de tu solicitud en todo momento.',
-    Icons.chat_bubble_outline,
   ),
   _Slide(
     'assets/images/onboarding_4.jpg',
     700 / 815,
     'Trabajo bien hecho, con tranquilidad',
     'Pagas directo al profesional en efectivo o QR cuando termina, y calificas su trabajo para ayudar a otros.',
-    Icons.thumb_up_alt_outlined,
   ),
 ];
 
@@ -169,16 +166,19 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
 
 /// Una pantalla de la bienvenida: la foto entera arriba y el texto debajo.
 ///
-/// La foto toma todo el alto que deja el texto (medido con el tamaño de letra
-/// del teléfono), sin pasar de su propia forma: así nunca se recorta ni se
-/// estira. Si con letra muy grande no cabe todo, la foto queda en un mínimo
-/// y la pantalla se desplaza; "Continuar" y los puntos siempre se ven.
+/// Las cuatro fotos van en el mismo marco cuadrado, del mismo tamaño en los
+/// cuatro pasos: el alto se calcula con el texto más largo de los cuatro
+/// (medido con el tamaño y la negrita del teléfono). Dentro del marco la foto
+/// se ve entera (BoxFit.contain): no se recorta ni se estira, y lo que sobra a
+/// los lados queda de un gris suave. Si con letra muy grande no cabe todo, la
+/// foto queda en un mínimo y la pantalla se desplaza; "Continuar" y los
+/// puntos siempre se ven.
 class _SlideView extends StatelessWidget {
   const _SlideView({required this.slide});
 
   final _Slide slide;
 
-  static const _maxImageHeight = 560.0;
+  static const _maxImageSide = 420.0;
 
   @override
   Widget build(BuildContext context) {
@@ -198,7 +198,7 @@ class _SlideView extends StatelessWidget {
 
         double measure(String value, TextStyle? style) {
           final painter = TextPainter(
-            text: TextSpan(text: value, style: style),
+            text: TextSpan(text: value, style: effectiveTextStyle(context, style)),
             textDirection: direction,
             textScaler: scaler,
             locale: locale,
@@ -208,11 +208,15 @@ class _SlideView extends StatelessWidget {
           return h;
         }
 
-        final textHeight = measure(slide.title, titleStyle) + HySpacing.sm + measure(slide.body, bodyStyle);
+        // El texto más alto de los cuatro pasos: así la foto mide lo mismo
+        // en todos y no salta al pasar de uno a otro.
+        final textHeight = [
+          for (final s in _slides) measure(s.title, titleStyle) + HySpacing.sm + measure(s.body, bodyStyle),
+        ].reduce(max);
         // Un par de píxeles de holgura por redondeo.
         final free = box.maxHeight - top - gap - bottom - textHeight - 2;
         final minImage = (box.maxHeight * 0.3).clamp(96.0, 180.0);
-        final imageHeight = free.clamp(minImage, _maxImageHeight);
+        final side = min(width, free.clamp(minImage, _maxImageSide));
 
         return SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(HySpacing.page, top, HySpacing.page, bottom),
@@ -224,15 +228,25 @@ class _SlideView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Center(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: width, maxHeight: imageHeight),
+                  child: SizedBox.square(
+                    dimension: side,
                     child: _Picture(slide: slide),
                   ),
                 ),
                 SizedBox(height: gap),
-                Semantics(header: true, child: Text(slide.title, style: titleStyle)),
-                const SizedBox(height: HySpacing.sm),
-                Text(slide.body, style: bodyStyle),
+                // El texto ocupa siempre el alto del más largo: la foto y el
+                // título quedan a la misma altura en los cuatro pasos.
+                ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: textHeight),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Semantics(header: true, child: Text(slide.title, style: titleStyle)),
+                      const SizedBox(height: HySpacing.sm),
+                      Text(slide.body, style: bodyStyle),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -242,8 +256,8 @@ class _SlideView extends StatelessWidget {
   }
 }
 
-/// La foto completa en un marco redondeado con su misma forma: sin
-/// recorte, sin estirar y sin franjas de relleno.
+/// La foto completa en un marco cuadrado y redondeado: sin recorte, sin
+/// estirar y sin nada encima que tape caras.
 class _Picture extends StatelessWidget {
   const _Picture({required this.slide});
 
@@ -251,49 +265,27 @@ class _Picture extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AspectRatio(
+    final radius = BorderRadius.circular(HyRadii.xl);
+    return DecoratedBox(
       key: ValueKey('onboarding-image-${slide.image}'),
-      aspectRatio: slide.aspectRatio,
-      child: LayoutBuilder(
-        builder: (context, box) => Stack(
-          fit: StackFit.expand,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(HyRadii.xl),
-              child: Image.asset(
-                slide.image,
-                // El marco ya tiene la forma de la foto: "fill" la muestra
-                // entera y sin deformar.
-                fit: BoxFit.fill,
-                semanticLabel: 'Ilustración: ${slide.title}',
-                errorBuilder: (_, _, _) => const ColoredBox(color: HyColors.primarySoft),
-              ),
-            ),
-            // Borde suave para que las fotos de fondo blanco no se pierdan.
-            DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(HyRadii.xl),
-                border: Border.all(color: HyColors.border),
-              ),
-            ),
-            // Arriba a la derecha solo hay fondo en las cuatro fotos: el
-            // ícono no tapa a nadie. En una foto chica (letra muy grande) se
-            // omite para no tapar caras.
-            if (box.maxHeight >= 200)
-              Positioned(
-                right: HySpacing.sm,
-                top: HySpacing.sm,
-                child: Container(
-                  padding: const EdgeInsets.all(HySpacing.xs),
-                  decoration: BoxDecoration(
-                    color: HyColors.navy,
-                    borderRadius: BorderRadius.circular(HyRadii.md),
-                    boxShadow: HyShadows.raised,
-                  ),
-                  child: Icon(slide.icon, color: Colors.white, size: 26),
-                ),
-              ),
-          ],
+      position: DecorationPosition.foreground,
+      // Borde suave para que las fotos de fondo blanco no se pierdan.
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        border: Border.all(color: HyColors.border),
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: ColoredBox(
+          color: HyColors.surfaceMuted,
+          child: Image.asset(
+            slide.image,
+            fit: BoxFit.contain,
+            width: double.infinity,
+            height: double.infinity,
+            semanticLabel: 'Ilustración: ${slide.title}',
+            errorBuilder: (_, _, _) => const ColoredBox(color: HyColors.primarySoft),
+          ),
         ),
       ),
     );

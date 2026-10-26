@@ -8,8 +8,9 @@ import '../../core/widgets/buttons.dart';
 import '../../data/providers.dart';
 import 'confirm_identity.dart';
 
-/// Si la persona lo activó en Perfil → Seguridad, la app se desbloquea con
-/// huella o rostro al abrirla o al volver después de un rato. La sesión de
+/// Si la persona lo activó en Perfil → Seguridad, la app pide huella o rostro
+/// al abrirla o al volver después de un rato; el cuadro del sistema se abre
+/// solo. Moverse dentro de la app no lo vuelve a pedir. La sesión de
 /// Supabase sigue abierta (no se piden códigos de nuevo); esto solo protege
 /// el teléfono si otra persona lo toma. Quien no puede usar la biometría
 /// sale de la cuenta y vuelve a entrar con un código.
@@ -53,8 +54,21 @@ class _AppLockGateState extends ConsumerState<AppLockGate> with WidgetsBindingOb
     } else if (state == AppLifecycleState.resumed) {
       final away = _pausedAt == null ? Duration.zero : DateTime.now().difference(_pausedAt!);
       _pausedAt = null;
-      if (away >= AppLockGate.relockAfter && ref.read(appLockEnabledProvider)) setState(() => _locked = true);
+      if (away >= AppLockGate.relockAfter && ref.read(appLockEnabledProvider)) _lock();
     }
+  }
+
+  /// Bloquea y abre enseguida el cuadro de huella del sistema, sin que haya
+  /// que tocar "Desbloquear". Si la persona lo cancela o falla, no se vuelve a
+  /// abrir solo: queda el botón.
+  void _lock() {
+    setState(() {
+      _locked = true;
+      _error = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _locked) _unlock();
+    });
   }
 
   Future<void> _unlock() async {
@@ -87,7 +101,12 @@ class _AppLockGateState extends ConsumerState<AppLockGate> with WidgetsBindingOb
     // Si se desactiva o se cierra la sesión, no queda nada bloqueado.
     if (!_decided && ref.watch(authUserProvider).hasValue) {
       _decided = true;
-      _locked = ref.read(appLockEnabledProvider);
+      if (ref.read(appLockEnabledProvider)) {
+        _locked = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _locked) _unlock();
+        });
+      }
     }
     ref.listen(appLockEnabledProvider, (_, on) {
       if (!on && _locked) setState(() => _locked = false);

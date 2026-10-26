@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Nombre del canal de avisos push que crea Firebase en Ajustes > Notificaciones.
+         Sin esto, Android lo llama "Miscellaneous". -->
+    <string name="fcm_fallback_notification_channel_label">Avisos de HandiMan ¡Ya!</string>
+</resources>
