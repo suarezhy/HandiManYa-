@@ -312,5 +312,44 @@ void main() {
       expect(find.byKey(const Key('app-lock')), findsNothing);
       expect(find.text('¡Hola, Carla!'), findsOneWidget);
     });
+
+    testWidgets('bloqueada: "Entrar con un código" cierra la sesión y no deja entrar sin código', (tester) async {
+      await pumpApp(
+        tester,
+        prefs: {
+          'onboarding_seen_v1': true,
+          biometricPrefKey('demo-cliente'): true,
+          appLockPrefKey('demo-cliente'): true,
+        },
+        deviceAuth: _FakeDeviceAuth([]),
+        before: (b) => b.signInAs(DemoBackend.customerPhone),
+      );
+      expect(find.byKey(const Key('app-lock')), findsOneWidget);
+      await tap(tester, find.text('Entrar con un código'));
+      expect(find.byKey(const Key('app-lock')), findsNothing);
+      expect(find.text('¡Hola, Carla!'), findsNothing, reason: 'sin sesión no se ve la cuenta');
+    });
+
+    testWidgets('volver a la app enseguida no vuelve a pedir la biometría', (tester) async {
+      await pumpApp(
+        tester,
+        prefs: {
+          'onboarding_seen_v1': true,
+          biometricPrefKey('demo-cliente'): true,
+          appLockPrefKey('demo-cliente'): true,
+        },
+        deviceAuth: _FakeDeviceAuth([]),
+        before: (b) => b.signInAs(DemoBackend.customerPhone),
+      );
+      await tap(tester, find.byKey(const Key('app-unlock')));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('app-lock')), findsNothing);
+      expect(find.text('¡Hola, Carla!'), findsOneWidget);
+    });
   });
 }
