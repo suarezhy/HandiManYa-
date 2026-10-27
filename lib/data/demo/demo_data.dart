@@ -77,9 +77,9 @@ abstract final class DemoData {
       slug: 'mecanica',
       name: 'Mecánica',
       icon: 'directions_car',
-      description: 'Mecánico a domicilio, auxilio y grúa',
+      description: 'Mecánico a domicilio y auxilio',
       requiredDoc: 'antecedentes',
-      safetyNote: 'Si tu auto se quedó en la calle o la carretera, espera en un lugar seguro con las luces de emergencia encendidas y comparte tu solicitud con alguien de confianza. El mecánico no debe llevarse tu vehículo sin que lo acuerden por el chat.',
+      safetyNote: 'Si tu vehículo se averió, espera en un lugar seguro y enciende las luces de emergencia. Nunca entregues tu vehículo sin acordarlo previamente con el profesional.',
       proNote: 'Para ofrecer mecánica a domicilio necesitas subir tu certificado de antecedentes (FELCC) y que el equipo lo acepte.',
     ),
     ServiceCategory(
@@ -167,7 +167,7 @@ abstract final class DemoData {
       safetyNote: 'Pide ver la resolución de nombramiento del notario y su número de notaría. El arancel lo fija la Dirección del Notariado Plurinacional (DIRNOPLU): pide el detalle antes de firmar. La app solo los pone en contacto.',
       proNote: 'Para ofrecer servicios de notario necesitas subir tu resolución de nombramiento de la DIRNOPLU (vigente y con tu notaría y territorio) y que el equipo la acepte. Cobra según el arancel oficial.',
     ),
-    // 0049: en Mecánica aparece como la opción "Grúa".
+    // 0049; desde 0052 es solo un servicio propio (no aparece dentro de Mecánica).
     ServiceCategory(
       id: 20,
       slug: 'grua',
@@ -349,14 +349,23 @@ abstract final class DemoData {
     ServiceProblem(id: 147, categoryId: 19, name: 'Copias legalizadas', icon: 'description', sortOrder: 30),
     ServiceProblem(id: 148, categoryId: 19, name: 'Minutas y escrituras', icon: 'gavel', sortOrder: 40),
     ServiceProblem(id: 149, categoryId: 19, name: 'Otro trámite notarial', icon: 'other', sortOrder: 50, isOther: true),
-    // 0049: Banda en Eventos; Grúa (en Mecánica lleva a su categoría).
+    // 0049: Banda en Eventos y las opciones de Grúa.
     ServiceProblem(id: 150, categoryId: 17, name: 'Banda', icon: 'music_note', sortOrder: 67),
     ServiceProblem(id: 156, categoryId: 17, name: 'Mariachis', icon: 'music_note', sortOrder: 68),
     ServiceProblem(id: 151, categoryId: 20, name: 'Remolque de vehículo', icon: 'local_shipping', sortOrder: 10),
     ServiceProblem(id: 152, categoryId: 20, name: 'Auxilio en carretera', icon: 'car_repair', sortOrder: 20),
     ServiceProblem(id: 153, categoryId: 20, name: 'Traslado al taller', icon: 'build', sortOrder: 30),
     ServiceProblem(id: 154, categoryId: 20, name: 'Otro servicio', icon: 'other', sortOrder: 80, isOther: true),
-    ServiceProblem(id: 155, categoryId: 9, name: 'Grúa', icon: 'local_shipping', sortOrder: 75, opensCategoryId: 20),
+    // 0052: la opción "Grúa" de Mecánica queda inactiva (Grúa es un servicio propio).
+    ServiceProblem(
+      id: 155,
+      categoryId: 9,
+      name: 'Grúa',
+      icon: 'local_shipping',
+      sortOrder: 75,
+      opensCategoryId: 20,
+      isActive: false,
+    ),
   ];
 
   static const promotions = [

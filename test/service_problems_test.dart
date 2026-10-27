@@ -114,7 +114,6 @@ const expectedProblems = {
     'Problema con el motor',
     'Cambio de llanta',
     'Diagnóstico mecánico',
-    'Grúa',
     'Otro problema',
   ],
   'aire-acondicionado': [
@@ -280,12 +279,12 @@ void main() {
       for (final c in DemoData.categories) {
         final names = [
           for (final p
-              in DemoData.problems.where((p) => p.categoryId == c.id).toList()
+              in DemoData.problems.where((p) => p.categoryId == c.id && p.isActive).toList()
                 ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder)))
             p.name,
         ];
         expect(names, expectedProblems[c.slug], reason: c.name);
-        final others = DemoData.problems.where((p) => p.categoryId == c.id && p.isOther).toList();
+        final others = DemoData.problems.where((p) => p.categoryId == c.id && p.isOther && p.isActive).toList();
         expect(others, hasLength(1), reason: '${c.name}: una sola opción "Otro"');
         expect(others.single.name, names.last, reason: '${c.name}: "Otro" va al final');
       }
@@ -510,15 +509,30 @@ void main() {
       });
     }
 
-    testWidgets('en Mecánica, "Grúa" lleva a las opciones de grúa', (tester) async {
+    testWidgets('Grúa es un solo servicio: no está dentro de Mecánica y abre sus propias opciones', (tester) async {
       await _pumpApp(tester);
       await _login(tester);
+      await _go(tester, Routes.categories);
+      await tester.scrollUntilVisible(find.text('Grúa'), 200, scrollable: find.byType(Scrollable).first);
+      expect(find.text('Grúa'), findsOneWidget, reason: 'una sola vez en Todos los servicios');
+
       await _go(tester, Routes.service(9));
-      await _tap(tester, _problem(_problemId(9, 'Grúa')));
+      expect(find.byKey(ValueKey('problem-${_problemId(9, 'Grúa')}'), skipOffstage: false), findsNothing);
+      expect(find.text('El auto no arranca', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text(
+          'Si tu vehículo se averió, espera en un lugar seguro y enciende las luces de emergencia. '
+          'Nunca entregues tu vehículo sin acordarlo previamente con el profesional.',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+
+      await _go(tester, Routes.service(20));
       expect(find.text('Remolque de vehículo'), findsOneWidget);
       expect(find.text('Traslado al taller'), findsOneWidget);
       expect(find.text('El auto no arranca'), findsNothing);
-      expect(find.byKey(const ValueKey('tow-destination')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tow-destination'), skipOffstage: false), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

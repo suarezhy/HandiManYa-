@@ -85,18 +85,25 @@ void main() {
       final city = cities.first.id;
       final categories = await _step('categorías desde la base', customer.categories);
       expect(categories, isNotEmpty);
-      await _step('catálogo: Banda y Mariachis en Eventos; Grúa en Mecánica lleva al servicio de grúa', () async {
+      await _step('catálogo: Banda y Mariachis en Eventos; Grúa es un solo servicio, fuera de Mecánica', () async {
         int idOf(String slug) => categories.firstWhere((c) => c.slug == slug).id;
         final eventos = (await customer.problems(idOf('eventos'))).map((p) => p.name);
         expect(eventos, containsAll(['Banda', 'Mariachis']));
-        final grua = (await customer.problems(idOf('mecanica'))).firstWhere((p) => p.name == 'Grúa');
-        expect(grua.opensCategoryId, idOf('grua'));
+        final mecanica = await customer.problems(idOf('mecanica'));
+        expect(mecanica.map((p) => p.name), isNot(contains('Grúa')));
+        expect(mecanica.where((p) => p.opensCategoryId != null), isEmpty);
+        expect(categories.where((c) => c.name == 'Grúa'), hasLength(1));
         final tow = (await customer.problems(idOf('grua'))).map((p) => p.name);
         expect(tow, contains('Remolque de vehículo'));
         expect(
           categories.firstWhere((c) => c.slug == 'grua').requiredDoc,
           isNotNull,
           reason: 'la grúa exige documentos',
+        );
+        expect(
+          categories.firstWhere((c) => c.slug == 'mecanica').safetyNote,
+          'Si tu vehículo se averió, espera en un lugar seguro y enciende las luces de emergencia. '
+          'Nunca entregues tu vehículo sin acordarlo previamente con el profesional.',
         );
       });
       // Un servicio que no exige documento extra; la cerrajería y similares se prueban aparte.
@@ -123,7 +130,13 @@ void main() {
           primaryCategoryId: category,
           cityId: city,
           bio: 'Profesional de prueba automática',
-          categoryIds: {category, ?sensitive?.id},
+          // Mecánica y Grúa se habilitan al final, cuando el equipo acepta sus documentos.
+          categoryIds: {
+            category,
+            ?sensitive?.id,
+            for (final c in categories)
+              if (c.slug == 'mecanica' || c.slug == 'grua') c.id,
+          },
           zoneIds: const {},
         );
         await pro.submitApplication();
@@ -868,6 +881,109 @@ void main() {
       });
       await _step('se levanta la suspensión del cliente', () async {
         await owner.setSuspension('e2e00000-0000-4000-8000-0000000000c1', suspend: false);
+        await pro.setAvailability(false);
+      });
+    },
+    skip: configured ? false : 'Falta E2E_URL, E2E_ANON_KEY o E2E_PASSWORD',
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  // Corre al final: Mecánica y Grúa de punta a punta, con sus documentos aceptados.
+  test(
+    'mecánica y grúa: pedido ¡Ya! con opciones; la grúa exige destino y tipo de vehículo; dirección y destino privados',
+    () async {
+      final customer = await _step('el cliente entra', () => _signIn('e2e-cliente@test.bo'));
+      final pro = await _step('el profesional entra', () => _signIn('e2e-pro@test.bo'));
+      final admin = await _step('el equipo entra', () => _signIn('e2e-admin@test.bo'));
+      final city = (await customer.cities()).first.id;
+      final categories = await customer.categories();
+      final mecanica = categories.firstWhere((c) => c.slug == 'mecanica').id;
+      final grua = categories.firstWhere((c) => c.slug == 'grua').id;
+      final noArranca = (await customer.problems(mecanica)).firstWhere((p) => p.name == 'El auto no arranca').id;
+      final remolque = (await customer.problems(grua)).firstWhere((p) => p.name == 'Remolque de vehículo').id;
+      BookingDraft ya(int category, List<int> problems, String what, {String? destination}) => BookingDraft(
+        categoryId: category,
+        cityId: city,
+        mode: BookingMode.now,
+        description: what,
+        address: 'Av. Prueba km 9',
+        paymentMethod: PaymentMethod.cash,
+        latitude: -17.7905,
+        longitude: -63.1802,
+        problemIds: problems,
+        destination: destination,
+      );
+
+      await _step('el profesional se pone disponible', () => pro.setAvailability(true));
+      await _step('el equipo acepta los antecedentes y los documentos de la grúa', () async {
+        final docs = (await admin.adminApplicationDetail(_proId)).documents;
+        final needed = docs.where((d) => d.docType == 'antecedentes' || d.docType == 'documentos_grua').toList();
+        expect(needed.map((d) => d.docType).toSet(), {'antecedentes', 'documentos_grua'});
+        for (final d in needed) {
+          await admin.reviewDocument(d.id, DocumentStatus.accepted);
+        }
+      });
+
+      // Mecánica.
+      final mecId = await _step('el cliente pide mecánica ¡Ya! con una opción', () {
+        return customer.create(ya(mecanica, [noArranca], 'Prueba E2E: el auto no arranca'));
+      });
+      await _step('mecánica no acepta destino', () async {
+        await expectLater(
+          customer.create(ya(mecanica, [noArranca], 'Prueba E2E', destination: 'Taller Central')),
+          _code('HMY_INVALID_PROBLEM'),
+        );
+      });
+      await _step('al mecánico le llega la oferta sin dirección; al aceptar la ve', () async {
+        final offer = (await pro.myBookings(asProfessional: true)).firstWhere((b) => b.id == mecId);
+        expect(offer.isOffer, isTrue);
+        expect((await pro.detail(mecId)).address, isNull);
+        await pro.accept(mecId, isOffer: true);
+        final d = await pro.detail(mecId);
+        expect(d.status, BookingStatus.confirmed);
+        expect(d.address?.line, 'Av. Prueba km 9');
+        expect(d.address?.destination, isNull);
+      });
+      await _step('el cliente cancela el pedido de mecánica', () => customer.cancel(mecId, 'Prueba E2E terminada'));
+
+      // Grúa.
+      await _step('la grúa sin destino se rechaza', () async {
+        await expectLater(
+          customer.create(ya(grua, [remolque], 'Vehículo: Camioneta. Prueba E2E')),
+          _code('HMY_DESTINATION_REQUIRED'),
+        );
+      });
+      final towId = await _step('el cliente pide grúa ¡Ya! con vehículo, recogida y destino', () {
+        return customer.create(
+          ya(
+            grua,
+            [remolque],
+            'Vehículo: Camioneta. Prueba E2E: no enciende',
+            destination: 'Taller Central, 3er anillo',
+          ),
+        );
+      });
+      await _step('a la grúa le llega la oferta sin dirección ni destino', () async {
+        final offer = (await pro.myBookings(asProfessional: true)).firstWhere((b) => b.id == towId);
+        expect(offer.isOffer, isTrue);
+        expect(offer.distanceKm, isNotNull);
+        expect((await pro.detail(towId)).address, isNull);
+      });
+      await _step('al aceptar, la grúa ve la recogida, el destino y el vehículo', () async {
+        await pro.accept(towId, isOffer: true);
+        final d = await pro.detail(towId);
+        expect(d.status, BookingStatus.confirmed);
+        expect(d.address?.line, 'Av. Prueba km 9');
+        expect(d.address?.destination, 'Taller Central, 3er anillo');
+        expect(d.description, contains('Camioneta'));
+      });
+      await _step('el cliente ve su destino y su vehículo', () async {
+        final d = await customer.detail(towId);
+        expect(d.address?.destination, 'Taller Central, 3er anillo');
+        expect(d.description, contains('Camioneta'));
+      });
+      await _step('el cliente cancela la grúa y el profesional deja de estar disponible', () async {
+        await customer.cancel(towId, 'Prueba E2E terminada');
         await pro.setAvailability(false);
       });
     },
