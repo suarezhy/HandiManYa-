@@ -30,21 +30,36 @@ class _FakePush implements PushPlatform {
   Future<PushPermission> permission() async => perm;
   @override
   Future<PushPermission> requestPermission() async => perm = PushPermission.granted;
+  Object? tokenError;
   @override
-  Future<String?> token() async => 'token-de-prueba-0000000000000';
+  Future<String?> token() async {
+    if (tokenError != null) throw tokenError!;
+    return 'token-de-prueba-0000000000000';
+  }
+
   @override
   Stream<String> get tokenRefresh => refresh.stream;
   @override
   Stream<Map<String, String>> get opened => taps.stream;
 }
 
+class _NoTokenPush extends _FakePush {
+  @override
+  Future<String?> token() async => null;
+}
+
 class _Backend extends DemoAppBackend {
   _Backend() : super(simulateDelays: false, codeCooldown: Duration.zero);
   final registered = <String>[];
   final unregistered = <String>[];
+  Object? registerError;
 
   @override
-  Future<void> registerPushDevice(String token, String platform) async => registered.add('$token/$platform');
+  Future<void> registerPushDevice(String token, String platform) async {
+    if (registerError != null) throw registerError!;
+    registered.add('$token/$platform');
+  }
+
   @override
   Future<void> unregisterPushDevice(String token) async => unregistered.add(token);
 }
@@ -105,6 +120,79 @@ void main() {
     expect(backend.unregistered, isNotEmpty);
     expect(find.byKey(const Key('push-enable')), findsOneWidget);
     PushTokens.current = null;
+  });
+
+  testWidgets('dice "Avisos activados" solo cuando el servidor guardó el teléfono', (tester) async {
+    final push = _FakePush();
+    final (_, c) = await _pump(tester, push);
+    await _openNotifications(tester, c);
+    await tester.tap(find.byKey(const Key('push-enable')));
+    await tester.pumpAndSettle();
+    expect(find.text('Avisos activados'), findsOneWidget);
+    PushTokens.current = null;
+  });
+
+  testWidgets('si Firebase no da el registro, lo explica en español y no dice activados', (tester) async {
+    final push = _FakePush()
+      ..tokenError = Exception('[firebase_messaging/unknown] java.io.IOException: FIS_AUTH_ERROR');
+    final (backend, c) = await _pump(tester, push);
+    await _openNotifications(tester, c);
+    await tester.tap(find.byKey(const Key('push-enable')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Firebase no aceptó la configuración de esta versión de la app. Avísanos para revisarla. '
+        '(código: FIS_AUTH_ERROR)',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Avisos activados'), findsNothing);
+    expect(find.byKey(const Key('push-enable')), findsOneWidget, reason: 'se puede volver a intentar');
+    expect(backend.registered, isEmpty);
+    expect(PushTokens.current, isNull);
+  });
+
+  testWidgets('sin token de Firebase tampoco dice activados', (tester) async {
+    final push = _NoTokenPush();
+    final (backend, c) = await _pump(tester, push);
+    await _openNotifications(tester, c);
+    await tester.tap(find.byKey(const Key('push-enable')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('(código: NO_TOKEN)'), findsOneWidget);
+    expect(find.byKey(const Key('push-enable')), findsOneWidget);
+    expect(backend.registered, isEmpty);
+  });
+
+  testWidgets('si el servidor no guarda el teléfono, lo explica y se puede reintentar', (tester) async {
+    final push = _FakePush();
+    final (backend, c) = await _pump(tester, push);
+    backend.registerError = Exception('PostgrestException(message: permission denied, code: 42501)');
+    await _openNotifications(tester, c);
+    await tester.tap(find.byKey(const Key('push-enable')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('No pudimos guardar este teléfono para los avisos. Vuelve a intentar en un momento. (código: 42501)'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('push-enable')), findsOneWidget);
+
+    backend.registerError = null;
+    await tester.tap(find.byKey(const Key('push-enable')));
+    await tester.pumpAndSettle();
+    expect(backend.registered, ['token-de-prueba-0000000000000/android']);
+    expect(find.text('Avisos activados en este teléfono'), findsOneWidget);
+    PushTokens.current = null;
+  });
+
+  testWidgets('Firebase que no responde: aviso claro, sin quedarse cargando', (tester) async {
+    expect(
+      pushError(TimeoutException('x'), PushStep.firebase).message,
+      'Firebase no respondió. Revisa tu conexión a internet y vuelve a intentar. (código: TIMEOUT)',
+    );
+    expect(
+      pushError(Exception('SocketException: Failed host lookup'), PushStep.server).message,
+      startsWith('No hay conexión a internet.'),
+    );
   });
 
   testWidgets('con permiso ya dado, se registra al iniciar sesión', (tester) async {

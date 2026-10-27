@@ -44,7 +44,15 @@ class PushCard extends ConsumerWidget {
         [
           FilledButton(
             key: const Key('push-enable'),
-            onPressed: state.isLoading ? null : () => runGuarded(context, controller.enable),
+            onPressed: state.isLoading
+                ? null
+                : () => runGuarded(context, () async {
+                    await controller.enable();
+                    // Solo si el servidor guardó el teléfono (con permiso negado no se dice nada).
+                    if (ref.read(pushControllerProvider).value == PushState.on && context.mounted) {
+                      showMessage(context, 'Avisos activados');
+                    }
+                  }),
             child: const Text('Activar avisos'),
           ),
         ],

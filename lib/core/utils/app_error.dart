@@ -157,8 +157,11 @@ class AppError implements Exception {
     'HMY_PROFESSIONAL_NOT_AVAILABLE':
         'Este profesional no está disponible ahora. Prueba con otro o programa para después.',
     'HMY_CANNOT_BOOK_SELF': 'No puedes solicitarte un servicio a ti mismo.',
-    'HMY_INVALID_SCHEDULE': 'Elige una fecha y hora con al menos 30 minutos de anticipación.',
+    'HMY_INVALID_SCHEDULE': 'Elige un día y una hora desde 30 minutos hasta 60 días desde ahora.',
     'HMY_SLOT_TAKEN': 'Ese horario ya está ocupado. Elige otro.',
+    'HMY_DUPLICATE_REQUEST': 'Ya tienes una solicitud de este servicio para ese horario. Revísala en Mis solicitudes.',
+    'HMY_ADDRESS_REQUIRED': 'Escribe la dirección donde se hará el trabajo.',
+    'HMY_INVALID_CATEGORY': 'Ese servicio no está disponible. Elige otro.',
     'bookings_no_overlap': 'Ya tienes otro trabajo confirmado en ese horario.',
     'HMY_TOO_MANY_OPEN_REQUESTS': 'Tienes varias solicitudes abiertas. Espera respuesta o cancela alguna.',
     'HMY_INVALID_TRANSITION': 'Esta acción ya no está disponible. Actualiza la pantalla.',

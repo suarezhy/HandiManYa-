@@ -39,7 +39,9 @@ declare
     'hmy_professional_active','hmy_booking_pro_active_guard','hmy_cancel_unstarted_bookings','hmy_pro_inactive_cleanup','hmy_suspension_cleanup',
     'hmy_map_jitter','home_map_professionals',
     'hmy_check_booking_extras','_create_booking_problems','_create_ya_request_problems','_booking_detail_problems',
-    'hmy_ad_day','hmy_ad_live','home_ad','ad_click','owner_ads','owner_save_ad','owner_set_ad_status'];
+    'hmy_ad_day','hmy_ad_live','home_ad','ad_click','owner_ads','owner_save_ad','owner_set_ad_status',
+    'create_scheduled_request','_claim_ya_request_base','hmy_scheduled_eligible_professionals','_hmy_offer_scheduled',
+    '_hmy_offer_pending_to','hmy_offer_pending_on_profile','hmy_offer_pending_on_service'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -115,7 +117,7 @@ begin
     (not has_table_privilege('authenticated', 'public.booking_addresses', 'INSERT'), 'ubicación: la dirección exacta se guarda solo por funciones'),
     (exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'booking_addresses'), 'ubicación: la dirección exacta tiene política propia'),
     (exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'professional_locations'), 'ubicación: la base del profesional tiene política propia'),
-    (not exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace and proname in ('create_booking', 'create_ya_request') and has_function_privilege('anon', oid, 'EXECUTE')), 'pedidos: anónimos no crean pedidos'),
+    (not exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace and proname in ('create_booking', 'create_ya_request', 'create_scheduled_request') and has_function_privilege('anon', oid, 'EXECUTE')), 'pedidos: anónimos no crean pedidos'),
     (not exists (select 1 from pg_proc where pronamespace = 'public'::regnamespace and proname in ('_create_booking_base', '_create_ya_request_base', '_booking_detail_base') and has_function_privilege('authenticated', oid, 'EXECUTE')), 'pedidos: las funciones internas no se llaman desde la app'),
     (exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'service_problems' and cmd = 'ALL' and qual like '%is_admin()%'), 'problemas: solo el admin los cambia'),
     (not exists (select 1 from public.service_categories where slug in ('ninera', 'asesoria-legal') and allows_ya), 'sensibles: niñera y asesoría legal no van por ¡Ya!'),

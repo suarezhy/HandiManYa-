@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/booking.dart';
@@ -29,9 +30,10 @@ class ChooseProfessionalArgs {
   final List<PhotoUpload> photos;
 }
 
-/// "Programar para después": el cliente elige quién hará el trabajo y cuándo.
-/// La solicitud llega solo a esa persona, que acepta, rechaza o envía una
-/// cotización.
+/// "Programar para después": el cliente ya eligió el día y la hora. Puede
+/// publicar la solicitud para los profesionales de su zona (queda "Pendiente de
+/// profesional" hasta que alguien la acepta) o elegir a una persona, que acepta,
+/// rechaza o envía una cotización.
 class ChooseProfessionalPage extends ConsumerWidget {
   const ChooseProfessionalPage({super.key, required this.args});
 
@@ -67,18 +69,27 @@ class ChooseProfessionalPage extends ConsumerWidget {
                   if (a.problems.isNotEmpty)
                     Text(a.problems.join(' · '), style: const TextStyle(color: HyColors.textSecondary, fontSize: 16)),
                   const SizedBox(height: HySpacing.sm),
-                  const InfoBanner(
-                    icon: Icons.event_available_outlined,
-                    text:
-                        'Toca a un profesional para elegir el día y la hora. Puede aceptar o enviarte una cotización.',
-                  ),
+                  if (a.draft.scheduledStart != null) ...[
+                    _PublishCard(args: a),
+                    const SizedBox(height: HySpacing.md),
+                    const InfoBanner(
+                      icon: Icons.person_search_outlined,
+                      text: 'O elige a un profesional: la solicitud le llega solo a esa persona.',
+                    ),
+                  ] else
+                    const InfoBanner(
+                      icon: Icons.event_available_outlined,
+                      text: 'Toca a un profesional para elegir el día y la hora. Puede aceptar o enviarte una cotización.',
+                    ),
                   const SizedBox(height: HySpacing.md),
                   ...switch (results) {
                     AsyncData(:final value) when value.isEmpty => [
                       EmptyState(
                         icon: Icons.person_search_outlined,
                         title: 'Todavía no hay profesionales de ${a.category.name} en tu ciudad',
-                        message: a.category.allowsYa
+                        message: a.draft.scheduledStart != null
+                            ? 'Publica la solicitud y te avisamos cuando alguien la acepte.'
+                            : a.category.allowsYa
                             ? 'Vuelve atrás y prueba con "Lo necesito ¡Ya!".'
                             : 'Vuelve a intentarlo más tarde.',
                       ),
@@ -125,8 +136,94 @@ class ChooseProfessionalPage extends ConsumerWidget {
     );
     if (id == null || !context.mounted) return;
     ref.invalidate(myBookingsProvider(false));
-    context.go(Routes.requests);
-    context.push(Routes.booking(id));
+    openNewBooking(context, id);
+  }
+}
+
+/// Después de enviar: Mis solicitudes con la nueva abierta encima, así "Atrás"
+/// vuelve a la lista y no al formulario. El push espera a que la lista esté.
+void openNewBooking(BuildContext context, String id) {
+  final router = GoRouter.of(context);
+  router.go(Routes.requests);
+  WidgetsBinding.instance.addPostFrameCallback((_) => router.push(Routes.booking(id)));
+}
+
+/// Publicar sin elegir profesional: queda "Pendiente de profesional".
+class _PublishCard extends ConsumerStatefulWidget {
+  const _PublishCard({required this.args});
+
+  final ChooseProfessionalArgs args;
+
+  @override
+  ConsumerState<_PublishCard> createState() => _PublishCardState();
+}
+
+class _PublishCardState extends ConsumerState<_PublishCard> {
+  bool _sending = false;
+
+  Future<void> _publish() async {
+    if (_sending) return;
+    setState(() => _sending = true);
+    final api = ref.read(backendProvider);
+    try {
+      final id = await api.create(widget.args.draft);
+      if (widget.args.photos.isNotEmpty) {
+        try {
+          await api.addPhotos(id, widget.args.photos);
+        } catch (_) {
+          if (mounted) {
+            showMessage(context, 'Tu pedido se envió, pero no pudimos subir las fotos. Puedes mandarlas por el chat.');
+          }
+        }
+      }
+      ref.invalidate(myBookingsProvider(false));
+      if (!mounted) return;
+      showMessage(context, 'Solicitud publicada. Queda pendiente hasta que un profesional la acepte.');
+      openNewBooking(context, id);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sending = false);
+        showError(context, e);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.args.draft;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.event_outlined, color: HyColors.navy),
+              const SizedBox(width: HySpacing.xs),
+              Expanded(
+                child: Text(
+                  Fmt.dateTime(d.scheduledStart!),
+                  key: const Key('schedule-when'),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: HySpacing.xxs),
+          const Text(
+            'Queda pendiente hasta que un profesional la acepte.',
+            style: TextStyle(color: HyColors.textSecondary, fontSize: 15),
+          ),
+          const SizedBox(height: HySpacing.sm),
+          PrimaryButton(
+            key: const Key('schedule-publish'),
+            label: 'Publicar solicitud',
+            icon: Icons.send_rounded,
+            loading: _sending,
+            onPressed: _publish,
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -141,9 +238,10 @@ class _ScheduleSheet extends ConsumerStatefulWidget {
 }
 
 class _ScheduleSheetState extends ConsumerState<_ScheduleSheet> {
-  DateTime? _date;
-  TimeOfDay? _time;
-  int _duration = 120;
+  // Empieza con el día y la hora que el cliente ya eligió.
+  late DateTime? _date = widget.args.draft.scheduledStart;
+  late TimeOfDay? _time = _date == null ? null : TimeOfDay.fromDateTime(_date!);
+  late int _duration = widget.args.draft.scheduledStart == null ? 120 : widget.args.draft.durationMinutes;
   String? _error;
   bool _sending = false;
 
@@ -151,10 +249,8 @@ class _ScheduleSheetState extends ConsumerState<_ScheduleSheet> {
     final start = (_date == null || _time == null)
         ? null
         : DateTime(_date!.year, _date!.month, _date!.day, _time!.hour, _time!.minute);
-    if (start == null) return setState(() => _error = 'Elige el día y la hora');
-    if (start.isBefore(DateTime.now().add(const Duration(minutes: 30)))) {
-      return setState(() => _error = 'Elige una hora con al menos 30 minutos de anticipación');
-    }
+    final error = scheduleError(start);
+    if (error != null) return setState(() => _error = error);
     setState(() {
       _error = null;
       _sending = true;
@@ -162,7 +258,7 @@ class _ScheduleSheetState extends ConsumerState<_ScheduleSheet> {
     final api = ref.read(backendProvider);
     try {
       final id = await api.create(
-        widget.args.draft.scheduledWith(professionalId: widget.pro.id, start: start, durationMinutes: _duration),
+        widget.args.draft.scheduledWith(professionalId: widget.pro.id, start: start!, durationMinutes: _duration),
       );
       if (widget.args.photos.isNotEmpty) {
         try {

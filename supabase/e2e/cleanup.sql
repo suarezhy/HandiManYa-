@@ -57,6 +57,11 @@ alter table public.wallet_ledger disable trigger wallet_ledger_no_update;
 delete from public.wallet_ledger where professional_id in (select id from e2e_ids);
 alter table public.wallet_ledger enable trigger wallet_ledger_no_update;
 delete from public.wallets where professional_id in (select id from e2e_ids);
+-- La comisión temporal que crea la prueba (10 %, solo para dev). Se borra si
+-- ningún pedido real la usó; si alguno la usó, queda desactivada y sin autor.
+delete from public.commission_rules r where r.created_by in (select id from e2e_ids)
+   and not exists (select 1 from public.bookings b where b.commission_rule_id = r.id);
+update public.commission_rules set is_active = false, created_by = null where created_by in (select id from e2e_ids);
 -- El método de recarga temporal de setup.sql (solo si nadie más lo usó).
 delete from public.topup_methods m where m.name = 'Prueba E2E (temporal)'
    and not exists (select 1 from public.topup_requests r where r.method_id = m.id);

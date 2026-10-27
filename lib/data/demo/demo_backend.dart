@@ -794,8 +794,11 @@ class DemoBackend
     String customerId, {
     double? latitude,
     double? longitude,
+    bool needsAvailable = true,
   }) => _pros.values.where((p) {
-    if (p.status != VerificationStatus.approved || !p.available || p.id == customerId) return false;
+    if (p.status != VerificationStatus.approved || (needsAvailable && !p.available) || p.id == customerId) {
+      return false;
+    }
     if (_blockedBetween(p.id, customerId)) return false;
     if (p.primaryCategoryId != categoryId) return false;
     final base = p.location;
@@ -1060,6 +1063,48 @@ class DemoBackend
             );
           });
         });
+      }
+    } else if (d.mode == BookingMode.scheduled && d.professionalId == null) {
+      // Como el servidor (0055): queda "Pendiente de profesional" y le llega a
+      // los profesionales de la zona, aunque no estén disponibles ahora. Nadie
+      // la acepta solo en la demostración.
+      final start = d.scheduledStart;
+      final now = DateTime.now();
+      if (start == null ||
+          start.isBefore(now.add(const Duration(minutes: 30))) ||
+          start.isAfter(now.add(const Duration(days: 60))) ||
+          d.durationMinutes < 30 ||
+          d.durationMinutes > 720) {
+        throw AppError.from('HMY_INVALID_SCHEDULE');
+      }
+      final end = start.add(Duration(minutes: d.durationMinutes));
+      final duplicate = _bookings.values.any(
+        (o) =>
+            o.customerId == me.id &&
+            o.draft.categoryId == d.categoryId &&
+            o.draft.mode == BookingMode.scheduled &&
+            o.draft.scheduledStart != null &&
+            {BookingStatus.requested, BookingStatus.awaitingResponse, BookingStatus.quoteSent}.contains(o.status) &&
+            o.draft.scheduledStart!.isBefore(end) &&
+            o.draft.scheduledStart!.add(Duration(minutes: o.draft.durationMinutes)).isAfter(start),
+      );
+      if (duplicate) throw AppError.from('HMY_DUPLICATE_REQUEST');
+      final eligible = _eligible(
+        d.categoryId,
+        d.cityId,
+        d.zoneId,
+        me.id,
+        latitude: d.latitude,
+        longitude: d.longitude,
+        needsAvailable: false,
+      ).toList();
+      b
+        ..status = BookingStatus.awaitingResponse
+        ..offers = {for (final p in eligible) p.id}
+        ..events.add(BookingEvent(status: BookingStatus.awaitingResponse, at: DateTime.now()));
+      _bookings[b.id] = b;
+      for (final p in eligible) {
+        _notify(p.id, 'booking_new', 'Solicitud programada cerca de ti', d.description, bookingId: b.id);
       }
     } else {
       final pro = _pros[d.professionalId];

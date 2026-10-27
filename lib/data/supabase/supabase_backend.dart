@@ -402,6 +402,28 @@ class SupabaseBackend
         },
       ) as String;
     }
+    // Programada sin profesional elegido: queda "Pendiente de profesional".
+    if (d.mode == BookingMode.scheduled && d.professionalId == null) {
+      return await _db.rpc(
+        'create_scheduled_request',
+        params: {
+          'p_category': d.categoryId,
+          'p_city': d.cityId,
+          'p_description': d.description,
+          'p_address': d.address,
+          'p_scheduled_start': d.scheduledStart?.toUtc().toIso8601String(),
+          'p_duration_minutes': d.durationMinutes,
+          'p_address_reference': d.addressReference,
+          'p_zone_id': d.zoneId,
+          'p_payment_method': d.paymentMethod?.key,
+          'p_latitude': d.latitude,
+          'p_longitude': d.longitude,
+          'p_problem_ids': d.problemIds.isEmpty ? null : d.problemIds,
+          'p_other_text': d.otherText,
+          'p_destination': d.destination,
+        },
+      ) as String;
+    }
     return await _db.rpc(
       'create_booking',
       params: {

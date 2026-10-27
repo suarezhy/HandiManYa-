@@ -66,7 +66,7 @@ class _Content extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final hint = b.viewerIsCustomer ? b.status.customerHint() : b.status.professionalHint();
+    final hint = b.viewerIsCustomer ? b.status.customerHintFor(b.mode) : b.status.professionalHintFor(b.mode);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -342,7 +342,7 @@ class _StatusHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final arrived =
         b.status == BookingStatus.onTheWay && (ref.watch(bookingArrivalProvider(b.id)).value?.verified ?? false);
-    final searching = b.status == BookingStatus.awaitingResponse && b.viewerIsCustomer;
+    final searching = b.status == BookingStatus.awaitingResponse && b.viewerIsCustomer && b.mode == BookingMode.now;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(HySpacing.md),
@@ -364,7 +364,7 @@ class _StatusHeader extends ConsumerWidget {
                 ],
                 Expanded(
                   child: Text(
-                    arrived ? 'Llegada verificada' : b.status.label,
+                    arrived ? 'Llegada verificada' : b.status.labelFor(b.mode),
                     style: TextStyle(color: b.status.tone.foreground, fontSize: 22, fontWeight: FontWeight.w800),
                   ),
                 ),
@@ -374,7 +374,8 @@ class _StatusHeader extends ConsumerWidget {
               const SizedBox(height: 4),
               Text(hint, style: TextStyle(color: b.status.tone.foreground, fontSize: 16)),
             ],
-            if (searching && (b.offersSent ?? 0) > 0) ...[
+            if ((searching || (b.viewerIsCustomer && b.status.isPendingScheduled(b.mode))) &&
+                (b.offersSent ?? 0) > 0) ...[
               const SizedBox(height: 4),
               Text(
                 b.offersSent == 1 ? 'Avisamos a 1 profesional.' : 'Avisamos a ${b.offersSent} profesionales.',
@@ -675,8 +676,8 @@ class _ActionsState extends ConsumerState<_Actions> {
         case BookingStatus.awaitingResponse when b.isOffer:
           primary.add(
             PrimaryButton(
-              label: 'Aceptar pedido ¡Ya!',
-              icon: Icons.bolt_rounded,
+              label: b.mode == BookingMode.scheduled ? 'Aceptar solicitud' : 'Aceptar pedido ¡Ya!',
+              icon: b.mode == BookingMode.scheduled ? Icons.event_available_outlined : Icons.bolt_rounded,
               onPressed: () =>
                   _run(() => api.accept(b.id, isOffer: true), success: '¡Trabajo tuyo! Ya puedes ver la dirección'),
             ),

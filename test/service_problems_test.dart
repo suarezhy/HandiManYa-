@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:handimanya/app.dart';
 import 'package:handimanya/core/services/location_service.dart';
 import 'package:handimanya/core/utils/app_error.dart';
+import 'package:handimanya/core/utils/formatters.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/demo/demo_data.dart';
 import 'package:handimanya/data/models/booking.dart';
@@ -16,6 +17,8 @@ import 'package:handimanya/data/models/professional.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:handimanya/features/booking/booking_detail_page.dart';
 import 'package:handimanya/features/booking/choose_professional_page.dart';
+import 'package:handimanya/features/booking/my_requests_page.dart';
+import 'package:handimanya/features/booking/request_flow_page.dart';
 import 'package:handimanya/features/common/professional_card.dart';
 import 'package:handimanya/features/search/search_page.dart';
 import 'package:handimanya/router.dart';
@@ -268,6 +271,35 @@ Future<void> _go(WidgetTester tester, String route) async {
 }
 
 Finder _problem(int id) => find.byKey(ValueKey('problem-$id'));
+
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  await tester.pumpAndSettle();
+}
+
+/// Plomería → Fuga de agua → dirección → "Programar".
+Future<void> _toSchedule(WidgetTester tester) async {
+  await _go(tester, Routes.service(1));
+  await _tap(tester, _problem(_problemId(1, 'Fuga de agua')));
+  await _tapText(tester, 'Continuar');
+  await _tapText(tester, 'Continuar');
+  await tester.enterText(find.widgetWithText(TextFormField, 'Dirección'), 'Calle Los Pinos 123');
+  await _tapText(tester, 'Programar');
+}
+
+/// Mañana a las 9:00 con los selectores del sistema.
+Future<DateTime> _pickTomorrowAt9(WidgetTester tester) async {
+  final day = DateTime.now().add(const Duration(days: 1));
+  await _tapText(tester, 'Elegir día');
+  if (day.month != DateTime.now().month) await _tap(tester, find.byTooltip('Mes siguiente'));
+  await _tap(tester, find.text('${day.day}').last);
+  await _tapText(tester, 'ACEPTAR');
+  await _tapText(tester, 'Elegir hora');
+  await _tapText(tester, 'ACEPTAR'); // 9:00, la hora sugerida
+  return day;
+}
 
 int _problemId(int categoryId, String name) =>
     DemoData.problems.firstWhere((p) => p.categoryId == categoryId && p.name == name).id;
@@ -581,26 +613,102 @@ void main() {
       expect(mine.first.categoryId, 1);
     });
 
-    testWidgets('"Programar para después" lleva a elegir profesional y horario', (tester) async {
+    testWidgets('"Programar" pide primero el día y la hora, y después a quién', (tester) async {
       await _pumpApp(tester);
       await _login(tester);
-      await _go(tester, Routes.service(1));
-      await _tap(tester, _problem(_problemId(1, 'Fuga de agua')));
-      await _tapText(tester, 'Continuar');
-      await _tapText(tester, 'Continuar');
-      await tester.enterText(find.widgetWithText(TextFormField, 'Dirección'), 'Calle Los Pinos 123');
-      await _tapText(tester, 'Programar');
+      await _toSchedule(tester);
+      expect(find.text('¿Cuándo lo necesitas?'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('schedule-continue')));
+      expect(find.text('Elige el día y la hora'), findsOneWidget, reason: 'sin día ni hora no sigue');
+      final day = await _pickTomorrowAt9(tester);
+      await _tap(tester, find.byKey(const Key('schedule-continue')));
       expect(find.byType(ChooseProfessionalPage), findsOneWidget);
       expect(find.text('Elige quién lo hará'), findsOneWidget);
       expect(find.text('Fuga de agua'), findsOneWidget);
-      final card = find.textContaining('Ver perfil de');
-      expect(card, findsWidgets);
-      // Tocar a un profesional pide el día y la hora.
-      await _tap(tester, find.byType(ProfessionalCard).first);
-      expect(find.text('Elegir día'), findsOneWidget);
-      await _tapText(tester, 'Enviar solicitud');
-      expect(find.text('Elige el día y la hora'), findsOneWidget);
+      expect(find.byKey(const Key('schedule-publish')), findsOneWidget);
+      expect(find.text(Fmt.dateTime(DateTime(day.year, day.month, day.day, 9))), findsOneWidget);
+      expect(find.textContaining('Ver perfil de'), findsWidgets);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('publicar sin elegir queda "Pendiente de profesional", sin repetirse y se puede cancelar', (
+      tester,
+    ) async {
+      final backend = await _pumpApp(tester);
+      await _login(tester);
+      await _toSchedule(tester);
+      final day = await _pickTomorrowAt9(tester);
+      await _tap(tester, find.byKey(const Key('schedule-continue')));
+      await _tap(tester, find.byKey(const Key('schedule-publish')));
+      await _settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(BookingDetailPage), findsOneWidget);
+      expect(find.text('Pendiente de profesional'), findsWidgets);
+      expect(find.text('Confirmado'), findsNothing, reason: 'nunca parece confirmada');
+      final mine = (await tester.runAsync(() => backend.myBookings(asProfessional: false)))!;
+      final b = mine.first;
+      expect(b.mode, BookingMode.scheduled);
+      expect(b.status, BookingStatus.awaitingResponse);
+      expect(b.otherName, isNull, reason: 'sin profesional asignado');
+      expect(b.scheduledStart?.toLocal(), DateTime(day.year, day.month, day.day, 9));
+      // Atrás vuelve a Mis solicitudes, no al formulario.
+      GoRouter.of(tester.element(find.byType(BookingDetailPage))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(MyRequestsPage), findsOneWidget);
+      expect(find.text('Pendiente de profesional'), findsWidgets);
+
+      // La misma solicitud otra vez no se crea.
+      final draft = BookingDraft(
+        categoryId: 1,
+        cityId: DemoData.cities.first.id,
+        mode: BookingMode.scheduled,
+        description: 'Otra vez',
+        address: 'Calle Los Pinos 123',
+        scheduledStart: DateTime(day.year, day.month, day.day, 9, 30),
+      );
+      Object? dup;
+      await tester.runAsync(() async {
+        try {
+          await backend.create(draft);
+        } catch (e) {
+          dup = e;
+        }
+      });
+      expect(AppError.from(dup!).code, 'HMY_DUPLICATE_REQUEST');
+
+      // El cliente la cancela.
+      await tester.runAsync(() => backend.cancel(b.id, 'Ya no la necesito'));
+      final after = (await tester.runAsync(() => backend.detail(b.id)))!;
+      expect(after.status, BookingStatus.cancelled);
+    });
+
+    testWidgets('elegir a un profesional usa el día ya elegido y abre la solicitud', (tester) async {
+      final backend = await _pumpApp(tester);
+      await _login(tester);
+      await _toSchedule(tester);
+      final day = await _pickTomorrowAt9(tester);
+      await _tap(tester, find.byKey(const Key('schedule-continue')));
+      await _tap(tester, find.byType(ProfessionalCard).first);
+      expect(
+        find.text(Fmt.shortDate(DateTime(day.year, day.month, day.day))),
+        findsOneWidget,
+        reason: 'ya viene el día',
+      );
+      await _tapText(tester, 'Enviar solicitud');
+      await _settle(tester);
+      expect(tester.takeException(), isNull);
+      expect(find.byType(BookingDetailPage), findsOneWidget);
+      final b = (await tester.runAsync(() => backend.myBookings(asProfessional: false)))!.first;
+      expect(b.mode, BookingMode.scheduled);
+      expect(b.status, BookingStatus.requested);
+      expect(b.scheduledStart?.toLocal(), DateTime(day.year, day.month, day.day, 9));
+    });
+
+    testWidgets('fechas inválidas: antes de 30 minutos o después de 60 días', (tester) async {
+      expect(scheduleError(null), 'Elige el día y la hora');
+      expect(scheduleError(DateTime.now().add(const Duration(minutes: 10))), contains('30 minutos'));
+      expect(scheduleError(DateTime.now().add(const Duration(days: 61))), contains('60 días'));
+      expect(scheduleError(DateTime.now().add(const Duration(days: 1))), isNull);
     });
 
     testWidgets('el administrador agrega una opción y el cliente la ve', (tester) async {

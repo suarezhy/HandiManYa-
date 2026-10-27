@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/env.dart';
 import '../../core/services/push_platform.dart';
+import '../../core/utils/app_error.dart';
 import '../../data/models/messaging.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
@@ -54,7 +55,13 @@ class PushController extends AsyncNotifier<PushState> {
     if (permission == PushPermission.denied) return PushState.denied;
     if (permission == PushPermission.notAsked || user == null || _turnedOff) return PushState.off;
     _refresh = platform.tokenRefresh.listen((t) => _register(t).ignore());
-    return await _register(await platform.token()) ? PushState.on : PushState.off;
+    try {
+      return await _register(await platform.token().timeout(tokenTimeout)) ? PushState.on : PushState.off;
+    } catch (_) {
+      // Al abrir la app no se interrumpe a nadie: queda "Activar avisos", y al
+      // tocarlo se muestra el motivo.
+      return PushState.off;
+    }
   }
 
   bool get _turnedOff => ref.read(prefsProvider).getBool(_offKey) ?? false;
@@ -67,6 +74,8 @@ class PushController extends AsyncNotifier<PushState> {
   }
 
   /// Pide permiso y registra este teléfono. En la web debe llamarse desde un toque.
+  /// Queda en "activados" solo si el servidor guardó el teléfono; si algo falla,
+  /// vuelve a "Activar avisos" y lanza un [AppError] con el motivo en español.
   Future<void> enable() async {
     final platform = ref.read(pushPlatformProvider);
     if (platform == null) return;
@@ -77,13 +86,27 @@ class PushController extends AsyncNotifier<PushState> {
     }
     await ref.read(prefsProvider).remove(_offKey);
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() async {
-      final ok = await _register(await platform.token());
-      _refresh ??= platform.tokenRefresh.listen((t) => _register(t).ignore());
-      return ok ? PushState.on : PushState.off;
-    });
+    String? token;
+    try {
+      token = await platform.token().timeout(tokenTimeout);
+      if (token == null || token.isEmpty) throw const _NoToken();
+    } catch (e) {
+      state = const AsyncData(PushState.off);
+      throw pushError(e, PushStep.firebase);
+    }
+    try {
+      if (!await _register(token)) throw const _NoToken();
+    } catch (e) {
+      state = const AsyncData(PushState.off);
+      throw pushError(e, PushStep.server);
+    }
+    _refresh ??= platform.tokenRefresh.listen((t) => _register(t).ignore());
+    state = const AsyncData(PushState.on);
     ref.invalidate(pushStatusProvider);
   }
+
+  /// Cuánto se espera a Firebase antes de decir que no respondió.
+  static const tokenTimeout = Duration(seconds: 25);
 
   /// Deja de recibir avisos en este teléfono (los de dentro de la app siguen).
   Future<void> disable() async {
@@ -112,6 +135,48 @@ class PushController extends AsyncNotifier<PushState> {
       router.push(Routes.notifications);
     }
   }
+}
+
+enum PushStep { firebase, server }
+
+class _NoToken implements Exception {
+  const _NoToken();
+  @override
+  String toString() => 'NO_TOKEN';
+}
+
+/// Mensaje claro para cuando no se pudo activar los avisos. Lleva un código
+/// corto para revisar el problema (nunca el token ni claves).
+AppError pushError(Object error, PushStep step) {
+  final raw = error.toString();
+  final code = error is TimeoutException
+      ? 'TIMEOUT'
+      : RegExp(
+              r'FIS_AUTH_ERROR|SERVICE_NOT_AVAILABLE|AUTHENTICATION_FAILED|MISSING_INSTANCEID_SERVICE|'
+              r'TOO_MANY_REGISTRATIONS|PHONE_REGISTRATION_ERROR|INVALID_SENDER|API_KEY|PERMISSION_DENIED|NO_TOKEN|'
+              r'HMY_[A-Z_]+|PGRST\d+|\b\d{5}\b',
+            ).firstMatch(raw)?.group(0) ??
+            (step == PushStep.firebase ? 'FIREBASE' : 'SERVIDOR');
+  final String message;
+  if (step == PushStep.server) {
+    final network = AppError.from(error).code == 'network';
+    message = network
+        ? 'No hay conexión a internet. Revisa tu conexión y vuelve a intentar.'
+        : 'No pudimos guardar este teléfono para los avisos. Vuelve a intentar en un momento.';
+  } else {
+    message = switch (code) {
+      'SERVICE_NOT_AVAILABLE' ||
+      'TIMEOUT' => 'Firebase no respondió. Revisa tu conexión a internet y vuelve a intentar.',
+      'FIS_AUTH_ERROR' ||
+      'AUTHENTICATION_FAILED' ||
+      'API_KEY' ||
+      'INVALID_SENDER' ||
+      'PERMISSION_DENIED' => 'Firebase no aceptó la configuración de esta versión de la app. Avísanos para revisarla.',
+      'MISSING_INSTANCEID_SERVICE' => 'Este teléfono no tiene los servicios de Google Play necesarios para los avisos.',
+      _ => 'No pudimos activar los avisos en este teléfono. Vuelve a intentar en un momento.',
+    };
+  }
+  return AppError('$message (código: $code)', code: 'push_$code');
 }
 
 final pushControllerProvider = AsyncNotifierProvider<PushController, PushState>(PushController.new);

@@ -52,5 +52,6 @@ end $$;
 \ir 99u_grua_single_entry_tests.sql
 \ir 99v_table_privileges_tests.sql
 \ir 99w_lookup_indexes_tests.sql
+\ir 99x_open_scheduled_requests_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'

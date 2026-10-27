@@ -30,6 +30,8 @@ const _managerId = 'e2e00000-0000-4000-8000-0000000000e0';
 const _emp1Id = 'e2e00000-0000-4000-8000-0000000000e1';
 const _emp2Id = 'e2e00000-0000-4000-8000-0000000000e2';
 
+const _ruleName = 'Prueba E2E (temporal) 10 %';
+
 Future<SupabaseBackend> _signIn(String email) async => (await _signInWithClient(email)).$1;
 
 /// La capa de datos de la app y el cliente de Supabase de esa sesión, para
@@ -204,6 +206,29 @@ void main() {
         print('aviso - no hay métodos de recarga configurados en dev; se prueba sin saldo');
       }
 
+      // Comisión temporal de prueba (10 %, mínimo Bs 5), solo para este servicio y ciudad.
+      // No es la política real; se desactiva al final y cleanup.sql la borra.
+      if (methods.isNotEmpty) {
+        await _step('el equipo crea la comisión temporal de prueba', () async {
+          await expectLater(
+            pro.saveCommissionRule(
+              CommissionRule(name: _ruleName, categoryId: category, cityId: city, ratePercent: 10),
+            ),
+            _code('HMY_FORBIDDEN'),
+          );
+          await admin.saveCommissionRule(
+            CommissionRule(
+              name: _ruleName,
+              categoryId: category,
+              cityId: city,
+              ratePercent: 10,
+              reserveAmount: 5,
+              minBalance: 5,
+            ),
+          );
+          expect((await admin.commissionRules()).where((r) => r.name == _ruleName && r.isActive), hasLength(1));
+        });
+      }
       await _step('el profesional se pone disponible', () async {
         await pro.setActiveRole(AppRole.professional);
         await pro.setAvailability(true);
@@ -259,6 +284,13 @@ void main() {
         expect(d.status, BookingStatus.confirmed);
         expect(d.address?.line, 'Calle Prueba 123, casa verde');
       });
+      if (methods.isNotEmpty) {
+        await _step('al aceptar se reserva el mínimo de Bs 5 (todavía no hay precio)', () async {
+          final w = await pro.wallet();
+          expect(w.reserved, closeTo(5, 0.005));
+          expect(w.available, closeTo(walletBefore.available - 5, 0.005));
+        });
+      }
       await _step('aviso dentro de la app: al cliente le llega que lo aceptaron', () async {
         final mine = await customer.list();
         expect(mine.where((n) => n.kind == 'booking_status' && n.bookingId == bookingId), isNotEmpty);
@@ -384,6 +416,11 @@ void main() {
         final w = await pro.wallet();
         expect(w.reserved, 0);
         expect(w.available, greaterThanOrEqualTo(0));
+        if (methods.isNotEmpty) {
+          // Con la comisión temporal: 10 % de Bs 150 = Bs 15.
+          expect(preview?.hasRule, isTrue);
+          expect(preview!.expected, closeTo(15, 0.005));
+        }
         if (preview == null || !preview.hasRule) {
           // ignore: avoid_print
           print('aviso - dev no tiene regla de comisión para este servicio; el saldo no debe cambiar');
@@ -401,6 +438,24 @@ void main() {
       });
 
       // Cancelación: un segundo pedido que el cliente cancela antes de que lo acepten.
+      if (methods.isNotEmpty) {
+        await _step('el equipo desactiva la comisión temporal', () async {
+          final rule = (await admin.commissionRules()).firstWhere((r) => r.name == _ruleName);
+          await admin.saveCommissionRule(
+            CommissionRule(
+              id: rule.id,
+              name: rule.name,
+              categoryId: rule.categoryId,
+              cityId: rule.cityId,
+              ratePercent: rule.ratePercent,
+              reserveAmount: rule.reserveAmount,
+              minBalance: rule.minBalance,
+              isActive: false,
+            ),
+          );
+          expect((await admin.commissionRules()).where((r) => r.name == _ruleName && r.isActive), isEmpty);
+        });
+      }
       await _step('cancelar un pedido', () async {
         final id = await customer.create(
           BookingDraft(

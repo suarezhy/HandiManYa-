@@ -156,8 +156,9 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             setState(() => _scheduleError = 'Elige el día y la hora');
             return;
           }
-          if (start.isBefore(DateTime.now().add(const Duration(minutes: 30)))) {
-            setState(() => _scheduleError = 'Elige una hora con al menos 30 minutos de anticipación');
+          final error = scheduleError(start);
+          if (error != null) {
+            setState(() => _scheduleError = error);
             return;
           }
         }
@@ -233,14 +234,23 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
     }
   }
 
-  void _scheduleLater() {
+  /// "Programar": primero el día y la hora; después se elige a un profesional
+  /// o se publica la solicitud para los de la zona.
+  Future<void> _scheduleLater() async {
     if (!_addressForm.currentState!.validate()) return;
     final draft = _draft(mode: BookingMode.scheduled);
     final category = _category;
     if (draft == null || category == null) return;
+    final when = await showScheduleSheet(context, title: '¿Cuándo lo necesitas?');
+    if (when == null || !mounted) return;
     context.push(
       Routes.chooseProfessional,
-      extra: ChooseProfessionalArgs(draft: draft, category: category, problems: _selectedLabels, photos: _photos),
+      extra: ChooseProfessionalArgs(
+        draft: draft.scheduledWith(start: when.start, durationMinutes: when.durationMinutes),
+        category: category,
+        problems: _selectedLabels,
+        photos: _photos,
+      ),
     );
   }
 
@@ -865,6 +875,85 @@ class _ProblemCard extends StatelessWidget {
 }
 
 /// Día, hora y duración de un servicio programado.
+/// Día, hora y duración elegidos para una solicitud programada.
+class ScheduleChoice {
+  const ScheduleChoice(this.start, this.durationMinutes);
+  final DateTime start;
+  final int durationMinutes;
+}
+
+/// Las mismas reglas que el servidor: desde 30 minutos hasta 60 días desde ahora.
+String? scheduleError(DateTime? start) {
+  if (start == null) return 'Elige el día y la hora';
+  final now = DateTime.now();
+  if (start.isBefore(now.add(const Duration(minutes: 30)))) {
+    return 'Elige una hora con al menos 30 minutos de anticipación';
+  }
+  if (start.isAfter(now.add(const Duration(days: 60)))) return 'Elige un día dentro de los próximos 60 días';
+  return null;
+}
+
+/// Pide el día, la hora y la duración. Devuelve null si la persona lo cierra.
+Future<ScheduleChoice?> showScheduleSheet(BuildContext context, {required String title, ScheduleChoice? initial}) =>
+    showModalBottomSheet<ScheduleChoice>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _WhenSheet(title: title, initial: initial),
+    );
+
+class _WhenSheet extends StatefulWidget {
+  const _WhenSheet({required this.title, this.initial});
+
+  final String title;
+  final ScheduleChoice? initial;
+
+  @override
+  State<_WhenSheet> createState() => _WhenSheetState();
+}
+
+class _WhenSheetState extends State<_WhenSheet> {
+  late DateTime? _date = widget.initial?.start;
+  late TimeOfDay? _time = widget.initial == null ? null : TimeOfDay.fromDateTime(widget.initial!.start);
+  late int _duration = widget.initial?.durationMinutes ?? 120;
+  String? _error;
+
+  void _continue() {
+    final start = (_date == null || _time == null)
+        ? null
+        : DateTime(_date!.year, _date!.month, _date!.day, _time!.hour, _time!.minute);
+    final error = scheduleError(start);
+    if (error != null) return setState(() => _error = error);
+    Navigator.pop(context, ScheduleChoice(start!, _duration));
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(context) + HySpacing.lg),
+    child: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: HySpacing.md),
+          ScheduleFields(
+            date: _date,
+            time: _time,
+            duration: _duration,
+            error: _error,
+            onDate: (d) => setState(() => _date = d),
+            onTime: (t) => setState(() => _time = t),
+            onDuration: (d) => setState(() => _duration = d),
+          ),
+          const SizedBox(height: HySpacing.md),
+          PrimaryButton(key: const Key('schedule-continue'), label: 'Continuar', onPressed: _continue),
+        ],
+      ),
+    ),
+  );
+}
+
 class ScheduleFields extends StatelessWidget {
   const ScheduleFields({
     super.key,

@@ -16,16 +16,24 @@ class BookingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final b = booking;
-    final who = b.otherName ?? (b.status == BookingStatus.awaitingResponse ? 'Buscando profesional…' : 'Sin asignar');
+    final who =
+        b.otherName ??
+        (b.status.isPendingScheduled(b.mode)
+            ? 'Sin asignar'
+            : b.status == BookingStatus.awaitingResponse
+            ? 'Buscando profesional…'
+            : 'Sin asignar');
     return AppCard(
       onTap: () => context.push(Routes.booking(b.id)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: Text(b.category, style: Theme.of(context).textTheme.titleMedium)),
-              StatusChip(b.status),
+              const SizedBox(width: HySpacing.xs),
+              Flexible(child: StatusChip(b.status, mode: b.mode)),
             ],
           ),
           const SizedBox(height: HySpacing.xs),
@@ -57,10 +65,12 @@ class BookingCard extends StatelessWidget {
           ),
           if (b.isOffer && asProfessional) ...[
             const SizedBox(height: HySpacing.sm),
-            const InfoBanner(
-              icon: Icons.bolt_rounded,
+            InfoBanner(
+              icon: b.mode == BookingMode.scheduled ? Icons.event_outlined : Icons.bolt_rounded,
               tone: StatusTone.brand,
-              text: 'Pedido ¡Ya! cerca de ti. Ábrelo para aceptarlo.',
+              text: b.mode == BookingMode.scheduled
+                  ? 'Solicitud programada cerca de ti. Ábrela para aceptarla.'
+                  : 'Pedido ¡Ya! cerca de ti. Ábrelo para aceptarlo.',
             ),
           ],
           if (!asProfessional && b.status == BookingStatus.completed && !b.hasReview) ...[
@@ -85,7 +95,9 @@ class _Meta extends StatelessWidget {
     children: [
       Icon(icon, size: 18, color: HyColors.textMuted),
       const SizedBox(width: 4),
-      Text(text, style: const TextStyle(color: HyColors.textSecondary, fontSize: 15)),
+      Flexible(
+        child: Text(text, style: const TextStyle(color: HyColors.textSecondary, fontSize: 15)),
+      ),
     ],
   );
 }

@@ -32,6 +32,10 @@ select 'topup_requests|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws
 -- Métodos de recarga: el temporal de la prueba no debe quedar.
 select 'topup_methods|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, name, is_active), ';' order by id), ''))
   from public.topup_methods;
+-- Reglas de comisión: la temporal de la prueba no debe quedar.
+select 'commission_rules|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, name, category_id, city_id,
+  rate_percent, fixed_fee, reserve_amount, min_balance, is_active), ';' order by id), ''))
+  from public.commission_rules;
 -- Cuentas de cobro (desde 0038; antes no existe y no se imprime nada).
 select format($f$select 'receiving_accounts|' || count(*) || '|' || md5(coalesce(string_agg(concat_ws(',', id, label, bank_name,
   holder_name, account_number, qr_path, verification, is_active), ';' order by id), '')) from public.receiving_accounts

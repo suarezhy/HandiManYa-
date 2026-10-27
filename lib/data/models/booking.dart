@@ -92,6 +92,22 @@ enum BookingStatus {
   };
 }
 
+/// Una solicitud programada que todavía no aceptó nadie se llama "Pendiente
+/// de profesional": nunca parece confirmada.
+extension PendingScheduled on BookingStatus {
+  bool isPendingScheduled(BookingMode mode) => this == BookingStatus.awaitingResponse && mode == BookingMode.scheduled;
+
+  String labelFor(BookingMode mode) => isPendingScheduled(mode) ? 'Pendiente de profesional' : label;
+
+  String customerHintFor(BookingMode mode) => isPendingScheduled(mode)
+      ? 'Todavía nadie la aceptó. Te avisamos cuando un profesional la acepte; si nadie lo hace a tiempo, se cancela sola.'
+      : customerHint();
+
+  String professionalHintFor(BookingMode mode) => isPendingScheduled(mode)
+      ? 'Solicitud programada cerca de ti. El primero que acepta se queda con el trabajo.'
+      : professionalHint();
+}
+
 extension StatusToneColors on StatusTone {
   Color get foreground => switch (this) {
     StatusTone.neutral => HyColors.textSecondary,
@@ -452,8 +468,9 @@ class BookingDraft {
 
   bool get isYa => mode == BookingMode.now && professionalId == null;
 
-  /// La misma solicitud dirigida a un profesional elegido, para otro momento.
-  BookingDraft scheduledWith({required String professionalId, required DateTime start, required int durationMinutes}) =>
+  /// La misma solicitud para otro momento: dirigida a un profesional elegido, o
+  /// sin profesional (queda "Pendiente de profesional").
+  BookingDraft scheduledWith({String? professionalId, required DateTime start, required int durationMinutes}) =>
       BookingDraft(
         categoryId: categoryId,
         cityId: cityId,

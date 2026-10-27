@@ -236,7 +236,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     return null;
   }
 
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: Routes.splash,
     refreshListenable: refresh,
     redirect: redirect,
@@ -525,6 +525,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+  // Quien entra (después de cerrar sesión o con otra cuenta) empieza en el
+  // inicio de su rol, nunca en la pantalla donde quedó la sesión anterior. Al
+  // abrir la app con la sesión guardada no cambia nada.
+  ref.listen(authUserProvider, (prev, next) {
+    final now = next.value?.id;
+    if (now != null && prev != null && prev.hasValue && prev.value?.id != now) router.go(Routes.splash);
+  });
+  return router;
 });
 
 /// Página Material del propio Flutter para cada ruta.

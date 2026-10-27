@@ -352,6 +352,32 @@ void main() {
     });
   });
 
+  group('Volver a entrar', () {
+    testWidgets('después de cerrar sesión, entrar abre el Inicio del cliente, sin bienvenida ni Perfil', (
+      tester,
+    ) async {
+      final backend = await _openProfile(tester);
+      await _tap(tester, find.text('Cerrar sesión'));
+      await _tap(tester, find.widgetWithText(FilledButton, 'Cerrar sesión'));
+      expect(backend.currentUser, isNull);
+      await loginWithPhone(tester, DemoBackend.customerPhone);
+      expect(backend.currentUser, isNotNull);
+      expect(_router(tester).state.matchedLocation, Routes.home);
+      expect(find.byType(ProfilePage), findsNothing);
+      expect(find.text('Omitir'), findsNothing, reason: 'sin bienvenida para quien ya entró');
+    });
+
+    testWidgets('si entra otra cuenta mientras está en Perfil, empieza en su Inicio', (tester) async {
+      final backend = await _openProfile(tester);
+      expect(find.byType(ProfilePage), findsOneWidget);
+      await tester.runAsync(() => backend.signOut());
+      await tester.runAsync(() => backend.signInAs(DemoBackend.customerPhone));
+      await tester.pumpAndSettle();
+      expect(_router(tester).state.matchedLocation, Routes.home);
+      expect(find.byType(ProfilePage), findsNothing);
+    });
+  });
+
   group('Eliminar mi cuenta', () {
     testWidgets('pide confirmación; Volver no pide nada y confirmar deja el pedido registrado', (tester) async {
       final backend = await _openProfile(tester);
