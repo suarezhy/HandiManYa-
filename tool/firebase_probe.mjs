@@ -72,7 +72,8 @@ async function install(key, headers) {
   if (res.ok && body.authToken?.token) {
     const del = await fetch(
       `https://firebaseinstallations.googleapis.com/v1/projects/${project}/installations/${body.fid}`,
-      { method: 'DELETE', headers: { 'x-goog-api-key': key, Authorization: `FIS_v2 ${body.authToken.token}`, ...headers } },
+      // Borrar se autoriza con el refreshToken de la instalación (no con el authToken).
+      { method: 'DELETE', headers: { 'x-goog-api-key': key, Authorization: `FIS_v2 ${body.refreshToken}`, ...headers } },
     );
     return { status: res.status, deleted: del.status };
   }
@@ -144,7 +145,14 @@ async function crossCheck(label, key) {
     `https://firebaseinstallations.googleapis.com/v1/projects/${project}/installations?key=${encodeURIComponent(k)}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fid: fid(), appId, authVersion: 'FIS_v2', sdkVersion: 'a:18.0.0' }) },
   );
-  const q = viaQuery.ok ? { status: 200 } : { status: viaQuery.status, ...reason(await viaQuery.json().catch(() => ({}))) };
+  const qBody = await viaQuery.json().catch(() => ({}));
+  const q = viaQuery.ok ? { status: 200 } : { status: viaQuery.status, ...reason(qBody) };
+  if (viaQuery.ok && qBody.refreshToken) {
+    await fetch(`https://firebaseinstallations.googleapis.com/v1/projects/${project}/installations/${qBody.fid}`, {
+      method: 'DELETE',
+      headers: { 'x-goog-api-key': k, Authorization: `FIS_v2 ${qBody.refreshToken}` },
+    });
+  }
   console.log(`  ${label}, clave en la dirección: HTTP ${q.status} ${q.reason ?? ''}`.trimEnd());
   const other = await fetch(`https://identitytoolkit.googleapis.com/v1/projects?key=${encodeURIComponent(k)}`);
   const o = other.ok ? { status: 200 } : { status: other.status, ...reason(await other.json().catch(() => ({}))) };
