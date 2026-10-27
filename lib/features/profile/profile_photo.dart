@@ -107,7 +107,12 @@ class ProfilePhotoButton extends ConsumerWidget {
           context,
           account.photoBytes != null
               ? Image.memory(account.photoBytes!, fit: BoxFit.contain)
-              : Image.network(account.photoUrl!, fit: BoxFit.contain),
+              : Image.network(
+                  account.photoUrl!,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) =>
+                      const Icon(Icons.broken_image_outlined, color: HyColors.textMuted, size: 48),
+                ),
         );
       case 'remove':
         final ok = await confirmDialog(

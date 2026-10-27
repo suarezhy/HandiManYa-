@@ -5,6 +5,8 @@
 // Solo corre en el flujo .github/workflows/e2e-dev.yml, que antes crea las
 // cuentas temporales (supabase/e2e/setup.sql) y después borra todo
 // (supabase/e2e/cleanup.sql). Sin E2E_URL, E2E_ANON_KEY y E2E_PASSWORD se salta.
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/core/services/device_auth.dart';
 import 'package:handimanya/core/utils/app_error.dart';
@@ -15,6 +17,7 @@ import 'package:handimanya/data/models/finance.dart';
 import 'package:handimanya/data/models/geo.dart';
 import 'package:handimanya/data/models/staff.dart';
 import 'package:handimanya/data/models/user.dart';
+import 'package:handimanya/data/models/wallet.dart';
 import 'package:handimanya/data/supabase/supabase_backend.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -144,6 +147,31 @@ void main() {
       await _step('un cliente no puede aprobar', () async {
         await expectLater(customer.reviewApplication(_proId, VerificationStatus.approved), _code('HMY_FORBIDDEN'));
       });
+      await _step('el profesional no puede aprobarse ni aceptar sus propios documentos', () async {
+        await expectLater(pro.reviewApplication(_proId, VerificationStatus.approved), _code('HMY_FORBIDDEN'));
+        final ids = (await admin.adminApplicationDetail(_proId)).documents.where((d) => d.docType.startsWith('ci_'));
+        for (final d in ids) {
+          await expectLater(pro.reviewDocument(d.id, DocumentStatus.accepted), _code('HMY_FORBIDDEN'));
+        }
+        // Tampoco escribiendo directo en las tablas: la base lo impide.
+        final (_, db) = await _signInWithClient('e2e-pro@test.bo');
+        final changed = await db
+            .from('professional_documents')
+            .update({'status': 'accepted'})
+            .eq('professional_id', _proId)
+            .select('id');
+        expect(changed, isEmpty);
+        try {
+          await db.from('professional_profiles').update({'status': 'approved'}).eq('user_id', _proId);
+        } on PostgrestException {
+          // Sin permiso de escritura: es lo esperado.
+        }
+        final after = await admin.adminApplicationDetail(_proId);
+        expect(after.documents.where((d) => d.docType.startsWith('ci_')).map((d) => d.status).toSet(), {
+          DocumentStatus.pending,
+        });
+        expect((await admin.adminApplications()).map((a) => a.userId), contains(_proId), reason: 'sigue pendiente');
+      });
       await _step('el equipo ve la postulación, acepta el carnet y la aprueba', () async {
         final pending = await admin.adminApplications();
         expect(pending.map((a) => a.userId), contains(_proId));
@@ -224,6 +252,7 @@ void main() {
       await _step('otra cuenta no ve el pedido', () async {
         await expectLater(admin.myBookings(asProfessional: false), completion(isEmpty));
       });
+      final walletBefore = await _step('saldo del profesional antes de aceptar', pro.wallet);
       await _step('el profesional acepta y ve la dirección', () async {
         await pro.accept(bookingId, isOffer: false);
         final d = await pro.detail(bookingId);
@@ -337,18 +366,38 @@ void main() {
         await pro.updateProgress(bookingId, BookingStatus.inProgress);
         await pro.updateProgress(bookingId, BookingStatus.workFinished, finalAmount: 150);
       });
-      await _step('el cliente confirma, paga en efectivo y califica', () async {
+      final preview = await _step('comisión esperada sobre el precio final', () => pro.commissionPreview(bookingId));
+      await _step('el cliente confirma, paga con QR y califica', () async {
         await customer.confirmCompletion(bookingId);
-        await customer.acknowledgePayment(bookingId, PaymentMethod.cash);
+        await customer.acknowledgePayment(bookingId, PaymentMethod.qr);
         await customer.submitReview(bookingId, 5, 'Prueba E2E: puntual y prolijo');
         final d = await customer.detail(bookingId);
         expect(d.status, BookingStatus.completed);
         expect(d.hasReview, isTrue);
+        expect(d.paymentMethod, PaymentMethod.qr);
       });
-      await _step('la billetera nunca queda con reserva colgada', () async {
+      await _step('el profesional no cambia el método de pago que eligió el cliente', () async {
+        await pro.acknowledgePayment(bookingId, PaymentMethod.cash);
+        expect((await customer.detail(bookingId)).paymentMethod, PaymentMethod.qr);
+      });
+      await _step('la comisión cobrada es la esperada y no queda reserva colgada', () async {
         final w = await pro.wallet();
         expect(w.reserved, 0);
         expect(w.available, greaterThanOrEqualTo(0));
+        if (preview == null || !preview.hasRule) {
+          // ignore: avoid_print
+          print('aviso - dev no tiene regla de comisión para este servicio; el saldo no debe cambiar');
+          expect(w.available, walletBefore.available);
+          return;
+        }
+        // ignore: avoid_print
+        print('comisión: esperada Bs ${preview.expected}, saldo antes Bs ${walletBefore.available}');
+        final charged = walletBefore.available - w.available;
+        expect(charged, closeTo(math.min(preview.expected, walletBefore.available), 0.005));
+        if (preview.expected > 0 && walletBefore.available > 0) {
+          final ledger = await pro.ledger();
+          expect(ledger.where((e) => e.type == LedgerType.commissionCapture), isNotEmpty);
+        }
       });
 
       // Cancelación: un segundo pedido que el cliente cancela antes de que lo acepten.

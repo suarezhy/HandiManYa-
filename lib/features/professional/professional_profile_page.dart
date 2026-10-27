@@ -153,7 +153,16 @@ class _Body extends ConsumerWidget {
                     separatorBuilder: (_, _) => const SizedBox(width: HySpacing.xs),
                     itemBuilder: (_, i) => ClipRRect(
                       borderRadius: BorderRadius.circular(HyRadii.md),
-                      child: Image.network(detail.portfolioUrls[i], width: 120, height: 120, fit: BoxFit.cover),
+                      child: Image.network(
+                        detail.portfolioUrls[i],
+                        width: 120,
+                        height: 120,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const ColoredBox(
+                          color: HyColors.surfaceMuted,
+                          child: SizedBox.square(dimension: 120, child: Icon(Icons.broken_image_outlined)),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -161,7 +170,7 @@ class _Body extends ConsumerWidget {
               const SectionHeader(title: 'Reseñas'),
               reviews.when(
                 loading: () => const LoadingView(),
-                error: (e, _) => ErrorView(error: e),
+                error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(professionalReviewsProvider(s.id))),
                 data: (list) => list.isEmpty
                     ? const Text('Todavía no tiene reseñas.', style: TextStyle(color: HyColors.textMuted))
                     : Column(children: [for (final r in list) _ReviewTile(review: r)]),

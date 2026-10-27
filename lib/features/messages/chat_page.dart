@@ -92,7 +92,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           Expanded(
             child: messages.when(
               loading: () => const LoadingView(),
-              error: (e, _) => ErrorView(error: e),
+              error: (e, _) =>
+                  ErrorView(error: e, onRetry: () => ref.invalidate(messagesProvider(widget.conversationId))),
               data: (list) => list.isEmpty
                   ? const EmptyState(
                       icon: Icons.waving_hand_outlined,
