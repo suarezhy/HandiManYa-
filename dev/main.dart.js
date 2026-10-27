@@ -137106,7 +137106,7 @@ b7V(a){var s=0,r=A.n(t.A7),q,p=this,o,n,m
 var $async$Ql=A.j(function(b,c){if(b===1)return A.k(c,r)
 for(;;)switch(s){case 0:m=A
 s=3
-return A.f(p.a.cR("service_problems").hz("id, category_id, name, icon, is_other, sort_order").dN("category_id",a).dN("is_active",!0).kE("sort_order").kE("id"),$async$Ql)
+return A.f(p.a.cR("service_problems").hz("id, category_id, name, icon, is_other, sort_order, opens_category_id").dN("category_id",a).dN("is_active",!0).kE("sort_order").kE("id"),$async$Ql)
 case 3:o=m.dB(c)
 n=A.ae(o).i("ac<1,fD>")
 o=A.a4(new A.ac(o,A.bX5(),n),n.i("at.E"))
@@ -150423,7 +150423,7 @@ p=B.d.aw(i.gct().b0(14)/14,2)
 h=A.ch(p,".",",")
 p=B.d.aL(i.a.a)
 o=i.ay?" \xb7 negrita":""
-s.push(new A.a1(B.ez,A.v("Compilaci\xf3n de prueba 26 \xb7 "+("pantalla "+p+" \xb7 letra "+h+o),B.b4y,g,g,g,g,B.dl,B.aO,g,g),g))
+s.push(new A.a1(B.ez,A.v("Compilaci\xf3n de prueba 27 \xb7 "+("pantalla "+p+" \xb7 letra "+h+o),B.b4y,g,g,g,g,B.dl,B.aO,g,g),g))
 return A.bU(r,g,A.cV(A.a([new A.cW(A.X(s,B.w,g,B.e,B.f,0,B.i),B.am,g)],q),g,g,g,B.p2,g,g,B.B,!1),g,g,g,g)}}
 A.aTj.prototype={
 apj(a){var s=0,r=A.n(t.H),q=this,p
