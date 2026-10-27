@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:handimanya/app.dart';
 import 'package:handimanya/core/services/location_service.dart';
 import 'package:handimanya/core/theme/app_theme.dart';
+import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/models/booking.dart';
 import 'package:handimanya/data/models/geo.dart';
@@ -561,6 +562,101 @@ void main() {
     });
   });
 
+  group('Cancelar sin explicar el motivo', () {
+    Future<String> pending(DemoAppBackend app, BookingMode mode) async {
+      await app.signInAs(DemoBackend.customerPhone);
+      return app.create(
+        BookingDraft(
+          categoryId: 1,
+          cityId: 1,
+          mode: mode,
+          description: 'Gotea el caño de la cocina',
+          address: 'Calle Los Pinos 123',
+          scheduledStart: mode == BookingMode.scheduled ? DateTime.now().add(const Duration(days: 2)) : null,
+        ),
+      );
+    }
+
+    for (final mode in [BookingMode.now, BookingMode.scheduled]) {
+      testWidgets('nadie aceptó (${mode.name}): un toque cancela, sin preguntas', (tester) async {
+        final app = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
+        addTearDown(app.dispose);
+        final id = (await tester.runAsync(() => pending(app, mode)))!;
+        await _pumpDetail(tester, app, id, settle: false);
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        await tester.tap(find.byKey(const Key('customer-cancel')));
+        for (var i = 0; i < 10; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(find.byType(AlertDialog), findsNothing, reason: 'sin confirmación');
+        expect(find.text('Motivo'), findsNothing, reason: 'sin pedir motivo');
+        expect(find.text('Cancelada'), findsWidgets);
+        expect(find.text('Cancelada por el cliente'), findsWidgets);
+        expect(find.byKey(const Key('customer-cancel')), findsNothing);
+        final b = (await tester.runAsync(() => app.myBookings(asProfessional: false)))!.firstWhere((x) => x.id == id);
+        expect(b.status, BookingStatus.cancelled, reason: 'sigue en el historial como cancelada');
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
+
+    testWidgets('con profesional: una pregunta corta, "Volver" no cancela y "Sí, cancelar" sí', (tester) async {
+      final app = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
+      addTearDown(app.dispose);
+      final id = (await tester.runAsync(() async {
+        final id = await _confirmedBooking(app);
+        await app.signInAs(DemoBackend.customerPhone);
+        return id;
+      }))!;
+      await _pumpDetail(tester, app, id);
+      await _tap(tester, find.byKey(const Key('customer-cancel')));
+      expect(find.text('¿Cancelar este servicio?'), findsOneWidget);
+      expect(find.text('Motivo'), findsNothing);
+      await tester.tap(find.text('Volver'));
+      await tester.pumpAndSettle();
+      expect(find.text('Confirmado'), findsWidgets, reason: 'Volver no cancela');
+      await _tap(tester, find.byKey(const Key('customer-cancel')));
+      await tester.tap(find.text('Sí, cancelar'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cancelada'), findsWidgets);
+      expect(find.text('Solicitud cancelada'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('cancelar dos veces no repite nada; en camino ya no se cancela desde la app', (tester) async {
+      final app = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
+      addTearDown(app.dispose);
+      await tester.runAsync(() async {
+        final id = await _confirmedBooking(app);
+        await app.signInAs(DemoBackend.customerPhone);
+        await app.cancel(id, '');
+        await app.cancel(id, '');
+        final d = await app.detail(id);
+        expect(d.status, BookingStatus.cancelled);
+        expect(d.events.where((e) => e.status == BookingStatus.cancelled), hasLength(1));
+        // El profesional sigue dando un motivo.
+        final other = await _confirmedBooking(app);
+        Object? err;
+        try {
+          await app.cancel(other, '');
+        } catch (e) {
+          err = e;
+        }
+        expect(AppError.from(err!).code, 'HMY_REASON_REQUIRED');
+        await app.updateProgress(other, BookingStatus.onTheWay);
+        await app.signInAs(DemoBackend.customerPhone);
+        err = null;
+        try {
+          await app.cancel(other, '');
+        } catch (e) {
+          err = e;
+        }
+        expect(err, isNotNull, reason: 'en camino: se reporta un problema, no se cancela');
+      });
+    });
+  });
+
   group('Emergencia en una solicitud activa', () {
     testWidgets('no aparece antes de que un profesional acepte', (tester) async {
       final app = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
@@ -597,7 +693,7 @@ void main() {
         return id;
       }))!;
       await _pumpDetail(tester, app, id);
-      expect(find.text('Cancelado'), findsWidgets, reason: 'el detalle cargó');
+      expect(find.text('Cancelada'), findsWidgets, reason: 'el detalle cargó');
       expect(find.byKey(const Key('emergency-link')), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });

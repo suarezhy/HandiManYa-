@@ -195,6 +195,33 @@ void main() {
     );
   });
 
+  test('errores nativos de Firebase en Android: un código claro y nunca el mensaje', () {
+    String codeOf(String native) => pushError(Exception(native), PushStep.firebase).code!;
+    // Así llega el error de una clave de API inválida (lo que pasó en el build 30).
+    const invalid =
+        '[firebase_messaging/unknown] java.io.IOException: java.util.concurrent.ExecutionException: '
+        'com.google.firebase.installations.FirebaseInstallationsException: Firebase servers have received a bad '
+        'request from this client. API key not valid. Please pass a valid API key. AIzaSyFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0';
+    expect(codeOf(invalid), 'push_API_KEY_INVALID');
+    final message = pushError(Exception(invalid), PushStep.firebase).message;
+    expect(message, contains('Firebase no aceptó la configuración'));
+    expect(message, isNot(contains('AIza')), reason: 'nunca muestra la clave');
+    expect(
+      codeOf('[firebase_messaging/unknown] Requests from this Android client application <empty> are blocked.'),
+      'push_API_KEY_BLOCKED',
+    );
+    expect(
+      codeOf('FirebaseInstallationsException: Firebase servers have received a bad request from this client.'),
+      'push_FIS_BAD_CONFIG',
+    );
+    expect(
+      codeOf('FirebaseInstallationsException: Firebase Installations Service is unavailable. Please try again later.'),
+      'push_FIS_UNAVAILABLE',
+    );
+    expect(codeOf('[core/no-app] No Firebase App \'[DEFAULT]\' has been created'), 'push_FIREBASE_INIT');
+    expect(codeOf('java.io.IOException: SERVICE_NOT_AVAILABLE'), 'push_SERVICE_NOT_AVAILABLE');
+  });
+
   testWidgets('con permiso ya dado, se registra al iniciar sesión', (tester) async {
     final push = _FakePush()..perm = PushPermission.granted;
     final (backend, _) = await _pump(tester, push);

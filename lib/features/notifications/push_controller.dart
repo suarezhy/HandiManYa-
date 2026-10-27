@@ -151,7 +151,8 @@ AppError pushError(Object error, PushStep step) {
   final raw = error.toString();
   final code = error is TimeoutException
       ? 'TIMEOUT'
-      : RegExp(
+      : _firebaseCause(raw) ??
+            RegExp(
               r'FIS_AUTH_ERROR|SERVICE_NOT_AVAILABLE|AUTHENTICATION_FAILED|MISSING_INSTANCEID_SERVICE|'
               r'TOO_MANY_REGISTRATIONS|PHONE_REGISTRATION_ERROR|INVALID_SENDER|API_KEY|PERMISSION_DENIED|NO_TOKEN|'
               r'HMY_[A-Z_]+|PGRST\d+|\b\d{5}\b',
@@ -168,15 +169,38 @@ AppError pushError(Object error, PushStep step) {
       'SERVICE_NOT_AVAILABLE' ||
       'TIMEOUT' => 'Firebase no respondió. Revisa tu conexión a internet y vuelve a intentar.',
       'FIS_AUTH_ERROR' ||
+      'API_KEY_INVALID' ||
+      'API_KEY_BLOCKED' ||
+      'FIS_BAD_CONFIG' ||
       'AUTHENTICATION_FAILED' ||
       'API_KEY' ||
       'INVALID_SENDER' ||
       'PERMISSION_DENIED' => 'Firebase no aceptó la configuración de esta versión de la app. Avísanos para revisarla.',
-      'MISSING_INSTANCEID_SERVICE' => 'Este teléfono no tiene los servicios de Google Play necesarios para los avisos.',
+      'MISSING_INSTANCEID_SERVICE' ||
+      'NO_PLAY_SERVICES' => 'Este teléfono no tiene los servicios de Google Play necesarios para los avisos.',
+      'FIS_UNAVAILABLE' => 'Firebase no está disponible ahora. Vuelve a intentar en un momento.',
       _ => 'No pudimos activar los avisos en este teléfono. Vuelve a intentar en un momento.',
     };
   }
   return AppError('$message (código: $code)', code: 'push_$code');
+}
+
+/// Causa de un error de Firebase en Android, según el mensaje de la excepción
+/// nativa (llega como texto). Nunca devuelve el mensaje: solo un código fijo,
+/// para no mostrar claves, tokens ni datos de la persona.
+String? _firebaseCause(String raw) {
+  final m = raw.toLowerCase();
+  if (m.contains('api key not valid') || m.contains('api_key_invalid')) return 'API_KEY_INVALID';
+  if (m.contains('are blocked') || m.contains('api_key_android_app_blocked') || m.contains('api_key_service_blocked')) {
+    return 'API_KEY_BLOCKED';
+  }
+  if (m.contains('bad request from this client') || m.contains('bad_config') || m.contains('invalid configuration')) {
+    return 'FIS_BAD_CONFIG';
+  }
+  if (m.contains('installations service is unavailable')) return 'FIS_UNAVAILABLE';
+  if (m.contains('google play services') || m.contains('service_missing')) return 'NO_PLAY_SERVICES';
+  if (m.contains('[core/') || m.contains('no firebase app')) return 'FIREBASE_INIT';
+  return null;
 }
 
 final pushControllerProvider = AsyncNotifierProvider<PushController, PushState>(PushController.new);

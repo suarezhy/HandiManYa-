@@ -1650,9 +1650,12 @@ class DemoBackend
     await _latency();
     final b = _get(bookingId);
     final me = _me.id;
-    if (reason.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
     final isCustomer = b.customerId == me;
     if (!isCustomer && b.professionalId != me) throw AppError.from('HMY_FORBIDDEN');
+    // Como el servidor: cancelar dos veces no repite nada, y el cliente no
+    // tiene que dar un motivo (el profesional sí).
+    if (b.status == BookingStatus.cancelled) return;
+    if (!isCustomer && reason.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
     _requireStatus(
       b,
       isCustomer
@@ -1660,7 +1663,7 @@ class DemoBackend
           : {BookingStatus.requested, BookingStatus.quoteSent, BookingStatus.confirmed, BookingStatus.onTheWay},
     );
     b.offers = {};
-    _move(b, BookingStatus.cancelled, note: reason.trim(), actorId: me);
+    _move(b, BookingStatus.cancelled, note: reason.trim().isEmpty ? customerCancelNote : reason.trim(), actorId: me);
   }
 
   @override

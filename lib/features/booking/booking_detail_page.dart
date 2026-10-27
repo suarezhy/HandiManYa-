@@ -384,7 +384,10 @@ class _StatusHeader extends ConsumerWidget {
             ],
             if (b.status == BookingStatus.cancelled && (b.cancelReason ?? '').isNotEmpty) ...[
               const SizedBox(height: 4),
-              Text('Motivo: ${b.cancelReason}', style: TextStyle(color: b.status.tone.foreground)),
+              Text(
+                b.cancelReason == customerCancelNote ? b.cancelReason! : 'Motivo: ${b.cancelReason}',
+                style: TextStyle(color: b.status.tone.foreground),
+              ),
             ],
           ],
         ),
@@ -552,6 +555,7 @@ class _ActionsState extends ConsumerState<_Actions> {
       }
     }
 
+    // El profesional cuenta por qué cancela (lo lee el cliente).
     Future<void> cancel() async {
       final reason = await promptText(
         context,
@@ -561,6 +565,23 @@ class _ActionsState extends ConsumerState<_Actions> {
         hint: 'Cuéntanos por qué',
       );
       if (reason != null) await _run(() => api.cancel(b.id, reason), success: 'Solicitud cancelada');
+    }
+
+    // El cliente nunca tiene que explicar por qué cancela. Si nadie aceptó
+    // todavía, se cancela al tocar; si ya hay un profesional, se pregunta una vez.
+    Future<void> customerCancel() async {
+      if (_busy) return;
+      if (s == BookingStatus.confirmed) {
+        final ok = await confirmDialog(
+          context,
+          title: '¿Cancelar este servicio?',
+          message: 'Le avisaremos al profesional.',
+          confirm: 'Sí, cancelar',
+          destructive: true,
+        );
+        if (!ok) return;
+      }
+      await _run(() => api.cancel(b.id, ''), success: 'Solicitud cancelada');
     }
 
     Future<void> dispute() async {
@@ -597,7 +618,13 @@ class _ActionsState extends ConsumerState<_Actions> {
     if (b.viewerIsCustomer) {
       switch (s) {
         case BookingStatus.requested || BookingStatus.awaitingResponse:
-          secondary.add(SecondaryButton(label: 'Cancelar solicitud', onPressed: cancel));
+          secondary.add(
+            SecondaryButton(
+              key: const Key('customer-cancel'),
+              label: 'Cancelar solicitud',
+              onPressed: _busy ? null : customerCancel,
+            ),
+          );
         case BookingStatus.quoteSent:
           primary.add(
             PrimaryButton(
@@ -610,7 +637,13 @@ class _ActionsState extends ConsumerState<_Actions> {
           );
         case BookingStatus.confirmed:
           addChat();
-          secondary.add(SecondaryButton(label: 'Cancelar', onPressed: cancel));
+          secondary.add(
+            SecondaryButton(
+              key: const Key('customer-cancel'),
+              label: 'Cancelar',
+              onPressed: _busy ? null : customerCancel,
+            ),
+          );
         case BookingStatus.onTheWay when arrival?.stage == ArrivalStage.waitingPin:
           primary.add(
             PrimaryButton(

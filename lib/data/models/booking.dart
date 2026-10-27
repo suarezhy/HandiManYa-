@@ -34,6 +34,9 @@ enum StatusTone { neutral, info, warning, success, danger, brand }
 
 /// Estados de una solicitud. El identificador interno coincide con el enum
 /// `booking_status` de la base de datos; la etiqueta es la que ve el usuario.
+/// Lo que guarda el servidor cuando el cliente cancela sin dar un motivo.
+const customerCancelNote = 'Cancelada por el cliente';
+
 enum BookingStatus {
   draft('draft', 'Borrador', StatusTone.neutral),
   requested('requested', 'Solicitado', StatusTone.info),
@@ -45,7 +48,7 @@ enum BookingStatus {
   inProgress('in_progress', 'En progreso', StatusTone.brand),
   workFinished('work_finished', 'Trabajo terminado', StatusTone.warning),
   completed('completed', 'Completado', StatusTone.success),
-  cancelled('cancelled', 'Cancelado', StatusTone.neutral),
+  cancelled('cancelled', 'Cancelada', StatusTone.neutral),
   disputed('disputed', 'En disputa', StatusTone.danger);
 
   const BookingStatus(this.key, this.label, this.tone);
