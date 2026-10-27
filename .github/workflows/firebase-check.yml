@@ -1,0 +1,41 @@
+name: Revisar Firebase (avisos, sin teléfono)
+
+# Hace lo mismo que el teléfono antes de pedir el token de avisos: crea una
+# instalación de Firebase con la clave, el ID de app, el paquete y la huella
+# SHA-1 del APK de prueba, y la borra. Muestra solo códigos y mensajes de error;
+# la clave queda oculta. Gratis (Firebase Installations no cobra).
+
+# Solo se activa al subir la rama firebase/check-dev.
+on:
+  push:
+    branches: [firebase/check-dev]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: La misma llave de depuración que el APK de prueba
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probar la configuración de Firebase
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        run: |
+          test -n "$FIREBASE_API_KEY" || { echo "::error::Falta el secreto FIREBASE_API_KEY"; exit 1; }
+          echo "::add-mask::$FIREBASE_API_KEY"
+          ks="$HOME/.android/debug.keystore"
+          test -f "$ks" || { echo "::error::No se encontró la llave de depuración de las compilaciones"; exit 1; }
+          set -a; . config/firebase-dev.public.env; set +a
+          export ANDROID_PACKAGE=bo.handimanya.handimanya
+          export ANDROID_CERT_SHA1=$(keytool -list -v -keystore "$ks" -storepass android | grep -m1 "SHA1:" | awk '{print $2}')
+          echo "SHA-1 del APK de prueba: $ANDROID_CERT_SHA1" | tee -a "$GITHUB_STEP_SUMMARY"
+          node tool/firebase_probe.mjs | tee -a "$GITHUB_STEP_SUMMARY"
