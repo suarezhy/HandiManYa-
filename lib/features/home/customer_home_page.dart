@@ -17,6 +17,7 @@ import '../../router.dart';
 import '../common/city_picker.dart';
 import '../common/professional_card.dart';
 import 'home_ad.dart';
+import 'home_brand_banner.dart';
 import 'home_map.dart';
 import '../../core/widgets/word_safe_text.dart';
 
@@ -87,6 +88,8 @@ class CustomerHomePage extends ConsumerWidget {
                       },
                     ),
                     const _SearchBar(),
+                    const SizedBox(height: HySpacing.sm),
+                    const HomeBrandBanner(),
                     const SizedBox(height: HySpacing.md),
                     const HomeMapSection(),
                     const SizedBox(height: HySpacing.xs),

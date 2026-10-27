@@ -304,11 +304,37 @@ void main() {
         expect(find.textContaining('Encuéntral'), findsNothing, reason: '$why: sin banner de promoción');
         expect(find.byKey(const Key('home-promo')), findsNothing, reason: why);
 
+        // Banner de marca: justo debajo del buscador, antes del mapa, sin
+        // botones y entero (crece con la letra, no se corta).
+        final banner = find.byKey(const Key('home-brand-banner'));
+        expect(banner, findsOneWidget, reason: why);
+        final bannerRect = tester.getRect(banner);
+        final searchBottom = tester.getRect(find.byType(TextField).first).bottom;
+        expect(bannerRect.top - searchBottom, inInclusiveRange(0, HySpacing.md), reason: '$why: debajo del buscador');
+        expect(bannerRect.bottom, lessThan(tester.getRect(find.byKey(const Key('home-map'))).top), reason: why);
+        expect(bannerRect.left, greaterThanOrEqualTo(0), reason: why);
+        expect(bannerRect.right, lessThanOrEqualTo(size.width), reason: why);
+        if (scale == 1.0 && size.width < 700) {
+          expect(bannerRect.height, inInclusiveRange(85, 100), reason: '$why: compacto');
+        }
+        expect(
+          find.descendant(of: banner, matching: find.byWidgetPredicate((w) => w is ButtonStyleButton || w is InkWell)),
+          findsNothing,
+          reason: '$why: sin botones',
+        );
+        for (final k in ['home-brand-headline', 'home-brand-subtitle']) {
+          final p = _paragraph(tester, find.byKey(Key(k)));
+          expect(p.didExceedMaxLines, isFalse, reason: '$why: $k');
+          expect(_brokenWords(p), isEmpty, reason: '$why: $k');
+          final r = tester.getRect(find.byKey(Key(k)));
+          expect(r.bottom, lessThanOrEqualTo(bannerRect.bottom), reason: '$why: $k dentro del banner');
+        }
+
         // Mapa (o aviso) antes de los servicios, del ancho de la página.
         final map = find.byKey(const Key('home-map'));
         expect(map, findsOneWidget, reason: '$why: en Santa Cruz hay profesionales disponibles');
         final mapRect = tester.getRect(map);
-        expect(mapRect.height, inInclusiveRange(200, 240), reason: why);
+        expect(mapRect.height, inInclusiveRange(200 - 1e-6, 240 + 1e-6), reason: why); // décimas del redondeo
         expect(mapRect.left, greaterThanOrEqualTo(0), reason: why);
         expect(mapRect.right, lessThanOrEqualTo(size.width), reason: why);
         expect(mapRect.top, greaterThan(tester.getRect(find.byType(TextField).first).bottom), reason: why);
