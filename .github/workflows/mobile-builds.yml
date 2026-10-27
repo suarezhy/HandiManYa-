@@ -49,6 +49,21 @@ jobs:
           f="config/supabase-${ENTORNO}.json"
           test -f "$f" || { echo "::error::Falta $f"; exit 1; }
           jq -e '.SUPABASE_URL != "" and .SUPABASE_ANON_KEY != ""' "$f" >/dev/null
+      # Avisos push: los valores públicos están en config/firebase-<entorno>.public.env
+      # y la clave de API sale del secreto FIREBASE_API_KEY (nunca en el repositorio
+      # ni en el registro). Sin el secreto se compila igual, sin avisos push.
+      - name: Preparar Firebase (si hay secreto)
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        run: |
+          pub="config/firebase-${ENTORNO}.public.env"
+          if [ -z "$FIREBASE_API_KEY" ] || [ ! -f "$pub" ]; then
+            echo "::warning::Sin FIREBASE_API_KEY o sin $pub: esta compilación no tendrá avisos push."
+            exit 0
+          fi
+          echo "::add-mask::$FIREBASE_API_KEY"
+          { cat "$pub"; echo "FIREBASE_API_KEY=$FIREBASE_API_KEY"; } | python3 tool/firebase_config.py "$ENTORNO"
+          jq -r 'keys | join(", ")' "config/firebase-${ENTORNO}.json"
       # La misma llave de depuración en cada compilación: así el APK de prueba
       # se instala encima del anterior sin desinstalar (solo para probar).
       - name: Reusar la llave de depuración de las pruebas
