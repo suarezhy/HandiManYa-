@@ -14,13 +14,13 @@ const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(String.fromCharCode(...pkcs8))}
 const sa = { project_id: 'hmy-prueba', client_email: 'push@hmy-prueba.iam.gserviceaccount.com', private_key: pem };
 
 const base: Env = {
-  PUSH_WEBHOOK_SECRET: 'secreto-de-prueba',
+  PUSH_WEBHOOK_SECRET: 'secreto-de-prueba-largo-0123456789abcdef',
   FCM_SERVICE_ACCOUNT: JSON.stringify(sa),
   SUPABASE_URL: 'https://x.supabase.co',
   SUPABASE_SERVICE_ROLE_KEY: 'k',
 };
 
-const request = (secret = 'secreto-de-prueba') =>
+const request = (secret = 'secreto-de-prueba-largo-0123456789abcdef') =>
   new Request('https://x.supabase.co/functions/v1/send-push', {
     method: 'POST',
     body: '{"type":"INSERT"}',
@@ -66,6 +66,20 @@ test('sin secreto configurado no hace nada', async () => {
   const r = await handlePush(request(), { ...base, PUSH_WEBHOOK_SECRET: undefined }, fn);
   assert.equal(r.body.error, 'HMY_PUSH_NOT_CONFIGURED');
   assert.equal(calls.length, 0);
+});
+
+test('un secreto corto cuenta como no configurado: no se abre con uno fácil', async () => {
+  const { fn, calls } = fakeFetch([[item(1)]]);
+  const r = await handlePush(request('corto'), { ...base, PUSH_WEBHOOK_SECRET: 'corto' }, fn);
+  assert.equal(r.body.error, 'HMY_PUSH_NOT_CONFIGURED');
+  assert.equal(calls.length, 0);
+});
+
+test('sin el encabezado no llama a la base ni a Firebase', async () => {
+  const { fn, calls } = fakeFetch([[item(1)]]);
+  const r = await handlePush(new Request('https://x/send-push', { method: 'POST', body: '{"token":"otro"}' }), base, fn);
+  assert.equal(r.status, 401);
+  assert.equal(calls.length, 0, 'el cuerpo de la llamada nunca se usa');
 });
 
 test('sin Firebase configurado no reclama nada: la cola queda pendiente', async () => {

@@ -167,7 +167,8 @@ export async function classify(id: number, res: Response): Promise<Report> {
 /** Lo que pasa cuando el webhook de la base avisa que hay avisos en cola. */
 export async function handlePush(req: Request, env: Env, fetchFn: Fetch, nowSeconds?: number): Promise<PushResult> {
   const secret = env.PUSH_WEBHOOK_SECRET;
-  if (!secret) return fail(500, 'HMY_PUSH_NOT_CONFIGURED');
+  // Sin un secreto largo la función no hace nada: nunca queda abierta.
+  if (!secret || secret.length < 32) return fail(500, 'HMY_PUSH_NOT_CONFIGURED');
   const given = req.headers.get('x-hmy-push-secret') ?? '';
   if (!timingSafeEqual(given, secret)) return fail(401, 'HMY_UNAUTHORIZED');
 
