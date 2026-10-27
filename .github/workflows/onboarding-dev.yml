@@ -1,0 +1,51 @@
+name: Primer ingreso de prueba (handimanya-flutter-dev)
+
+# Deja como nuevos los números de prueba de primer ingreso del proyecto de
+# DESARROLLO: +591 7000 0004 (cliente) y +591 7000 0005 (profesional), para
+# repetir el registro en el teléfono. Son números de prueba de Supabase con su
+# propio código fijo: nadie recibe un mensaje y nada se cobra.
+#
+# Solo se activa al subir la rama supabase/onboarding-dev. Nunca toca las
+# cuentas de prueba por rol (01, 02, 03) ni la del dueño: lo comprueba antes y
+# después.
+
+on:
+  push:
+    branches: [supabase/onboarding-dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev-db
+  cancel-in-progress: false
+
+jobs:
+  reset:
+    name: Dejar como nuevos los números 04 y 05
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      EXPECTED_REF: yldqopeldibwgbwmdnzy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar que es el proyecto nuevo
+        run: supabase/scripts/check_target.sh
+
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
+
+      - name: Cuentas que no se tocan (antes)
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -c "select md5(string_agg(id::text || phone, ',' order by phone)) from auth.users where phone not in ('59170000004', '59170000005')" > before.txt
+          echo "Otras cuentas: $(psql "${DB_URL}" -X -At -c "select count(*) from auth.users where phone not in ('59170000004','59170000005') or phone is null")"
+
+      - name: Borrar las cuentas 04 y 05
+        run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -f supabase/e2e/phone/reset_onboarding.sql
+
+      - name: Cuentas que no se tocan (después)
+        if: always()
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -c "select md5(string_agg(id::text || phone, ',' order by phone)) from auth.users where phone not in ('59170000004', '59170000005')" > after.txt
+          if cmp -s before.txt after.txt; then echo "Las demás cuentas siguen iguales."; else echo "::error::Cambiaron otras cuentas"; exit 1; fi

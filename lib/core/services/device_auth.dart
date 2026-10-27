@@ -44,6 +44,9 @@ class LocalDeviceAuth implements DeviceAuth {
       return {
         if (types.contains(BiometricType.face)) DeviceBiometric.face,
         if (types.contains(BiometricType.fingerprint)) DeviceBiometric.fingerprint,
+        // Android solo dice "segura" o "débil". Solo con una segura (clase 3)
+        // se ofrece: protege también el dinero, y un rostro "débil" puede
+        // engañarse con una foto.
         if (!types.contains(BiometricType.face) &&
             !types.contains(BiometricType.fingerprint) &&
             types.contains(BiometricType.strong))

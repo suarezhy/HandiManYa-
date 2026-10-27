@@ -20,7 +20,8 @@ class AppLockGate extends ConsumerStatefulWidget {
   final Widget child;
 
   /// Tiempo en segundo plano antes de volver a pedirla.
-  static const relockAfter = Duration(minutes: 2);
+  @visibleForTesting
+  static Duration relockAfter = const Duration(minutes: 2);
 
   @override
   ConsumerState<AppLockGate> createState() => _AppLockGateState();
@@ -84,9 +85,14 @@ class _AppLockGateState extends ConsumerState<AppLockGate> with WidgetsBindingOb
       if (result == DeviceAuthResult.success) {
         _locked = false;
       } else {
-        _error = result == DeviceAuthResult.canceled
-            ? null
-            : 'No pudimos confirmar que eres tú. Prueba de nuevo o entra con un código.';
+        _error = switch (result) {
+          DeviceAuthResult.canceled || DeviceAuthResult.success => null,
+          DeviceAuthResult.lockedOut =>
+            'Hubo demasiados intentos. Desbloquea el teléfono y vuelve a probar, o entra con un código.',
+          DeviceAuthResult.unavailable =>
+            'Este teléfono ya no tiene huella ni rostro configurados. Entra con un código.',
+          DeviceAuthResult.failed => 'No pudimos confirmar que eres tú. Prueba de nuevo o entra con un código.',
+        };
       }
     });
   }

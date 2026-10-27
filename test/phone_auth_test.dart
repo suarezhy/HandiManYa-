@@ -8,6 +8,7 @@ import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/demo/demo_data.dart';
 import 'package:handimanya/data/models/user.dart';
 import 'package:handimanya/data/providers.dart';
+import 'package:handimanya/features/security/app_lock.dart';
 import 'package:handimanya/features/security/confirm_identity.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +34,12 @@ class _FakeDeviceAuth implements DeviceAuth {
 }
 
 const _newPhone = '+59167778888';
+
+final _locked = <String, Object>{
+  'onboarding_seen_v1': true,
+  biometricPrefKey('demo-cliente'): true,
+  appLockPrefKey('demo-cliente'): true,
+};
 
 void main() {
   group('ingreso con celular (demostración, igual que Supabase)', () {
@@ -372,6 +379,62 @@ void main() {
       expect(find.byKey(const Key('app-lock')), findsNothing);
       expect(find.text('¡Hola, Carla!'), findsOneWidget);
       expect(auth.calls, 1, reason: 'solo la vez de abrir la app');
+    });
+
+    testWidgets('al volver después de un rato el cuadro se abre solo, sin tocar "Desbloquear"', (tester) async {
+      final saved = AppLockGate.relockAfter;
+      AppLockGate.relockAfter = Duration.zero;
+      addTearDown(() => AppLockGate.relockAfter = saved);
+      final auth = _FakeDeviceAuth([]);
+      await pumpApp(tester, prefs: _locked, deviceAuth: auth, before: (b) => b.signInAs(DemoBackend.customerPhone));
+      expect(auth.calls, 1);
+      for (final s in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(s);
+      }
+      await tester.pumpAndSettle();
+      expect(auth.calls, 2, reason: 'se volvió a pedir sola');
+      expect(find.byKey(const Key('app-lock')), findsNothing);
+      expect(find.text('¡Hola, Carla!'), findsOneWidget, reason: 'la sesión sigue abierta');
+    });
+
+    testWidgets('al reiniciar el teléfono la sesión sigue y vuelve a pedir la biometría', (tester) async {
+      // Reiniciar = abrir la app de cero con la sesión y las preferencias guardadas.
+      final auth = _FakeDeviceAuth([DeviceAuthResult.success]);
+      await pumpApp(tester, prefs: _locked, deviceAuth: auth, before: (b) => b.signInAs(DemoBackend.customerPhone));
+      expect(auth.calls, 1);
+      expect(find.text('¡Hola, Carla!'), findsOneWidget);
+      expect(find.byKey(const Key('code-field')), findsNothing, reason: 'no pide código otra vez');
+    });
+
+    testWidgets('si quitaron la huella del teléfono: lo dice y ofrece entrar con un código', (tester) async {
+      await pumpApp(
+        tester,
+        prefs: _locked,
+        deviceAuth: _FakeDeviceAuth([DeviceAuthResult.unavailable]),
+        before: (b) => b.signInAs(DemoBackend.customerPhone),
+      );
+      expect(find.byKey(const Key('app-lock')), findsOneWidget, reason: 'no se abre sin biometría');
+      expect(find.textContaining('ya no tiene huella ni rostro'), findsOneWidget);
+      expect(find.text('Entrar con un código'), findsOneWidget);
+      expect(find.text('¡Hola, Carla!'), findsNothing);
+    });
+
+    testWidgets('demasiados intentos: sigue bloqueada y lo explica', (tester) async {
+      await pumpApp(
+        tester,
+        prefs: _locked,
+        deviceAuth: _FakeDeviceAuth([DeviceAuthResult.lockedOut]),
+        before: (b) => b.signInAs(DemoBackend.customerPhone),
+      );
+      expect(find.byKey(const Key('app-lock')), findsOneWidget);
+      expect(find.textContaining('demasiados intentos'), findsOneWidget);
     });
   });
 }
