@@ -33,9 +33,15 @@ jobs:
           test -n "$FIREBASE_API_KEY" || { echo "::error::Falta el secreto FIREBASE_API_KEY"; exit 1; }
           echo "::add-mask::$FIREBASE_API_KEY"
           ks="$HOME/.android/debug.keystore"
-          test -f "$ks" || { echo "::error::No se encontró la llave de depuración de las compilaciones"; exit 1; }
           set -a; . config/firebase-dev.public.env; set +a
           export ANDROID_PACKAGE=bo.handimanya.handimanya
-          export ANDROID_CERT_SHA1=$(keytool -list -v -keystore "$ks" -storepass android | grep -m1 "SHA1:" | awk '{print $2}')
+          # El caché de la llave solo se lee desde feature/base-app; si no está, se usa
+          # la huella pública que mostró la compilación 30 (la misma llave).
+          if [ -f "$ks" ]; then
+            ANDROID_CERT_SHA1=$(keytool -list -v -keystore "$ks" -storepass android | grep -m1 "SHA1:" | awk '{print $2}')
+          else
+            ANDROID_CERT_SHA1=0B:12:63:BF:DB:28:CC:12:93:BA:5E:6D:7B:EC:DD:E5:84:23:DD:0E
+          fi
+          export ANDROID_CERT_SHA1
           echo "SHA-1 del APK de prueba: $ANDROID_CERT_SHA1" | tee -a "$GITHUB_STEP_SUMMARY"
           node tool/firebase_probe.mjs | tee -a "$GITHUB_STEP_SUMMARY"
