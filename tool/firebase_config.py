@@ -7,6 +7,10 @@ Acepta el bloque "firebaseConfig = { apiKey: ..., ... }" que muestra Firebase
 para cada app, o líneas CLAVE=valor. Para Android e iOS basta su appId
 ("1:...:android:..." / "1:...:ios:..."); la clave Web Push va como
 FIREBASE_VAPID_KEY=... . Solo valores públicos: nunca la cuenta de servicio.
+
+Para empezar solo con Android alcanzan apiKey, projectId, messagingSenderId y
+el appId de Android; iPhone y web se agregan después (sin ellos, esas
+versiones siguen sin avisos push).
 """
 import json
 import re
@@ -44,8 +48,12 @@ def parse(text):
     return out
 
 
+# Sin estos no hay push en ninguna versión; los demás son de iPhone y web.
+REQUIRED = ('FIREBASE_API_KEY', 'FIREBASE_PROJECT_ID', 'FIREBASE_SENDER_ID', 'FIREBASE_APP_ID_ANDROID')
+
+
 def check(cfg):
-    problems = [f'falta {k}' for k in PATTERNS if k not in cfg]
+    problems = [f'falta {k}' for k in REQUIRED if k not in cfg]
     for k, v in cfg.items():
         if not re.fullmatch(PATTERNS[k], v):
             problems.append(f'{k} no tiene el formato esperado')
@@ -64,9 +72,12 @@ def main():
         sys.exit('No se escribió nada:\n- ' + '\n- '.join(problems))
     path = f'config/firebase-{env}.json'
     with open(path, 'w') as f:
-        json.dump({k: cfg[k] for k in PATTERNS}, f, indent=2)
+        json.dump({k: cfg[k] for k in PATTERNS if k in cfg}, f, indent=2)
         f.write('\n')
     print(f'Listo: {path}')
+    missing = [k for k in PATTERNS if k not in cfg]
+    if missing:
+        print('Sin push todavía en iPhone o web (faltan: ' + ', '.join(missing) + ').')
 
 
 if __name__ == '__main__':
