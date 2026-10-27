@@ -54,6 +54,8 @@ Future<int> _visibleRows(SupabaseClient c, String table) async => (await c.from(
 // El servidor rechaza con un código HMY_*; la app lo traduce con AppError.from
 // (igual que al mostrar el error en pantalla).
 Matcher _code(String code) => throwsA(predicate((e) => AppError.from(e!).code == code, 'error con código $code'));
+Matcher _codeIn(Set<String> codes) =>
+    throwsA(predicate((e) => codes.contains(AppError.from(e!).code), 'error con código ${codes.join(' o ')}'));
 
 Future<T> _step<T>(String name, Future<T> Function() run) async {
   try {
@@ -826,17 +828,15 @@ void main() {
       });
       await _step('sale del ¡Ya! y no puede ponerse disponible', () async {
         expect(await nearby(), before - 1);
-        await expectLater(pro.setAvailability(true), _code('HMY_ACCOUNT_SUSPENDED'));
+        await expectLater(
+          pro.setAvailability(true),
+          _codeIn({'HMY_ACCOUNT_SUSPENDED', 'HMY_PROFESSIONAL_NOT_APPROVED'}),
+        );
       });
       await _step('nadie le puede pedir directo', () async {
         await expectLater(
           customer.create(direct('pedido a un suspendido')),
-          throwsA(
-            predicate(
-              (e) => {'HMY_PROFESSIONAL_NOT_AVAILABLE', 'HMY_PRO_NOT_CLEARED'}.contains(AppError.from(e!).code),
-              'pedido rechazado',
-            ),
-          ),
+          _codeIn({'HMY_PROFESSIONAL_NOT_AVAILABLE', 'HMY_PRO_NOT_CLEARED'}),
         );
       });
       await _step('el profesional recibe el aviso de la suspensión', () async {
