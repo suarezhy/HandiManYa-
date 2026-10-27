@@ -890,7 +890,7 @@ void main() {
 
   // Corre al final: Mecánica y Grúa de punta a punta, con sus documentos aceptados.
   test(
-    'mecánica y grúa: pedido ¡Ya! con opciones; la grúa exige destino y tipo de vehículo; dirección y destino privados',
+    'mecánica y grúa: ¡Ya! con opciones, destino privado, cancelación y un remolque completo con código de llegada',
     () async {
       final customer = await _step('el cliente entra', () => _signIn('e2e-cliente@test.bo'));
       final pro = await _step('el profesional entra', () => _signIn('e2e-pro@test.bo'));
@@ -982,8 +982,58 @@ void main() {
         expect(d.address?.destination, 'Taller Central, 3er anillo');
         expect(d.description, contains('Camioneta'));
       });
-      await _step('el cliente cancela la grúa y el profesional deja de estar disponible', () async {
-        await customer.cancel(towId, 'Prueba E2E terminada');
+      await _step('el cliente cancela la grúa ya aceptada', () async {
+        await customer.cancel(towId, 'Prueba E2E: ya no la necesito');
+        expect((await customer.detail(towId)).status, BookingStatus.cancelled);
+        expect((await pro.detail(towId)).status, BookingStatus.cancelled);
+      });
+
+      // Un trabajo de grúa completo, pedido directo a la cuenta de prueba: no llega a nadie más.
+      final jobId = await _step('el cliente pide la grúa de prueba directo, con destino y vehículo', () {
+        return customer.create(
+          BookingDraft(
+            categoryId: grua,
+            cityId: city,
+            mode: BookingMode.now,
+            professionalId: _proId,
+            description: 'Vehículo: Auto. Prueba E2E: remolque completo',
+            address: 'Av. Prueba km 9',
+            paymentMethod: PaymentMethod.cash,
+            problemIds: [remolque],
+            destination: 'Taller Central, 3er anillo',
+          ),
+        );
+      });
+      await _step('la grúa acepta y sale en camino', () async {
+        expect((await pro.detail(jobId)).address, isNull, reason: 'antes de aceptar no ve la recogida');
+        await pro.accept(jobId, isOffer: false);
+        expect((await pro.detail(jobId)).address?.destination, 'Taller Central, 3er anillo');
+        await pro.updateProgress(jobId, BookingStatus.onTheWay);
+        expect(await pro.shareTripLocation(jobId, const GeoPoint(-17.789, -63.181), accuracyM: 20), isTrue);
+      });
+      final towPin = await _step('la grúa llega y se genera el código', () => pro.markArrived(jobId));
+      await _step('sin el código del cliente no se carga el vehículo', () async {
+        await expectLater(pro.updateProgress(jobId, BookingStatus.inProgress), throwsA(anything));
+        await expectLater(pro.verifyArrivalPin(jobId, towPin.pin), throwsA(anything));
+      });
+      await _step('el cliente confirma la llegada con su código', () async {
+        expect((await customer.verifyArrivalPin(jobId, towPin.pin)).result, ArrivalCheckResult.verified);
+        expect((await customer.tripLocation(jobId)).live, isFalse);
+      });
+      await _step('remolque en curso y terminado', () async {
+        await pro.updateProgress(jobId, BookingStatus.inProgress);
+        await pro.updateProgress(jobId, BookingStatus.workFinished, finalAmount: 180);
+      });
+      await _step('el cliente confirma, paga en efectivo y califica a la grúa', () async {
+        await customer.confirmCompletion(jobId);
+        await customer.acknowledgePayment(jobId, PaymentMethod.cash);
+        await customer.submitReview(jobId, 5, 'Prueba E2E: grúa puntual');
+        final d = await customer.detail(jobId);
+        expect(d.status, BookingStatus.completed);
+        expect(d.hasReview, isTrue);
+      });
+      await _step('la billetera de la grúa no queda con reserva colgada', () async {
+        expect((await pro.wallet()).reserved, 0);
         await pro.setAvailability(false);
       });
     },
