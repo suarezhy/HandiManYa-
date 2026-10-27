@@ -1,9 +1,15 @@
 name: Revisar Firebase (avisos, sin teléfono)
 
-# Hace lo mismo que el teléfono antes de pedir el token de avisos: crea una
-# instalación de Firebase con la clave, el ID de app, el paquete y la huella
-# SHA-1 del APK de prueba, y la borra. Muestra solo códigos y mensajes de error;
-# la clave queda oculta. Gratis (Firebase Installations no cobra).
+# Diagnóstico temporal de la clave de avisos. Hace lo mismo que el teléfono
+# antes de pedir el token: crea una instalación de Firebase con la clave, el ID
+# de app, el paquete y la huella SHA-1 del APK de prueba, y la borra. Muestra
+# la forma de la clave (sin mostrarla), el motivo exacto que da Google y, si
+# Google lo dice, a qué proyecto pertenece. Nunca imprime la clave ni tokens.
+# Gratis (Firebase Installations no cobra); no cambia ni despliega nada.
+#
+# Para comparar con una clave nueva sin pegarla en el chat: guárdala en GitHub
+# como secreto FIREBASE_API_KEY_NEW (Settings > Secrets and variables >
+# Actions > New repository secret) y vuelve a correr esta revisión.
 
 # Solo se activa al subir la rama firebase/check-dev.
 on:
@@ -29,9 +35,14 @@ jobs:
       - name: Probar la configuración de Firebase
         env:
           FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_API_KEY_NEW: ${{ secrets.FIREBASE_API_KEY_NEW }}
         run: |
-          test -n "$FIREBASE_API_KEY" || { echo "::error::Falta el secreto FIREBASE_API_KEY"; exit 1; }
-          echo "::add-mask::$FIREBASE_API_KEY"
+          set -o pipefail
+          test -n "$FIREBASE_API_KEY" || { echo "::error::El secreto FIREBASE_API_KEY no existe o está vacío"; exit 1; }
+          # Ocultar cada línea por si el secreto tiene saltos de línea.
+          while IFS= read -r l; do [ -n "$l" ] && echo "::add-mask::$l"; done <<< "$FIREBASE_API_KEY"
+          while IFS= read -r l; do [ -n "$l" ] && echo "::add-mask::$l"; done <<< "$FIREBASE_API_KEY_NEW"
+          [ -n "$FIREBASE_API_KEY_NEW" ] && echo "FIREBASE_API_KEY_NEW existe: también se prueba." || echo "Sin FIREBASE_API_KEY_NEW: solo se prueba la guardada."
           ks="$HOME/.android/debug.keystore"
           set -a; . config/firebase-dev.public.env; set +a
           export ANDROID_PACKAGE=bo.handimanya.handimanya
