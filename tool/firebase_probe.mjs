@@ -54,7 +54,7 @@ function reason(body) {
   const info = (e.details ?? []).find((d) => d.reason) ?? {};
   const meta = info.metadata ?? {};
   return {
-    status: e.status ?? '',
+    googleStatus: e.status ?? '',
     reason: info.reason ?? '',
     message: hide(e.message ?? ''),
     consumer: (meta.consumer ?? '').replace('projects/', ''),
@@ -112,7 +112,7 @@ async function check(label, key) {
     ['como el APK de prueba (paquete + SHA-1)', asPhone],
     ['sin datos de Android', bare],
   ]) {
-    const extra = r.status === 200 ? `instalación de prueba creada y borrada (HTTP ${r.deleted})` : [r.status && `${r.status}`, r.reason, r.message].filter(Boolean).join(' · ');
+    const extra = r.status === 200 ? `instalación de prueba creada y borrada (HTTP ${r.deleted})` : [r.googleStatus, r.reason, r.message].filter(Boolean).join(' · ');
     console.log(`  ${what}: HTTP ${r.status} · ${extra}`);
     if (r.consumer) {
       console.log(
