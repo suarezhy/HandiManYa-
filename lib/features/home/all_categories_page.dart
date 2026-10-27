@@ -8,6 +8,7 @@ import '../../core/widgets/category_icon.dart';
 import '../../core/widgets/common.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 class AllCategoriesPage extends ConsumerWidget {
   const AllCategoriesPage({super.key});
@@ -16,7 +17,7 @@ class AllCategoriesPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(categoriesProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Todos los servicios')),
+      appBar: AppBar(title: const OneLineText('Todos los servicios')),
       body: categories.when(
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(categoriesProvider)),

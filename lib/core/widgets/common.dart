@@ -89,7 +89,7 @@ class SectionHeader extends StatelessWidget {
         if (actionLabel != null)
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: actionWidth),
-            child: TextButton(onPressed: onAction, child: Text(actionLabel!)),
+            child: TextButton(onPressed: onAction, child: OneLineText(actionLabel!)),
           ),
       ],
     ),

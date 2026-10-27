@@ -98,7 +98,7 @@ Para qué los usamos
 Para que funcione la app: encontrar profesionales cercanos, enviar pedidos, verificar a los profesionales, prevenir fraudes, atender reportes y disputas, y cobrar comisiones a los profesionales. No vendemos tus datos.
 
 Ubicación
-• Tomamos tu ubicación solo cuando tocas "Usar mi ubicación actual" o mientras se usa una función que la necesita. No te seguimos en segundo plano.
+• Tomamos tu ubicación solo cuando tocas "Usar mi ubicación" o mientras se usa una función que la necesita. No te seguimos en segundo plano.
 • Antes de aceptar un pedido, los profesionales ven solo un punto aproximado (alrededor de 1 km) y la distancia.
 • La dirección exacta la ve solo el profesional que acepta, mientras el trabajo está activo.
 • La ubicación base de un profesional no se muestra a los clientes.

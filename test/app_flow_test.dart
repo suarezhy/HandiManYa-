@@ -118,7 +118,7 @@ void main() {
     await _login(tester, professional: true);
     await _tapText(tester, 'Perfil');
     await _tapText(tester, 'Mi zona de trabajo');
-    await _tapText(tester, 'Actualizar con mi ubicación actual');
+    await _tapText(tester, 'Actualizar');
     expect(find.text('Usar tu ubicación'), findsOneWidget); // explicación antes del permiso
     await _tapText(tester, 'Continuar');
     await _tapText(tester, 'Guardar');
@@ -178,7 +178,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Juan Carlos Mamani').first);
     await tester.pumpAndSettle();
-    expect(find.text('Perfil del profesional'), findsOneWidget);
+    expect(find.text('Profesional'), findsOneWidget);
     // La barra de abajo no debe tapar el contenido (antes ocupaba toda la pantalla).
     final body = find.descendant(of: find.byType(Scaffold).last, matching: find.byType(Scrollable)).first;
     expect(tester.getSize(body).height, greaterThan(400));

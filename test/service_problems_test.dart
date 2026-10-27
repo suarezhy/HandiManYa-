@@ -498,10 +498,10 @@ void main() {
           expect(find.text('¿Dónde es?'), findsOneWidget, reason: c.name);
           if (c.allowsYa) {
             expect(find.text('Lo necesito ¡Ya!'), findsOneWidget, reason: c.name);
-            expect(find.text('Programar para después'), findsOneWidget, reason: c.name);
+            expect(find.text('Programar'), findsOneWidget, reason: c.name);
           } else {
             expect(find.text('Lo necesito ¡Ya!'), findsNothing, reason: c.name);
-            expect(find.text('Elegir profesional y horario'), findsOneWidget, reason: c.name);
+            expect(find.text('Elegir profesional'), findsOneWidget, reason: c.name);
           }
           GoRouter.of(tester.element(find.byType(Scaffold).first)).pop();
           await tester.pumpAndSettle();
@@ -575,7 +575,7 @@ void main() {
       await _tapText(tester, 'Continuar');
       await _tapText(tester, 'Continuar');
       await tester.enterText(find.widgetWithText(TextFormField, 'Dirección'), 'Calle Los Pinos 123');
-      await _tapText(tester, 'Programar para después');
+      await _tapText(tester, 'Programar');
       expect(find.byType(ChooseProfessionalPage), findsOneWidget);
       expect(find.text('Elige quién lo hará'), findsOneWidget);
       expect(find.text('Fuga de agua'), findsOneWidget);

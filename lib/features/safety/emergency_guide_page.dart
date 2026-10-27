@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/common.dart';
 import 'emergency_numbers.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 const _ifInDanger = <String>[
   'Sal a un lugar seguro o donde haya otras personas.',
@@ -43,7 +44,7 @@ class EmergencyGuidePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('Guía de emergencia')),
+      appBar: AppBar(title: const OneLineText('Guía de emergencia')),
       body: ListView(
         padding: const EdgeInsets.only(bottom: HySpacing.xxl),
         children: [

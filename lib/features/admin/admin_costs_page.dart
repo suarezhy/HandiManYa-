@@ -9,6 +9,8 @@ import '../../data/models/costs.dart';
 import '../../data/providers.dart';
 import '../security/confirm_identity.dart';
 import 'admin_common.dart';
+import '../../core/widgets/trailing_row.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 final costDashboardProvider = FutureProvider<CostDashboard>((ref) => ref.watch(backendProvider).costDashboard());
 
@@ -38,7 +40,7 @@ class AdminCostsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final d = ref.watch(costDashboardProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Costos del mes')),
+      appBar: AppBar(title: const OneLineText('Costos del mes')),
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(costDashboardProvider),
         child: ListView(
@@ -224,15 +226,12 @@ class _VendorCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(v.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-              ),
-              const SizedBox(width: HySpacing.xs),
-              ToneChip(v.status.label, _tone(v.status)),
-            ],
+          TrailingRow(
+            leading: const SizedBox.shrink(),
+            gap: HySpacing.xs,
+            minBodyWidth: 140,
+            body: WordSafeText(v.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            trailing: ToneChip(v.status.label, _tone(v.status)),
           ),
           InfoLine(Icons.sell_outlined, _price(v)),
           if (v.freeUnits > 0) ...[

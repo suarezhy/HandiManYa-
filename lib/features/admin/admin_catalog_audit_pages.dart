@@ -11,6 +11,7 @@ import '../../data/models/admin.dart';
 import '../../data/providers.dart';
 import 'admin_common.dart';
 import 'admin_services_pages.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 // ======================================================================= Catálogo
 class AdminCatalogPage extends ConsumerWidget {
@@ -22,7 +23,7 @@ class AdminCatalogPage extends ConsumerWidget {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Catálogo'),
+          title: const OneLineText('Catálogo'),
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Categorías'),
@@ -202,7 +203,7 @@ class AdminAuditPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Auditoría')),
+      appBar: AppBar(title: const OneLineText('Auditoría')),
       body: AdminList<AuditEntry>(
         value: ref.watch(auditLogProvider),
         onRefresh: () => ref.refresh(auditLogProvider.future),

@@ -14,6 +14,7 @@ import '../../data/models/drilldown.dart';
 import '../../data/models/user.dart';
 import '../../data/providers.dart';
 import 'admin_common.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// Personas por grupo (los mismos que cuenta el panel) y búsqueda.
 final peopleProvider = FutureProvider.autoDispose.family<Listed<PersonRow>, (PeopleFilter, String)>(
@@ -111,7 +112,7 @@ class _AdminUsersPageState extends ConsumerState<AdminUsersPage> {
     final key = (_filter, _query);
     final value = ref.watch(peopleProvider(key));
     return Scaffold(
-      appBar: AppBar(title: Text(_filter.title)),
+      appBar: AppBar(title: OneLineText(_filter.title)),
       body: Column(
         children: [
           PageBody(

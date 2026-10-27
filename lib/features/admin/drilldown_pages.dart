@@ -17,6 +17,7 @@ import '../management/management_common.dart';
 import 'admin_common.dart';
 import 'ai_control_center_page.dart';
 import 'finance_pages.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// Lo que hay detrás de cada número del panel: pedidos, seguridad y fraude, y
 /// billeteras. Las listas salen de la base con las mismas definiciones que el
@@ -117,7 +118,7 @@ class _OpsBookingsPageState extends ConsumerState<OpsBookingsPage> {
     final key = (_filter, _query);
     final value = ref.watch(opsBookingsProvider(key));
     return Scaffold(
-      appBar: AppBar(title: Text(_filter.title)),
+      appBar: AppBar(title: OneLineText(_filter.title)),
       body: AdminList<OpsBooking>(
         value: value.whenData((l) => l.items),
         onRefresh: () => ref.refresh(opsBookingsProvider(key).future),
@@ -176,7 +177,7 @@ class DemandBookingsPage extends ConsumerWidget {
     final key = (kind, name, department);
     final value = ref.watch(_demandProvider(key));
     return Scaffold(
-      appBar: AppBar(title: Text(name)),
+      appBar: AppBar(title: OneLineText(name)),
       body: AdminList<OpsBooking>(
         value: value.whenData((d) => d?.bookings.items ?? const []),
         onRefresh: () => ref.refresh(_demandProvider(key).future),
@@ -326,7 +327,7 @@ class OpsBookingDetailPage extends ConsumerWidget {
     final detail = ref.watch(opsBookingDetailProvider(bookingId));
     final role = ref.watch(accountProvider).value?.managementRole;
     return Scaffold(
-      appBar: AppBar(title: Text(detail.value == null ? 'Pedido' : 'Pedido ${detail.value!.booking.code}')),
+      appBar: AppBar(title: OneLineText(detail.value == null ? 'Pedido' : 'Pedido ${detail.value!.booking.code}')),
       body: switch (detail) {
         AsyncData(:final value) => RefreshIndicator(
           onRefresh: () => ref.refresh(opsBookingDetailProvider(bookingId).future),
@@ -616,7 +617,7 @@ class _RiskItemsPageState extends ConsumerState<RiskItemsPage> {
   Widget build(BuildContext context) {
     final value = ref.watch(riskItemsProvider(_kind));
     return Scaffold(
-      appBar: AppBar(title: Text(_kind.title)),
+      appBar: AppBar(title: OneLineText(_kind.title)),
       body: AdminList<RiskItem>(
         value: value.whenData((l) => l.items),
         onRefresh: () => ref.refresh(riskItemsProvider(_kind).future),
@@ -702,7 +703,7 @@ class _OwnerWalletsPageState extends ConsumerState<OwnerWalletsPage> {
     final key = (_query, _sort);
     final value = ref.watch(ownerWalletsProvider(key));
     return Scaffold(
-      appBar: AppBar(title: const Text('Billeteras de profesionales')),
+      appBar: AppBar(title: const OneLineText('Billeteras de profesionales')),
       body: AdminList<OwnerWallet>(
         value: value.whenData((l) => l.items),
         onRefresh: () => ref.refresh(ownerWalletsProvider(key).future),
@@ -801,7 +802,7 @@ class AiDecisionsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(highOnly ? 'Alertas IA altas o críticas' : 'Pendientes del Centro IA')),
+    appBar: AppBar(title: OneLineText(highOnly ? 'Alertas IA altas o críticas' : 'Pendientes del Centro IA')),
     body: AiDecisionsList(highOnly: highOnly),
   );
 }

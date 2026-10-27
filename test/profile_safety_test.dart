@@ -217,8 +217,8 @@ void main() {
           }
           expect(find.text('Seguridad y confianza'), findsOneWidget);
           // Cuenta unificada: la postulación sigue en Perfil.
-          await tester.ensureVisible(find.text('Quiero ser profesional'));
-          expect(find.text('Quiero ser profesional'), findsOneWidget);
+          await tester.ensureVisible(find.text('Ser profesional'));
+          expect(find.text('Ser profesional'), findsOneWidget);
           await tester.ensureVisible(find.text('Eliminar mi cuenta'));
           await tester.pumpAndSettle();
           expect(find.textContaining('SOS'), findsNothing);

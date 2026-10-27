@@ -13,6 +13,7 @@ import '../legal/legal_texts.dart';
 import '../management/management_common.dart';
 import '../safety/safety_sheets.dart';
 import 'profile_photo.dart';
+import '../auth/auth_scaffold.dart' show formatBoliviaPhone;
 
 /// Perfil compartido por cliente y profesional. Desde aquí se cambia de modo.
 class ProfilePage extends ConsumerWidget {
@@ -32,7 +33,7 @@ class ProfilePage extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi perfil')),
+      appBar: AppBar(title: const OneLineText('Mi perfil')),
       body: ListView(
         padding: const EdgeInsets.only(bottom: HySpacing.xxl),
         children: [
@@ -54,7 +55,10 @@ class ProfilePage extends ConsumerWidget {
                             // El correo es una sola "palabra": se achica en vez de partirse.
                             WordSafeText(account.email, style: const TextStyle(color: HyColors.textSecondary)),
                             if (account.phone != null)
-                              Text(account.phone!, style: const TextStyle(color: HyColors.textSecondary)),
+                              OneLineText(
+                                formatBoliviaPhone(account.phone!),
+                                style: const TextStyle(color: HyColors.textSecondary),
+                              ),
                             const SizedBox(height: 4),
                             _ModeChip(professional: account.isProfessionalMode),
                           ],
@@ -329,7 +333,7 @@ class _RoleCard extends StatelessWidget {
           : 'Postulación: ${status.label}',
       message: message,
       label: status.canEdit
-          ? (status == VerificationStatus.notStarted ? 'Quiero ser profesional' : 'Continuar postulación')
+          ? (status == VerificationStatus.notStarted ? 'Ser profesional' : 'Continuar postulación')
           : 'Ver postulación',
       onPressed: status == VerificationStatus.suspended ? null : () => context.push(Routes.apply),
     );

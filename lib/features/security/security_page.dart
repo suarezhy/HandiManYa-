@@ -7,6 +7,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/widgets/common.dart';
 import '../../data/providers.dart';
 import 'confirm_identity.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// Perfil → Seguridad: activar o desactivar la confirmación con huella o rostro
 /// para las operaciones con dinero (recargas y, más adelante, retiros).
@@ -66,7 +67,7 @@ class _SecurityPageState extends ConsumerState<SecurityPage> {
     final device = ref.watch(deviceBiometricsProvider);
     final enabled = ref.watch(biometricEnabledProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Seguridad')),
+      appBar: AppBar(title: const OneLineText('Seguridad')),
       body: ListView(
         padding: EdgeInsets.only(bottom: HySpacing.xxl + MediaQuery.paddingOf(context).bottom),
         children: [

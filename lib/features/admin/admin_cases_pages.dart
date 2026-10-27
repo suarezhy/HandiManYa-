@@ -5,11 +5,13 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/button_row.dart';
 import '../../data/models/admin.dart';
 import '../../data/models/booking.dart';
 import '../../data/providers.dart';
 import 'admin_common.dart';
 import 'admin_users_page.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 StatusTone _caseTone(CaseStatus s) => switch (s) {
   CaseStatus.open => StatusTone.danger,
@@ -29,7 +31,7 @@ class _Tabs extends StatelessWidget {
     length: 2,
     child: Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        title: OneLineText(title),
         bottom: const TabBar(
           tabs: [
             Tab(text: 'Abiertos'),
@@ -358,20 +360,12 @@ class _TicketList extends ConsumerWidget {
             if (t.adminNote != null) InfoLine(Icons.reply, 'Respuesta: ${t.adminNote}'),
             if (t.status != TicketStatus.closed) ...[
               const SizedBox(height: HySpacing.sm),
-              Row(
+              ButtonRow(
+                spacing: HySpacing.xs,
                 children: [
-                  if (t.status == TicketStatus.open) ...[
-                    Expanded(
-                      child: SecondaryButton(
-                        label: 'Atender',
-                        onPressed: () => _act(context, ref, t, TicketStatus.inProgress),
-                      ),
-                    ),
-                    const SizedBox(width: HySpacing.xs),
-                  ],
-                  Expanded(
-                    child: PrimaryButton(label: 'Cerrar', onPressed: () => _act(context, ref, t, TicketStatus.closed)),
-                  ),
+                  if (t.status == TicketStatus.open)
+                    SecondaryButton(label: 'Atender', onPressed: () => _act(context, ref, t, TicketStatus.inProgress)),
+                  PrimaryButton(label: 'Cerrar', onPressed: () => _act(context, ref, t, TicketStatus.closed)),
                 ],
               ),
             ],

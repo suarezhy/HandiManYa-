@@ -9,6 +9,7 @@ import '../../data/models/messaging.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import 'push_card.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 class NotificationsPage extends ConsumerStatefulWidget {
   const NotificationsPage({super.key});
@@ -45,7 +46,7 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   Widget build(BuildContext context) {
     final list = ref.watch(notificationsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Notificaciones')),
+      appBar: AppBar(title: const OneLineText('Notificaciones')),
       body: Column(
         children: [
           const PushCard(),

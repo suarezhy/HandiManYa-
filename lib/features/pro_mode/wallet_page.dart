@@ -12,6 +12,8 @@ import '../../data/models/wallet.dart';
 import '../../data/providers.dart';
 import '../common/photo_picker.dart';
 import '../security/confirm_identity.dart';
+import '../../core/widgets/trailing_row.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// Billetera prepagada del profesional: saldo, recargas y movimientos.
 class WalletPage extends ConsumerWidget {
@@ -25,7 +27,7 @@ class WalletPage extends ConsumerWidget {
     final pending = topups.where((t) => t.status == TopupStatus.pending).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi billetera')),
+      appBar: AppBar(title: const OneLineText('Mi billetera')),
       body: RefreshIndicator(
         color: HyColors.primary,
         onRefresh: () async {
@@ -150,42 +152,37 @@ class _LedgerTile extends StatelessWidget {
     final positive = delta > 0;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: HySpacing.sm),
-      child: Row(
-        children: [
-          Icon(
-            positive ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-            color: positive ? HyColors.green : HyColors.textSecondary,
-          ),
-          const SizedBox(width: HySpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(entry.type.label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                if ((entry.note ?? '').isNotEmpty)
-                  Text(entry.note!, style: const TextStyle(color: HyColors.textSecondary)),
-                Text(Fmt.dateTime(entry.createdAt), style: const TextStyle(color: HyColors.textMuted, fontSize: 13)),
-              ],
+      // Con letra grande el monto baja debajo del detalle en vez de apretarlo.
+      child: TrailingRow(
+        leading: Icon(
+          positive ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+          color: positive ? HyColors.green : HyColors.textSecondary,
+        ),
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(entry.type.label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            if ((entry.note ?? '').isNotEmpty) Text(entry.note!, style: const TextStyle(color: HyColors.textSecondary)),
+            Text(Fmt.dateTime(entry.createdAt), style: const TextStyle(color: HyColors.textMuted, fontSize: 13)),
+          ],
+        ),
+        trailing: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              delta == 0 ? '—' : '${positive ? '+' : '−'}${Fmt.bs(delta.abs())}',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: positive ? HyColors.greenDark : HyColors.text,
+              ),
             ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                delta == 0 ? '—' : '${positive ? '+' : '−'}${Fmt.bs(delta.abs())}',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: positive ? HyColors.greenDark : HyColors.text,
-                ),
-              ),
-              Text(
-                'Saldo ${Fmt.bs(entry.availableAfter)}',
-                style: const TextStyle(color: HyColors.textMuted, fontSize: 13),
-              ),
-            ],
-          ),
-        ],
+            Text(
+              'Saldo ${Fmt.bs(entry.availableAfter)}',
+              style: const TextStyle(color: HyColors.textMuted, fontSize: 13),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -497,7 +494,7 @@ class TopupReceiptPage extends StatelessWidget {
     ];
     return Scaffold(
       key: const Key('topup-receipt'),
-      appBar: AppBar(title: const Text('Solicitud enviada'), automaticallyImplyLeading: false),
+      appBar: AppBar(title: const OneLineText('Solicitud enviada'), automaticallyImplyLeading: false),
       body: ListView(
         padding: bottomSafePadding(context),
         children: [

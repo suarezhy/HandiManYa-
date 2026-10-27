@@ -12,6 +12,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/professional_card.dart';
 import 'request_flow_page.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// Lo que el pedido ya tiene cuando el cliente elige "Programar para después".
 class ChooseProfessionalArgs {
@@ -52,7 +53,7 @@ class ChooseProfessionalPage extends ConsumerWidget {
     final filters = SearchFilters(cityId: a.draft.cityId, categoryId: a.draft.categoryId);
     final results = ref.watch(searchResultsProvider(filters));
     return Scaffold(
-      appBar: AppBar(title: const Text('Elige quién lo hará')),
+      appBar: AppBar(title: const OneLineText('Elige quién lo hará')),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(searchResultsProvider(filters).future),
         child: ListView(

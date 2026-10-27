@@ -19,6 +19,7 @@ import '../management/management_common.dart';
 import '../security/confirm_identity.dart';
 import 'admin_common.dart';
 import 'drilldown_pages.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 // Finanzas y Bancos: solo el Propietario. El router no deja entrar a otro rol
 // y cada función del servidor vuelve a exigir is_admin(). Los montos salen de
@@ -115,7 +116,7 @@ class _FinancePageState extends ConsumerState<FinancePage> {
     final summary = ref.watch(financeSummaryProvider(_month));
     final isCurrent = _month == _monthKey(DateTime.now());
     return Scaffold(
-      appBar: AppBar(title: const Text('Finanzas y Bancos')),
+      appBar: AppBar(title: const OneLineText('Finanzas y Bancos')),
       body: RefreshIndicator(
         onRefresh: () async {
           _refreshFinance(ref);
@@ -328,49 +329,7 @@ class _FinanceSummaryView extends StatelessWidget {
         const SectionHeader(title: 'Últimos 6 meses'),
         AppCard(
           key: const Key('finance-months'),
-          child: Column(
-            children: [
-              const Row(
-                children: [
-                  Expanded(
-                    child: Text('Mes', style: TextStyle(fontWeight: FontWeight.w800)),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Comisiones',
-                      textAlign: TextAlign.end,
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Recargas',
-                      textAlign: TextAlign.end,
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ],
-              ),
-              const Divider(),
-              for (final m in s.months.reversed)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(_monthLabel(m.month))),
-                      Expanded(child: Text(Fmt.bs(m.commissionBs), textAlign: TextAlign.end)),
-                      Expanded(
-                        child: Text(
-                          Fmt.bs(m.walletFundsBs),
-                          textAlign: TextAlign.end,
-                          style: const TextStyle(color: HyColors.textSecondary),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          child: _MonthsTable(months: s.months.reversed.toList()),
         ),
         const SectionHeader(title: 'Bancos y control'),
         PanelTile(
@@ -439,7 +398,7 @@ class _FinanceReconcilePageState extends ConsumerState<FinanceReconcilePage> {
     final key = (_filter, _month, _query);
     final value = ref.watch(financeTopupsProvider(key));
     return Scaffold(
-      appBar: AppBar(title: const Text('Recargas y banco')),
+      appBar: AppBar(title: const OneLineText('Recargas y banco')),
       body: AdminList<ReconcileTopup>(
         value: value.whenData((l) => l.items),
         onRefresh: () => ref.refresh(financeTopupsProvider(key).future),
@@ -828,7 +787,7 @@ class ReceivingAccountsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: const Text('Cuentas de cobro y QR')),
+    appBar: AppBar(title: const OneLineText('Cuentas de cobro y QR')),
     floatingActionButton: FloatingActionButton.extended(
       key: const Key('receiving-add'),
       backgroundColor: HyColors.primary,
@@ -1029,7 +988,7 @@ class _ReceivingAccountFormPageState extends ConsumerState<ReceivingAccountFormP
     return UnsavedChangesScope(
       dirty: _dirty,
       child: Scaffold(
-        appBar: AppBar(title: Text(a == null ? 'Agregar cuenta de cobro' : 'Editar cuenta')),
+        appBar: AppBar(title: OneLineText(a == null ? 'Agregar cuenta de cobro' : 'Editar cuenta')),
         body: ListView(
           padding: bottomSafePadding(context, top: HySpacing.md),
           children: [
@@ -1200,7 +1159,7 @@ class CommissionDebtsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(commissionDebtsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Comisiones pendientes')),
+      appBar: AppBar(title: const OneLineText('Comisiones pendientes')),
       body: AdminList<CommissionDebt>(
         value: value.whenData((l) => l?.items ?? const []),
         onRefresh: () => ref.refresh(commissionDebtsProvider.future),
@@ -1292,7 +1251,9 @@ class _FinanceMovementsPageState extends ConsumerState<FinanceMovementsPage> {
     final value = ref.watch(financeLedgerProvider(key));
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.professionalName == null ? 'Movimientos' : 'Movimientos de ${widget.professionalName}'),
+        title: OneLineText(
+          widget.professionalName == null ? 'Movimientos' : 'Movimientos de ${widget.professionalName}',
+        ),
       ),
       body: AdminList<FinanceTransaction>(
         value: value.whenData((l) => l.items),
@@ -1395,7 +1356,7 @@ class FinanceAuditPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: const Text('Historial de cambios')),
+    appBar: AppBar(title: const OneLineText('Historial de cambios')),
     body: AdminList<FinanceAuditEntry>(
       value: ref.watch(financeAuditProvider),
       onRefresh: () => ref.refresh(financeAuditProvider.future),
@@ -1428,5 +1389,76 @@ class FinanceAuditPage extends ConsumerWidget {
         );
       },
     ),
+  );
+}
+
+/// Últimos meses: en tabla si entra; con letra grande o pantalla chica, cada
+/// mes en su propio bloque (sin columnas apretadas ni palabras partidas).
+class _MonthsTable extends StatelessWidget {
+  const _MonthsTable({required this.months});
+
+  final List<FinanceMonth> months;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final scale = MediaQuery.textScalerOf(context).scale(1) * (MediaQuery.boldTextOf(context) ? 1.1 : 1);
+      if (box.maxWidth / scale >= 300) {
+        return Column(
+          children: [
+            const Row(
+              children: [
+                Expanded(
+                  child: Text('Mes', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+                Expanded(
+                  child: Text(
+                    'Comisiones',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'Recargas',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(),
+            for (final m in months)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(_monthLabel(m.month))),
+                    Expanded(child: Text(Fmt.bs(m.commissionBs), textAlign: TextAlign.end)),
+                    Expanded(
+                      child: Text(
+                        Fmt.bs(m.walletFundsBs),
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(color: HyColors.textSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final m in months) ...[
+            if (m != months.first) const Divider(),
+            Text(_monthLabel(m.month), style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text('Comisiones: ${Fmt.bs(m.commissionBs)}'),
+            Text('Recargas: ${Fmt.bs(m.walletFundsBs)}', style: const TextStyle(color: HyColors.textSecondary)),
+          ],
+        ],
+      );
+    },
   );
 }

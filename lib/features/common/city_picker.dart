@@ -188,7 +188,7 @@ class _CityPickerSheetState extends ConsumerState<CityPickerSheet> {
                       icon: _locating
                           ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
                           : const Icon(Icons.my_location),
-                      label: Text(_locating ? 'Buscando tu ubicación…' : 'Usar mi ubicación actual'),
+                      label: Text(_locating ? 'Buscando tu ubicación…' : 'Usar mi ubicación'),
                     )
                   : _GpsConfirm(
                       city: _gpsCity!,

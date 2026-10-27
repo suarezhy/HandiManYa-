@@ -8,6 +8,7 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/geo.dart';
 import '../../data/providers.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 final serviceLocationProvider = FutureProvider.autoDispose<ServiceLocation?>(
   (ref) => ref.watch(backendProvider).serviceLocation(),
@@ -21,7 +22,7 @@ class ServiceAreaPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final current = ref.watch(serviceLocationProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi zona de trabajo')),
+      appBar: AppBar(title: const OneLineText('Mi zona de trabajo')),
       body: current.when(
         loading: () => const LoadingView(),
         error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(serviceLocationProvider)),
@@ -115,9 +116,7 @@ class _FormState extends ConsumerState<_Form> {
               ),
               const SizedBox(height: HySpacing.sm),
               SecondaryButton(
-                label: _locating
-                    ? 'Buscando tu ubicación…'
-                    : (_point == null ? 'Usar mi ubicación actual' : 'Actualizar con mi ubicación actual'),
+                label: _locating ? 'Buscando tu ubicación…' : (_point == null ? 'Usar mi ubicación' : 'Actualizar'),
                 icon: Icons.my_location_rounded,
                 onPressed: _locating ? null : _locate,
               ),

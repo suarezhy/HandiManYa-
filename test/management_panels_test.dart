@@ -65,7 +65,7 @@ void main() {
       expect(find.byKey(const Key('owner-summary')), findsOneWidget);
       // Sin "Modo cliente", "Quiero ser profesional" ni promociones.
       expect(find.text('Modo cliente'), findsNothing);
-      expect(find.text('Quiero ser profesional'), findsNothing);
+      expect(find.text('Ser profesional'), findsNothing);
       // Números reales del panel, con el dinero solo aquí.
       expect(find.text('Dinero (solo propietario)'), findsOneWidget);
       expect(find.byKey(const Key('owner-identity-sandbox')), findsOneWidget);
@@ -106,7 +106,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(_location(c), Routes.home);
     await _go(tester, c, Routes.profile);
-    expect(find.text('Quiero ser profesional'), findsNothing);
+    expect(find.text('Ser profesional'), findsNothing);
     final back = find.byKey(const Key('back-to-panel'));
     expect(back, findsOneWidget);
     await tester.tap(back);

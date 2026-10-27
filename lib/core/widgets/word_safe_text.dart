@@ -72,3 +72,21 @@ class WordSafeText extends StatelessWidget {
     );
   }
 }
+
+/// Un dato que va siempre en una línea (un número de celular, un monto, una
+/// ciudad): si no entra, la letra se achica en vez de cortarse con "…" o
+/// partirse en dos líneas.
+class OneLineText extends StatelessWidget {
+  const OneLineText(this.text, {super.key, this.style, this.alignment = AlignmentDirectional.centerStart});
+
+  final String text;
+  final TextStyle? style;
+  final AlignmentGeometry alignment;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    alignment: alignment,
+    child: Text(text, style: style, maxLines: 1, softWrap: false),
+  );
+}

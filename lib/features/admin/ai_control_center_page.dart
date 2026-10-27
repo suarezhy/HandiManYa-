@@ -48,7 +48,7 @@ class AiControlCenterPage extends ConsumerWidget {
     length: 4,
     child: Scaffold(
       appBar: AppBar(
-        title: const Text('Centro de Control IA'),
+        title: const OneLineText('Centro de Control IA'),
         // Con 320 px no caben las cuatro: se desplazan desde el borde
         // izquierdo y la pestaña elegida se trae a la vista.
         bottom: const TabBar(
@@ -663,7 +663,7 @@ class AiItemDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final d = ref.watch(aiItemDetailProvider(itemId));
     return Scaffold(
-      appBar: AppBar(title: const Text('Origen del aviso')),
+      appBar: AppBar(title: const OneLineText('Origen del aviso')),
       body: ListView(
         padding: bottomSafePadding(context),
         children: [
@@ -945,7 +945,7 @@ class AiCardItemsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(aiCardItemsProvider(card));
     return Scaffold(
-      appBar: AppBar(title: Text(card.label)),
+      appBar: AppBar(title: OneLineText(card.label)),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(aiCardItemsProvider(card).future),
         child: ListView(
@@ -1004,7 +1004,7 @@ class AiRunsPage extends ConsumerWidget {
     final value = ref.watch(aiRunsProvider(status));
     final ok = status == 'ok';
     return Scaffold(
-      appBar: AppBar(title: Text(ok ? 'Ejecuciones correctas (24 h)' : 'Ejecuciones fallidas (24 h)')),
+      appBar: AppBar(title: OneLineText(ok ? 'Ejecuciones correctas (24 h)' : 'Ejecuciones fallidas (24 h)')),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(aiRunsProvider(status).future),
         child: ListView(

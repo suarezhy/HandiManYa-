@@ -7,6 +7,8 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/bolivia_geo.dart';
 import '../../core/utils/category_order.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/text_fit.dart';
+import '../../core/widgets/button_row.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/category_icon.dart';
 import '../../core/widgets/common.dart';
@@ -20,6 +22,7 @@ import '../common/city_picker.dart';
 import '../common/photo_picker.dart';
 import '../common/unsaved_changes.dart';
 import 'choose_professional_page.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 enum _Step { category, problems, details, place }
 
@@ -286,7 +289,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
       message: 'Tu pedido todavía no se envió. Si sales ahora, se pierde lo que elegiste y escribiste.',
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
+          title: OneLineText(
             widget.professionalId != null
                 ? (_mode == BookingMode.now ? 'Solicitar ahora' : 'Programar servicio')
                 : (category?.name ?? 'Pedir ¡Ya!'),
@@ -378,13 +381,9 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
         if (allowsYa) ...[
           PrimaryButton(label: 'Lo necesito ¡Ya!', icon: Icons.bolt_rounded, loading: _sending, onPressed: _submit),
           const SizedBox(height: HySpacing.xs),
-          SecondaryButton(
-            label: 'Programar para después',
-            icon: Icons.event_outlined,
-            onPressed: _sending ? null : _scheduleLater,
-          ),
+          SecondaryButton(label: 'Programar', icon: Icons.event_outlined, onPressed: _sending ? null : _scheduleLater),
         ] else
-          PrimaryButton(label: 'Elegir profesional y horario', icon: Icons.event_outlined, onPressed: _scheduleLater),
+          PrimaryButton(label: 'Elegir profesional', icon: Icons.event_outlined, onPressed: _scheduleLater),
       ],
     );
   }
@@ -505,7 +504,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
                 textCapitalization: TextCapitalization.sentences,
                 maxLength: 300,
                 decoration: const InputDecoration(
-                  labelText: '¿A dónde lo llevamos?',
+                  labelText: 'Destino',
                   hintText: 'Taller, casa u otra dirección',
                   prefixIcon: Icon(Icons.flag_outlined),
                 ),
@@ -573,7 +572,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             maxLength: 1500,
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
-              labelText: 'Describe el problema (opcional)',
+              labelText: 'Detalles (opcional)',
               hintText: 'Ej.: Gotea debajo del lavaplatos desde ayer.',
               alignLabelWithHint: true,
             ),
@@ -650,8 +649,13 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             isExpanded: true,
             decoration: const InputDecoration(labelText: 'Zona', prefixIcon: Icon(Icons.map_outlined)),
             items: [
-              const DropdownMenuItem<int?>(value: null, child: Text('No sé / todo el municipio')),
+              const DropdownMenuItem<int?>(value: null, child: Text('Todo el municipio')),
               for (final z in zones) DropdownMenuItem<int?>(value: z.id, child: Text(z.name)),
+            ],
+            // Lo elegido en una línea, sin cortarse, aun con letra grande.
+            selectedItemBuilder: (_) => [
+              const OneLineText('Todo el municipio'),
+              for (final z in zones) OneLineText(z.name),
             ],
             onChanged: (v) => setState(() => _zoneId = v),
           ),
@@ -661,8 +665,8 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             textCapitalization: TextCapitalization.sentences,
             autofillHints: const [AutofillHints.fullStreetAddress],
             decoration: InputDecoration(
-              labelText: _isTow ? '¿Dónde está el vehículo?' : 'Dirección',
-              hintText: _isTow ? 'Calle, carretera o km' : 'Calle, número y barrio',
+              labelText: _isTow ? 'Ubicación' : 'Dirección',
+              hintText: _isTow ? 'Dónde está el vehículo' : 'Calle, número y barrio',
               prefixIcon: Icon(_isTow ? Icons.directions_car_outlined : Icons.home_outlined),
             ),
             validator: (v) => (v ?? '').trim().length < 5 ? 'Escribe la dirección' : null,
@@ -672,7 +676,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             controller: _reference,
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
-              labelText: 'Referencia (opcional)',
+              labelText: 'Referencia',
               hintText: 'Ej.: portón negro, frente a la plaza',
               prefixIcon: Icon(Icons.signpost_outlined),
             ),
@@ -726,7 +730,7 @@ class _CategoryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Chip(avatar: Icon(categoryIcon(category.icon), size: 20), label: Text(category.name));
+      Chip(avatar: Icon(categoryIcon(category.icon), size: 20), label: OneLineText(category.name));
 }
 
 /// Tarjetas grandes de "¿Qué necesitas solucionar?". Se pueden elegir varias.
@@ -748,12 +752,18 @@ class ProblemGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scale = MediaQuery.textScalerOf(context).scale(1);
     return LayoutBuilder(
       builder: (context, box) {
-        // Tarjetas compactas: dos columnas si cada una tiene espacio, si no una.
-        final columns = (box.maxWidth / (170 * scale)).floor().clamp(1, 2);
         const gap = HySpacing.xs;
+        // Dos columnas solo si en cada tarjeta entra cada palabra entera y
+        // queda lugar para leer (unas dos palabras por línea); si no, una sola
+        // columna a todo el ancho. Nunca se parte una palabra ("cañe / ría").
+        final half = (box.maxWidth - gap) / 2 - _ProblemCard.chrome;
+        final names = [for (final p in problems) p.name];
+        final fits =
+            wordFitScale(context, texts: names, style: _ProblemCard.labelStyle, width: half - 1) >=
+            MediaQuery.textScalerOf(context).scale(1);
+        final columns = fits && half >= 140 * MediaQuery.textScalerOf(context).scale(1) ? 2 : 1;
         return Column(
           children: [
             for (var r = 0; r < problems.length; r += columns) ...[
@@ -790,6 +800,12 @@ class ProblemGrid extends StatelessWidget {
 /// marca. Elegida: borde y fondo naranja con ✓. Se pueden elegir varias.
 class _ProblemCard extends StatelessWidget {
   const _ProblemCard({required this.problem, required this.selected, required this.icon, required this.onTap});
+
+  static const labelStyle = TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.2);
+
+  /// Ancho de todo lo que no es el texto: relleno (12 + 12), ícono (36),
+  /// separación (12 + 4), marca (24) y borde (2 + 2).
+  static const chrome = 12.0 + 12 + 36 + 12 + 4 + 24 + 4;
 
   final ServiceProblem problem;
   final bool selected;
@@ -830,12 +846,7 @@ class _ProblemCard extends StatelessWidget {
                     child: Icon(problemIcon(problem.icon), color: selected ? HyColors.onPrimary : fg, size: 22),
                   ),
                   const SizedBox(width: HySpacing.sm),
-                  Expanded(
-                    child: Text(
-                      problem.name,
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, height: 1.2),
-                    ),
-                  ),
+                  Expanded(child: Text(problem.name, style: labelStyle)),
                   const SizedBox(width: HySpacing.xxs),
                   Icon(
                     selected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
@@ -878,39 +889,34 @@ class ScheduleFields extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Row(
+      ButtonRow(
         children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.calendar_today_outlined),
-              label: Text(date == null ? 'Elegir día' : Fmt.shortDate(date!)),
-              onPressed: () async {
-                final now = DateTime.now();
-                final d = await showDatePicker(
-                  context: context,
-                  initialDate: date ?? now,
-                  firstDate: now,
-                  lastDate: now.add(const Duration(days: 60)),
-                  helpText: 'Elige el día',
-                );
-                if (d != null) onDate(d);
-              },
-            ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.calendar_today_outlined),
+            label: Text(date == null ? 'Elegir día' : Fmt.shortDate(date!)),
+            onPressed: () async {
+              final now = DateTime.now();
+              final d = await showDatePicker(
+                context: context,
+                initialDate: date ?? now,
+                firstDate: now,
+                lastDate: now.add(const Duration(days: 60)),
+                helpText: 'Elige el día',
+              );
+              if (d != null) onDate(d);
+            },
           ),
-          const SizedBox(width: HySpacing.sm),
-          Expanded(
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.schedule),
-              label: Text(time == null ? 'Elegir hora' : time!.format(context)),
-              onPressed: () async {
-                final t = await showTimePicker(
-                  context: context,
-                  initialTime: time ?? const TimeOfDay(hour: 9, minute: 0),
-                  helpText: 'Elige la hora',
-                );
-                if (t != null) onTime(t);
-              },
-            ),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.schedule),
+            label: Text(time == null ? 'Elegir hora' : time!.format(context)),
+            onPressed: () async {
+              final t = await showTimePicker(
+                context: context,
+                initialTime: time ?? const TimeOfDay(hour: 9, minute: 0),
+                helpText: 'Elige la hora',
+              );
+              if (t != null) onTime(t);
+            },
           ),
         ],
       ),
@@ -1079,7 +1085,7 @@ class _GpsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     if (point == null) {
       return SecondaryButton(
-        label: locating ? 'Buscando tu ubicación…' : 'Usar mi ubicación actual',
+        label: locating ? 'Buscando tu ubicación…' : 'Usar mi ubicación',
         icon: Icons.my_location_rounded,
         onPressed: locating ? null : onTap,
       );
@@ -1136,7 +1142,7 @@ class _AvailableCount extends ConsumerWidget {
           icon: n > 0 ? Icons.bolt_rounded : Icons.hourglass_empty_rounded,
           tone: n > 0 ? StatusTone.success : StatusTone.warning,
           text: n == 0
-              ? 'Ahora no hay profesionales disponibles para este servicio en esta zona. Prueba "todo el municipio" o programa para después.'
+              ? 'Ahora no hay profesionales disponibles para este servicio en esta zona. Prueba con "Todo el municipio" o programa para después.'
               : n == 1
               ? '1 profesional disponible cerca de ti recibirá tu pedido.'
               : '$n profesionales disponibles cerca de ti recibirán tu pedido. El primero que acepte irá.',

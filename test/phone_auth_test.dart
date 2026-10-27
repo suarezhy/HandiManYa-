@@ -268,7 +268,7 @@ void main() {
       await tap(tester, find.byKey(const Key('role-professional')));
       await tap(tester, find.byKey(const Key('profile-terms')));
       await tap(tester, find.byKey(const Key('profile-continue')));
-      expect(find.text('Quiero ser profesional'), findsOneWidget);
+      expect(find.text('Ser profesional'), findsOneWidget);
     });
 
     testWidgets('código incorrecto: avisa y no entra', (tester) async {

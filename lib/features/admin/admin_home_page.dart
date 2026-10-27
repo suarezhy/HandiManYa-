@@ -282,7 +282,7 @@ class _Summary extends StatelessWidget {
             key: const Key('owner-summary-finance'),
             onPressed: () => go(Routes.adminFinance),
             icon: const Icon(Icons.account_balance_outlined),
-            label: const Text('Ver Finanzas y Bancos'),
+            label: const Text('Finanzas'),
           ),
         ),
         const SectionHeader(title: 'Demanda de los últimos 30 días'),

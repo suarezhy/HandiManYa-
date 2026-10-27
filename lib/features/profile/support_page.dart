@@ -5,6 +5,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/providers.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 const _faq = <(String, String)>[
   (
@@ -47,7 +48,7 @@ class SupportPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Ayuda y soporte')),
+      appBar: AppBar(title: const OneLineText('Ayuda y soporte')),
       body: ListView(
         padding: bottomSafePadding(context),
         children: [

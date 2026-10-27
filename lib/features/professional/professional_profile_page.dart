@@ -6,11 +6,13 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/button_row.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/professional.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/safety_menu.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 class ProfessionalProfilePage extends ConsumerWidget {
   const ProfessionalProfilePage({super.key, required this.id});
@@ -22,7 +24,7 @@ class ProfessionalProfilePage extends ConsumerWidget {
     final detail = ref.watch(professionalDetailProvider(id));
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Perfil del profesional'),
+        title: const OneLineText('Profesional'),
         actions: [if (detail.value case final d?) SafetyMenuButton(userId: id, name: d.summary.displayName)],
       ),
       body: detail.when(
@@ -88,8 +90,8 @@ class _Body extends ConsumerWidget {
               const SizedBox(height: HySpacing.lg),
               Row(
                 children: [
-                  _Stat(value: detail.yearsExperience?.toString() ?? '—', label: 'años de\nexperiencia'),
-                  _Stat(value: '${s.completedJobs}', label: 'trabajos\ncompletados'),
+                  _Stat(value: detail.yearsExperience?.toString() ?? '—', label: 'años'),
+                  _Stat(value: '${s.completedJobs}', label: 'trabajos'),
                   _Stat(value: '${s.ratingCount}', label: 'reseñas'),
                 ],
               ),
@@ -191,7 +193,7 @@ class _Stat extends StatelessWidget {
       child: Column(
         children: [
           Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-          Text(
+          WordSafeText(
             label,
             textAlign: TextAlign.center,
             style: const TextStyle(color: HyColors.textSecondary, fontSize: 13),
@@ -297,25 +299,20 @@ class _BottomActions extends ConsumerWidget {
           heightFactor: 1,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: HySizes.maxContentWidth),
-            child: Row(
+            child: ButtonRow(
+              flex: const [1, 3],
               children: [
-                Expanded(
-                  child: SecondaryButton(
-                    label: 'Programar',
-                    icon: Icons.event_outlined,
-                    onPressed: () => context.push('${Routes.requestPro(s.id, BookingMode.scheduled)}$category'),
-                  ),
+                SecondaryButton(
+                  label: 'Programar',
+                  icon: Icons.event_outlined,
+                  onPressed: () => context.push('${Routes.requestPro(s.id, BookingMode.scheduled)}$category'),
                 ),
-                const SizedBox(width: HySpacing.sm),
-                Expanded(
-                  flex: 3,
-                  child: PrimaryButton(
-                    label: s.isAvailable ? 'Solicitar ahora' : 'No disponible ahora',
-                    icon: Icons.bolt_rounded,
-                    onPressed: s.isAvailable
-                        ? () => context.push('${Routes.requestPro(s.id, BookingMode.now)}$category')
-                        : null,
-                  ),
+                PrimaryButton(
+                  label: s.isAvailable ? 'Pedir ahora' : 'No disponible',
+                  icon: Icons.bolt_rounded,
+                  onPressed: s.isAvailable
+                      ? () => context.push('${Routes.requestPro(s.id, BookingMode.now)}$category')
+                      : null,
                 ),
               ],
             ),

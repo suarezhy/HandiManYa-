@@ -6,6 +6,7 @@ import '../../core/widgets/common.dart';
 import '../../data/models/booking.dart';
 import '../../data/providers.dart';
 import '../booking/my_requests_page.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// Pedidos nuevos (ofertas ¡Ya! y solicitudes directas) o trabajos del profesional.
 class ProJobsPage extends ConsumerWidget {
@@ -24,7 +25,7 @@ class ProJobsPage extends ConsumerWidget {
 
     if (incoming) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Pedidos nuevos')),
+        appBar: AppBar(title: const OneLineText('Pedidos nuevos')),
         body: body(
           (l) => l.where((b) => b.isOffer || b.status.isOpen).toList(),
           const EmptyState(
@@ -39,7 +40,7 @@ class ProJobsPage extends ConsumerWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Mis trabajos'),
+          title: const OneLineText('Mis trabajos'),
           bottom: const TabBar(
             labelStyle: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             indicatorColor: HyColors.primary,

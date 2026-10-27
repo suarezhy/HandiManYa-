@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:handimanya/app.dart';
+import 'package:handimanya/core/services/device_auth.dart';
 import 'package:handimanya/core/services/location_service.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/demo/demo_data.dart';
@@ -23,8 +24,20 @@ import 'package:handimanya/router.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../tool/screenshots/shots.dart';
 import 'support/demo_login.dart';
 import 'support/layout_checks.dart';
+
+/// Huella del teléfono: en las pruebas no hay teléfono que responda.
+class _FakeDeviceAuth implements DeviceAuth {
+  const _FakeDeviceAuth();
+
+  @override
+  Future<Set<DeviceBiometric>> available() async => const {DeviceBiometric.fingerprint};
+
+  @override
+  Future<DeviceAuthResult> authenticate(String reason) async => DeviceAuthResult.success;
+}
 
 class _FakeLocation implements LocationService {
   const _FakeLocation();
@@ -45,6 +58,7 @@ String _label((Size, double, bool) v) => '${v.$1.width.toInt()}px x${v.$2}${v.$3
 
 final _report = <String, Set<String>>{};
 final _buttons = <String>{};
+var _shotFonts = false;
 
 void _add(String where, String issue) => _report.putIfAbsent(where, () => <String>{}).add(issue);
 
@@ -71,6 +85,7 @@ Future<DemoAppBackend> _pump(WidgetTester tester, String phone, (Size, double, b
         backendProvider.overrideWithValue(backend),
         locationServiceProvider.overrideWithValue(const _FakeLocation()),
         mapTileUrlProvider.overrideWithValue(null),
+        deviceAuthProvider.overrideWithValue(const _FakeDeviceAuth()),
       ],
       child: const HandiManYaApp(),
     ),
@@ -80,7 +95,7 @@ Future<DemoAppBackend> _pump(WidgetTester tester, String phone, (Size, double, b
 }
 
 /// Las palabras de los botones a la vista.
-void _checkButtons(WidgetTester tester, String route) {
+void _checkButtons(WidgetTester tester, String route, String where) {
   final buttons = find.byWidgetPredicate(
     (w) => w is ButtonStyleButton || w is FloatingActionButton || w is SegmentedButton,
   );
@@ -90,6 +105,11 @@ void _checkButtons(WidgetTester tester, String route) {
       if (text.isEmpty || text.runes.length == 1) continue;
       final words = text.split(RegExp(r'\s+')).where((w) => RegExp(r'[A-Za-zÁÉÍÓÚÑáéíóúñ]').hasMatch(w)).length;
       if (words > 3) _buttons.add('$route: "$text"');
+      // Un botón con su texto en dos líneas se ve apretado ("Ver / todos").
+      final p = t.renderObject! as RenderParagraph;
+      final one = TextPainter(text: p.text, textDirection: TextDirection.ltr, textScaler: p.textScaler)..layout();
+      if (p.size.height > one.height * 1.5) _add(where, 'botón en dos líneas: "$text"');
+      one.dispose();
     }
   }
 }
@@ -102,7 +122,7 @@ Future<void> _sweep(WidgetTester tester, String where, Size screen, String route
     }
     final e = tester.takeException();
     if (e != null) _add(where, 'error: ${e.toString().split('\n').first}');
-    _checkButtons(tester, route);
+    _checkButtons(tester, route, where);
   }
 
   collect();
@@ -126,9 +146,25 @@ Future<void> _sweep(WidgetTester tester, String where, Size screen, String route
   while (offset < pos.maxScrollExtent && steps < 30) {
     offset = (offset + pos.viewportDimension * 0.7).clamp(0, pos.maxScrollExtent);
     pos.jumpTo(offset);
-    await tester.pumpAndSettle();
+    await _settle(tester, where);
     collect();
     steps++;
+  }
+}
+
+/// Espera a que la pantalla quede quieta. Si algo se mueve sin parar (una
+/// rueda de carga que no termina), se anota y se sigue.
+Future<void> _settle(WidgetTester tester, String where) async {
+  try {
+    await tester.pumpAndSettle(
+      const Duration(milliseconds: 100),
+      EnginePhase.sendSemanticsUpdate,
+      const Duration(seconds: 5),
+    );
+  } catch (_) {
+    tester.takeException();
+    _add(where, 'animación sin fin (¿carga que no termina?)');
+    await tester.pump(const Duration(seconds: 1));
   }
 }
 
@@ -139,8 +175,81 @@ Future<void> _visit(WidgetTester tester, String route, (Size, double, bool) v, {
   } else {
     router.go(route);
   }
-  await tester.pumpAndSettle();
+  await _settle(tester, '$route (${_label(v)})');
+  await _capture(tester, route, v);
   await _sweep(tester, '$route (${_label(v)})', v.$1, route);
+}
+
+/// Con `HMY_SHOTS=<carpeta>`, guarda cada pantalla para revisarla a ojo.
+Future<void> _capture(WidgetTester tester, String what, (Size, double, bool) v) async {
+  if (shotsDir.isEmpty) return;
+  if (!_shotFonts) {
+    _shotFonts = true;
+    await tester.runAsync(loadShotFonts);
+  }
+  final name = '${_label(v)} ${what.replaceAll('/', ' ')}'.trim().replaceAll(RegExp(r'[^\w\-áéíóúñ.]+'), '_');
+  await shot(tester, name);
+}
+
+/// Elige la primera opción y recorre "Cuéntanos más" y "¿Dónde es?".
+Future<void> _requestSteps(WidgetTester tester, (Size, double, bool) v, int categoryId) async {
+  final route = Routes.service(categoryId);
+  final first = DemoData.problems.firstWhere((p) => p.categoryId == categoryId && p.opensCategoryId == null);
+  final option = find.byKey(ValueKey('problem-${first.id}'));
+  if (option.evaluate().isEmpty) return;
+  await tester.ensureVisible(option);
+  await tester.pumpAndSettle();
+  await tester.tap(option);
+  await tester.pumpAndSettle();
+  if (find.byKey(const ValueKey('tow-destination')).evaluate().isNotEmpty) {
+    await tester.tap(find.byKey(const ValueKey('vehicle-Auto')));
+    await tester.enterText(find.byKey(const ValueKey('tow-destination')), 'Taller Central');
+    await tester.pumpAndSettle();
+  }
+  for (final step in ['detalles', 'dirección']) {
+    final next = find.text('Continuar');
+    if (next.evaluate().isEmpty) return;
+    await tester.tap(next.last);
+    await _settle(tester, '$route $step (${_label(v)})');
+    await _capture(tester, '$route $step', v);
+    await _sweep(tester, '$route $step (${_label(v)})', v.$1, route);
+  }
+}
+
+/// Bienvenida y acceso, sin sesión.
+Future<void> _loggedOut(WidgetTester tester, (Size, double, bool) v) async {
+  await initializeDateFormatting('es');
+  SharedPreferences.setMockInitialValues({});
+  final prefs = await SharedPreferences.getInstance();
+  final backend = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
+  addTearDown(backend.dispose);
+  tester.view.physicalSize = v.$1 * 3;
+  tester.view.devicePixelRatio = 3;
+  addTearDown(tester.view.reset);
+  tester.platformDispatcher.textScaleFactorTestValue = v.$2;
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  tester.platformDispatcher.accessibilityFeaturesTestValue = FakeAccessibilityFeatures(boldText: v.$3);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [prefsProvider.overrideWithValue(prefs), backendProvider.overrideWithValue(backend)],
+      child: const HandiManYaApp(),
+    ),
+  );
+  await tester.pumpAndSettle();
+  for (var i = 0; i < 4; i++) {
+    await _sweep(tester, 'bienvenida ${i + 1} (${_label(v)})', v.$1, 'bienvenida');
+    final next = find.text('Continuar');
+    if (next.evaluate().isEmpty) break;
+    await tester.tap(next.last);
+    await tester.pumpAndSettle();
+  }
+  final skip = find.text('Omitir');
+  if (skip.evaluate().isNotEmpty) {
+    await tester.tap(skip);
+    await tester.pumpAndSettle();
+  }
+  await _sweep(tester, 'acceso (${_label(v)})', v.$1, 'acceso');
 }
 
 void main() {
@@ -179,7 +288,6 @@ void main() {
     Routes.emergencyGuide,
     Routes.support,
     Routes.ya,
-    for (final c in DemoData.categories) Routes.service(c.id),
   ];
   final proRoutes = [
     Routes.proHome,
@@ -228,6 +336,19 @@ void main() {
     'empleado': (DemoBackend.employeePhones.first, employeeRoutes),
   };
 
+  for (final v in _variants) {
+    testWidgets('auditoría sin sesión ${_label(v)}', (tester) async {
+      await loadAppFonts(tester);
+      await _loggedOut(tester, v);
+      final issues = [
+        for (final e in _report.entries)
+          if (e.key.endsWith('(${_label(v)})') && (e.key.startsWith('bienvenida') || e.key.startsWith('acceso')))
+            ...e.value,
+      ];
+      expect(issues, isEmpty, reason: issues.take(15).join('\n'));
+    });
+  }
+
   for (final role in roles.entries) {
     for (final v in _variants) {
       testWidgets('auditoría ${role.key} ${_label(v)}', (tester) async {
@@ -236,6 +357,15 @@ void main() {
         await _pump(tester, phone, v);
         for (final r in routes) {
           await _visit(tester, r, v);
+        }
+        // Cada categoría: "¿Qué necesitas?" y los pasos siguientes del pedido.
+        if (role.key == 'cliente') {
+          for (final c in DemoData.categories) {
+            await _visit(tester, Routes.service(c.id), v, push: true);
+            await _requestSteps(tester, v, c.id);
+            GoRouter.of(tester.element(find.byType(Scaffold).first)).go(Routes.home);
+            await _settle(tester, 'inicio');
+          }
         }
         // Las pantallas de cada pedido y su chat.
         if (role.key == 'cliente' || role.key == 'profesional') {
@@ -248,12 +378,16 @@ void main() {
         if (role.key == 'cliente') {
           final pros = DemoData.professionals.take(2);
           for (final p in pros) {
-            await _visit(tester, Routes.professional(p.id), v, push: true);
+            await _visit(tester, Routes.professional(p.$1), v, push: true);
           }
         }
         final issues = [
           for (final e in _report.entries)
-            if (e.key.endsWith('(${_label(v)})') && routes.any((r) => e.key.startsWith(r))) ...e.value,
+            if (e.key.endsWith('(${_label(v)})') &&
+                (routes.any((r) => e.key.startsWith(r)) ||
+                    (role.key == 'cliente' && (e.key.startsWith('/servicio') || e.key.startsWith('/profesional'))) ||
+                    e.key.startsWith('/solicitud')))
+              ...e.value,
         ];
         expect(issues, isEmpty, reason: issues.take(15).join('\n'));
       });

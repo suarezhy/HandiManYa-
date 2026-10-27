@@ -8,6 +8,7 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/button_row.dart';
 import '../../data/models/admin.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/costs.dart';
@@ -33,7 +34,7 @@ class AdminApplicationsPage extends ConsumerWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Postulaciones'),
+          title: const OneLineText('Postulaciones'),
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Por revisar'),
@@ -146,7 +147,7 @@ class AdminApplicationDetailPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(adminApplicationDetailProvider(professionalId));
     return Scaffold(
-      appBar: AppBar(title: const Text('Postulación')),
+      appBar: AppBar(title: const OneLineText('Postulación')),
       body: switch (detail) {
         AsyncData(:final value) => _detail(context, ref, value),
         AsyncError(:final error) => ErrorView(error: error, onRetry: () => _refresh(ref)),
@@ -242,25 +243,21 @@ class AdminApplicationDetailPage extends ConsumerWidget {
                         EvidenceImage(url: doc.url, bytes: doc.bytes, label: doc.label, height: 200),
                         if (doc.reviewNote != null) InfoLine(Icons.notes, doc.reviewNote!),
                         const SizedBox(height: HySpacing.xs),
-                        Row(
+                        ButtonRow(
+                          spacing: HySpacing.xs,
                           children: [
-                            Expanded(
-                              child: SecondaryButton(
-                                label: 'Rechazar',
-                                onPressed: doc.status == DocumentStatus.rejected
-                                    ? null
-                                    : () => _reviewDoc(context, ref, doc, DocumentStatus.rejected),
-                              ),
+                            SecondaryButton(
+                              label: 'Rechazar',
+                              onPressed: doc.status == DocumentStatus.rejected
+                                  ? null
+                                  : () => _reviewDoc(context, ref, doc, DocumentStatus.rejected),
                             ),
-                            const SizedBox(width: HySpacing.xs),
-                            Expanded(
-                              child: PrimaryButton(
-                                label: 'Aceptar',
-                                color: HyColors.greenDark,
-                                onPressed: doc.status == DocumentStatus.accepted
-                                    ? null
-                                    : () => _reviewDoc(context, ref, doc, DocumentStatus.accepted),
-                              ),
+                            PrimaryButton(
+                              label: 'Aceptar',
+                              color: HyColors.greenDark,
+                              onPressed: doc.status == DocumentStatus.accepted
+                                  ? null
+                                  : () => _reviewDoc(context, ref, doc, DocumentStatus.accepted),
                             ),
                           ],
                         ),

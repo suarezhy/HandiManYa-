@@ -576,7 +576,7 @@ void main() {
   }
 
   Future<void> useGps(WidgetTester tester) async {
-    await tapVisible(tester, find.text('Usar mi ubicación actual'));
+    await tapVisible(tester, find.text('Usar mi ubicación'));
     await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Continuar')));
     await tester.pumpAndSettle();
   }
@@ -657,7 +657,7 @@ void main() {
         .top;
     expect(note.bottom, lessThanOrEqualTo(barTop + 0.5));
     expect(bar.bottom, lessThanOrEqualTo(568 - _bottomInset));
-    expect(find.text('Programar para después'), findsOneWidget);
+    expect(find.text('Programar'), findsOneWidget);
     // Sin dirección no se envía.
     await tester.tap(find.text('Lo necesito ¡Ya!'));
     await tester.pumpAndSettle();

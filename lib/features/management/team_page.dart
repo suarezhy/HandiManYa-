@@ -326,7 +326,7 @@ class _AddStaffPageState extends ConsumerState<AddStaffPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Agregar al equipo')),
+    appBar: AppBar(title: const OneLineText('Agregar al equipo')),
     body: ListView(
       padding: bottomSafePadding(context, top: HySpacing.md),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,

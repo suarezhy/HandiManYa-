@@ -11,6 +11,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../admin/admin_common.dart';
 import 'management_common.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 final _when = DateFormat("d MMM, HH:mm", 'es');
 
@@ -57,7 +58,7 @@ class _CasesPageState extends ConsumerState<CasesPage> {
     final cases = ref.watch(opsCasesProvider((_scope, _resolved)));
     final title = widget.role == StaffRole.employee ? 'Mis casos' : 'Casos';
     return Scaffold(
-      appBar: widget.inShell ? PanelAppBar(role: widget.role, title: title) : AppBar(title: Text(title)),
+      appBar: widget.inShell ? PanelAppBar(role: widget.role, title: title) : AppBar(title: OneLineText(title)),
       body: RefreshIndicator(
         onRefresh: () async => refreshOps(ref),
         child: ListView(
@@ -175,7 +176,7 @@ class CaseDetailPage extends ConsumerWidget {
     final account = ref.watch(accountProvider).value;
     final role = account?.managementRole ?? StaffRole.employee;
     return Scaffold(
-      appBar: AppBar(title: const Text('Caso')),
+      appBar: AppBar(title: const OneLineText('Caso')),
       body: switch (detail) {
         AsyncData(:final value) => _CaseBody(d: value, role: role, myId: account?.id),
         AsyncError(:final error) => ErrorView(

@@ -12,6 +12,8 @@ import '../../data/models/catalog.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import 'admin_common.dart';
+import '../../core/widgets/trailing_row.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 final adminServiceCategoriesProvider = FutureProvider<List<ServiceCategory>>(
   (ref) => ref.watch(backendProvider).adminServiceCategories(),
@@ -48,7 +50,7 @@ const _docLabels = {
   'antecedentes': 'Antecedentes (FELCC)',
   'certificado': 'Título o matrícula',
   'nombramiento_notarial': 'Nombramiento de notario (DIRNOPLU)',
-  'documentos_grua': 'Licencia, RUAT y SOAT de la grúa (y antecedentes)',
+  'documentos_grua': 'Documentos de grúa y antecedentes',
 };
 
 /// Quita tildes y espacios para armar el identificador de una categoría nueva.
@@ -122,31 +124,28 @@ class AdminServiceCategoriesTab extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(HyRadii.md)),
-                    child: Icon(categoryIcon(c.icon), color: fg),
-                  ),
-                  const SizedBox(width: HySpacing.sm),
-                  Expanded(
-                    child: Text(c.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                  ),
-                  _OrderButtons(
-                    label: c.name,
-                    canUp: i > 0,
-                    canDown: i >= 0 && i < ids.length - 1,
-                    onMove: (delta) async {
-                      final ok = await runGuarded(
-                        context,
-                        () => ref.read(backendProvider).reorderCategories(moved(ids, i, delta)),
-                      );
-                      if (ok) await _afterChange(ref);
-                    },
-                  ),
-                ],
+              TrailingRow(
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(HyRadii.md)),
+                  child: Icon(categoryIcon(c.icon), color: fg),
+                ),
+                gap: HySpacing.sm,
+                minBodyWidth: 130,
+                body: WordSafeText(c.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                trailing: _OrderButtons(
+                  label: c.name,
+                  canUp: i > 0,
+                  canDown: i >= 0 && i < ids.length - 1,
+                  onMove: (delta) async {
+                    final ok = await runGuarded(
+                      context,
+                      () => ref.read(backendProvider).reorderCategories(moved(ids, i, delta)),
+                    );
+                    if (ok) await _afterChange(ref);
+                  },
+                ),
               ),
               const SizedBox(height: 4),
               Wrap(
@@ -366,7 +365,7 @@ class AdminProblemsPage extends ConsumerWidget {
     final value = ref.watch(adminProblemsProvider(categoryId));
     final ids = [for (final p in value.value ?? const <ServiceProblem>[]) p.id];
     return Scaffold(
-      appBar: AppBar(title: Text(category == null ? 'Opciones' : 'Opciones de ${category.name}')),
+      appBar: AppBar(title: OneLineText(category == null ? 'Opciones' : 'Opciones de ${category.name}')),
       body: AdminList<ServiceProblem>(
         value: value,
         onRefresh: () => ref.refresh(adminProblemsProvider(categoryId).future),

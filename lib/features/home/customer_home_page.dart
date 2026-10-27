@@ -17,6 +17,7 @@ import '../../router.dart';
 import '../common/city_picker.dart';
 import '../common/professional_card.dart';
 import 'home_map.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 class CustomerHomePage extends ConsumerWidget {
   const CustomerHomePage({super.key});
@@ -215,9 +216,8 @@ class _Header extends ConsumerWidget {
                             const Icon(Icons.place, size: 18, color: HyColors.primary),
                             const SizedBox(width: 2),
                             Flexible(
-                              child: Text(
+                              child: OneLineText(
                                 city?.shortName ?? 'Elegir',
-                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
                               ),
                             ),

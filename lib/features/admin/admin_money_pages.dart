@@ -6,11 +6,13 @@ import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/button_row.dart';
 import '../../data/models/admin.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/wallet.dart';
 import '../../data/providers.dart';
 import 'admin_common.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 // ======================================================================= Recargas
 class AdminTopupsPage extends ConsumerWidget {
@@ -22,7 +24,7 @@ class AdminTopupsPage extends ConsumerWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Recargas'),
+          title: const OneLineText('Recargas'),
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Por revisar'),
@@ -101,7 +103,10 @@ class _TopupList extends ConsumerWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(Fmt.bs(t.amount), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                  child: OneLineText(
+                    Fmt.bs(t.amount),
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+                  ),
                 ),
                 ToneChip(t.status.label, switch (t.status) {
                   TopupStatus.approved => StatusTone.success,
@@ -126,18 +131,14 @@ class _TopupList extends ConsumerWidget {
               ),
             if (t.status == TopupStatus.pending) ...[
               const SizedBox(height: HySpacing.sm),
-              Row(
+              ButtonRow(
+                spacing: HySpacing.xs,
                 children: [
-                  Expanded(
-                    child: SecondaryButton(label: 'Rechazar', onPressed: () => _review(context, ref, t, false)),
-                  ),
-                  const SizedBox(width: HySpacing.xs),
-                  Expanded(
-                    child: PrimaryButton(
-                      label: 'Acreditar',
-                      color: HyColors.greenDark,
-                      onPressed: () => _review(context, ref, t, true),
-                    ),
+                  SecondaryButton(label: 'Rechazar', onPressed: () => _review(context, ref, t, false)),
+                  PrimaryButton(
+                    label: 'Acreditar',
+                    color: HyColors.greenDark,
+                    onPressed: () => _review(context, ref, t, true),
                   ),
                 ],
               ),
@@ -158,7 +159,7 @@ class AdminCommissionsPage extends ConsumerWidget {
     final cats = {for (final c in ref.watch(categoriesProvider).value ?? const []) c.id: c.name};
     final cities = {for (final c in ref.watch(citiesProvider).value ?? const []) c.id: c.shortName};
     return Scaffold(
-      appBar: AppBar(title: const Text('Comisiones')),
+      appBar: AppBar(title: const OneLineText('Comisiones')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _edit(context, null),
         icon: const Icon(Icons.add),

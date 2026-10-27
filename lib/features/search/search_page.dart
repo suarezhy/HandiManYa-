@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
+import '../../core/widgets/button_row.dart';
 import '../../data/models/catalog.dart';
 import '../../data/models/professional.dart';
 import '../../data/providers.dart';
@@ -340,19 +341,14 @@ class _FiltersSheetState extends ConsumerState<_FiltersSheet> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.xs, HySpacing.page, HySpacing.md),
-              child: Row(
+              child: ButtonRow(
+                flex: const [1, 2],
                 children: [
-                  Expanded(
-                    child: SecondaryButton(
-                      label: 'Limpiar',
-                      onPressed: () => Navigator.pop(context, SearchFilters(query: f.query)),
-                    ),
+                  SecondaryButton(
+                    label: 'Limpiar',
+                    onPressed: () => Navigator.pop(context, SearchFilters(query: f.query)),
                   ),
-                  const SizedBox(width: HySpacing.sm),
-                  Expanded(
-                    flex: 2,
-                    child: PrimaryButton(label: 'Ver resultados', onPressed: () => Navigator.pop(context, f)),
-                  ),
+                  PrimaryButton(label: 'Ver resultados', onPressed: () => Navigator.pop(context, f)),
                 ],
               ),
             ),

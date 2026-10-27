@@ -234,7 +234,7 @@ void main() {
     testWidgets('con cambios pregunta; después de "Guardar borrador" sale directo', (tester) async {
       await _pumpApp(tester, DemoBackend.customerPhone);
       await _push(tester, Routes.apply);
-      expect(find.text('Quiero ser profesional'), findsOneWidget);
+      expect(find.text('Ser profesional'), findsOneWidget);
       final fields = find.byType(TextFormField);
       await tester.enterText(fields.at(2), 'Limpieza de casas y oficinas, con productos propios.');
       await tester.pumpAndSettle();
@@ -243,7 +243,7 @@ void main() {
       expect(find.text(_leaveTitle), findsOneWidget);
       await tester.tap(find.text('Seguir editando'));
       await tester.pumpAndSettle();
-      expect(find.text('Quiero ser profesional'), findsOneWidget);
+      expect(find.text('Ser profesional'), findsOneWidget);
 
       // Guardar borrador sigue ahí; guardado, ya no hay nada que perder.
       await _tap(tester, find.byKey(const Key('application-primary')));
@@ -253,14 +253,14 @@ void main() {
       if (find.text('Borrador guardado').evaluate().isNotEmpty) {
         await _systemBack(tester);
         expect(find.text(_leaveTitle), findsNothing);
-        expect(find.text('Quiero ser profesional'), findsNothing);
+        expect(find.text('Ser profesional'), findsNothing);
       } else {
         // Sin municipio el borrador no se guarda: sigue preguntando.
         await _systemBack(tester);
         expect(find.text(_leaveTitle), findsOneWidget);
         await tester.tap(find.text('Salir'));
         await tester.pumpAndSettle();
-        expect(find.text('Quiero ser profesional'), findsNothing);
+        expect(find.text('Ser profesional'), findsNothing);
       }
       expect(tester.takeException(), isNull);
     });
@@ -275,7 +275,7 @@ void main() {
       expect(find.text(_leaveTitle), findsOneWidget);
       await tester.tap(find.text('Salir'));
       await tester.pumpAndSettle();
-      expect(find.text('Quiero ser profesional'), findsNothing);
+      expect(find.text('Ser profesional'), findsNothing);
     });
 
     testWidgets('sin cambios, atrás sale directo', (tester) async {
@@ -283,7 +283,7 @@ void main() {
       await _push(tester, Routes.apply);
       await _systemBack(tester);
       expect(find.text(_leaveTitle), findsNothing);
-      expect(find.text('Quiero ser profesional'), findsNothing);
+      expect(find.text('Ser profesional'), findsNothing);
     });
   });
 

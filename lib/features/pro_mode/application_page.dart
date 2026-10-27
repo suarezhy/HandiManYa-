@@ -20,6 +20,7 @@ import '../legal/legal_texts.dart';
 import 'identity_check_card.dart';
 import 'service_area_page.dart';
 import 'service_selector.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// Postulación para ser profesional: datos, zonas, documentos y envío.
 class ApplicationPage extends ConsumerWidget {
@@ -30,7 +31,7 @@ class ApplicationPage extends ConsumerWidget {
     final app = ref.watch(applicationProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Quiero ser profesional'),
+        title: const OneLineText('Ser profesional'),
         // Igual que el gesto atrás: pregunta si hay cambios sin guardar y, si
         // se llegó directo a esta pantalla, vuelve al inicio.
         leading: BackButton(onPressed: () => Navigator.maybePop(context)),

@@ -9,6 +9,7 @@ import '../../data/models/booking.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import 'booking_card.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// "Solicitudes" del cliente: activas e historial.
 class MyRequestsPage extends ConsumerWidget {
@@ -23,7 +24,7 @@ class MyRequestsPage extends ConsumerWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Mis solicitudes'),
+          title: const OneLineText('Mis solicitudes'),
           bottom: const TabBar(
             labelStyle: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             indicatorColor: HyColors.primary,

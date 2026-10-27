@@ -7,6 +7,7 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/common.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// Lista de chats. Sirve para ambos modos: cada chat está ligado a una
 /// solicitud y muestra al otro participante.
@@ -17,7 +18,7 @@ class ConversationsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(conversationsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Mensajes')),
+      appBar: AppBar(title: const OneLineText('Mensajes')),
       body: list.when(
         skipLoadingOnReload: true,
         loading: () => const LoadingView(),

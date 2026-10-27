@@ -12,6 +12,8 @@ import '../../data/providers.dart';
 import '../auth/auth_scaffold.dart';
 import '../common/city_picker.dart';
 import '../common/unsaved_changes.dart';
+import '../../core/widgets/trailing_row.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 class EditProfilePage extends ConsumerWidget {
   const EditProfilePage({super.key});
@@ -20,7 +22,7 @@ class EditProfilePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final account = ref.watch(accountProvider).value;
     return Scaffold(
-      appBar: AppBar(title: const Text('Información personal')),
+      appBar: AppBar(title: const OneLineText('Información personal')),
       body: account == null ? const LoadingView() : _Form(account: account),
     );
   }
@@ -114,7 +116,7 @@ class _FormState extends ConsumerState<_Form> {
                 _ContactRow(
                   key: const Key('profile-phone'),
                   icon: Icons.phone_iphone,
-                  label: 'Celular (con este número entras)',
+                  label: 'Celular',
                   value: a.phone == null ? 'Sin número' : formatBoliviaPhone(a.phone!),
                   action: a.phone == null ? 'Agregar' : 'Cambiar',
                   onTap: () => _change(const _ChangePhoneSheet()),
@@ -123,7 +125,7 @@ class _FormState extends ConsumerState<_Form> {
                 _ContactRow(
                   key: const Key('profile-email'),
                   icon: Icons.mail_outline,
-                  label: 'Correo (opcional, sirve para recuperar tu cuenta)',
+                  label: 'Correo (opcional)',
                   value: a.emailPending != null
                       ? '${a.emailPending} (falta confirmar)'
                       : a.email.isEmpty
@@ -175,11 +177,13 @@ class _ContactRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(HyRadii.md),
       child: InputDecorator(
         decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
-        child: Row(
-          children: [
-            Expanded(child: Text(value, style: const TextStyle(fontSize: 16))),
-            TextButton(onPressed: onTap, child: Text(action)),
-          ],
+        // Con letra grande, el botón baja debajo del dato en vez de apretarlo.
+        child: TrailingRow(
+          leading: const SizedBox.shrink(),
+          gap: 0,
+          minBodyWidth: 120,
+          body: WordSafeText(value, style: const TextStyle(fontSize: 16)),
+          trailing: TextButton(onPressed: onTap, child: Text(action)),
         ),
       ),
     ),

@@ -11,6 +11,8 @@ import '../../data/models/staff.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import 'management_common.dart';
+import '../../core/widgets/word_safe_text.dart';
+import '../auth/auth_scaffold.dart' show formatBoliviaPhone;
 
 /// Resumen del Panel del Gerente: solo operación, sin dinero. Los números
 /// vienen de ops_dashboard, que no manda montos.
@@ -266,11 +268,14 @@ class StaffProfilePage extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(account.fullName, style: text.titleLarge),
+                            WordSafeText(account.fullName, style: text.titleLarge),
                             if (account.phone != null)
-                              Text(account.phone!, style: const TextStyle(color: HyColors.textSecondary)),
+                              OneLineText(
+                                formatBoliviaPhone(account.phone!),
+                                style: const TextStyle(color: HyColors.textSecondary),
+                              ),
                             if (account.email.isNotEmpty)
-                              Text(account.email, style: const TextStyle(color: HyColors.textSecondary)),
+                              WordSafeText(account.email, style: const TextStyle(color: HyColors.textSecondary)),
                             const SizedBox(height: 4),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

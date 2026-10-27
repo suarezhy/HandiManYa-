@@ -17,6 +17,7 @@ import '../common/safety_menu.dart';
 import '../safety/emergency_sheet.dart';
 import 'arrival_pin.dart';
 import 'live_trip.dart';
+import '../../core/widgets/word_safe_text.dart';
 
 /// Detalle de una solicitud. Muestra el estado en tiempo real y solo las
 /// acciones que el servidor permite en ese estado para quien la mira.
@@ -30,7 +31,7 @@ class BookingDetailPage extends ConsumerWidget {
     final detail = ref.watch(bookingDetailProvider(id));
     return Scaffold(
       appBar: AppBar(
-        title: Text(detail.value == null ? 'Solicitud' : 'Solicitud ${detail.value!.code}'),
+        title: OneLineText(detail.value == null ? 'Solicitud' : 'Solicitud ${detail.value!.code}'),
         actions: [
           if (detail.value case final b?)
             if (b.viewerIsCustomer && b.professional != null)
