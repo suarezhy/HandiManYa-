@@ -28,6 +28,10 @@ class CustomerHomePage extends ConsumerWidget {
   /// nunca tape lo último (alto del botón y su margen, con aire).
   static const fabClearance = 96.0;
 
+  /// Lema bajo el saludo. Con espacio fijo antes de cada "·": si no entra en
+  /// una línea, corta después del punto y nunca deja uno al principio.
+  static const slogan = 'Calidad\u00a0· Confianza\u00a0· Puntualidad';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final account = ref.watch(accountProvider).value;
@@ -61,8 +65,8 @@ class CustomerHomePage extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // En pantallas bajas o con letra grande el saludo se achica y
-                    // la segunda línea se omite (el buscador ya la pregunta).
+                    // En pantallas bajas o con letra grande el saludo se achica; el
+                    // lema va siempre debajo, discreto y sin partir palabras.
                     Builder(
                       builder: (context) {
                         final media = MediaQuery.of(context);
@@ -75,13 +79,16 @@ class CustomerHomePage extends ConsumerWidget {
                               account == null ? '¡Hola!' : '¡Hola, ${Fmt.firstName(account.fullName)}!',
                               style: compact ? text.titleLarge : text.headlineMedium,
                             ),
-                            if (!compact) ...[
-                              const SizedBox(height: 2),
-                              Text(
-                                '¿Qué servicio necesitas hoy?',
-                                style: text.bodyLarge?.copyWith(color: HyColors.textSecondary),
+                            const SizedBox(height: 2),
+                            WordSafeText(
+                              key: const Key('home-slogan'),
+                              slogan,
+                              style: (compact ? text.bodyMedium : text.bodyLarge)?.copyWith(
+                                color: HyColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.2,
                               ),
-                            ],
+                            ),
                             SizedBox(height: compact ? HySpacing.sm : HySpacing.md),
                           ],
                         );

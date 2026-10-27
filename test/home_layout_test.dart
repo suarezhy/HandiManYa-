@@ -304,6 +304,22 @@ void main() {
         expect(find.textContaining('Encuéntral'), findsNothing, reason: '$why: sin banner de promoción');
         expect(find.byKey(const Key('home-promo')), findsNothing, reason: why);
 
+        // Lema bajo el saludo, entero y sin palabras partidas.
+        final slogan = find.byKey(const Key('home-slogan'));
+        expect(slogan, findsOneWidget, reason: why);
+        expect(find.textContaining('necesitas hoy'), findsNothing, reason: '$why: reemplazado por el lema');
+        final sloganP = _paragraph(tester, slogan);
+        expect(sloganP.text.toPlainText(), 'Calidad\u00a0· Confianza\u00a0· Puntualidad', reason: why);
+        expect(sloganP.didExceedMaxLines, isFalse, reason: why);
+        expect(_brokenWords(sloganP), isEmpty, reason: '$why: lema');
+        final sloganRect = tester.getRect(slogan);
+        expect(sloganRect.right, lessThanOrEqualTo(size.width), reason: why);
+        expect(sloganRect.top, greaterThanOrEqualTo(tester.getRect(find.textContaining('¡Hola')).bottom), reason: why);
+        expect(sloganRect.bottom, lessThan(tester.getRect(find.byType(TextField).first).top), reason: why);
+        if (size.width < 700) {
+          expect(_lines(sloganP), scale == 1.0 ? 1 : lessThanOrEqualTo(2), reason: '$why: líneas del lema');
+        }
+
         // Banner de marca: justo debajo del buscador, antes del mapa, sin
         // botones y entero (crece con la letra, no se corta).
         final banner = find.byKey(const Key('home-brand-banner'));
