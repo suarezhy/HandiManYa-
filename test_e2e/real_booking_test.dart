@@ -83,6 +83,20 @@ void main() {
       final city = cities.first.id;
       final categories = await _step('categorías desde la base', customer.categories);
       expect(categories, isNotEmpty);
+      await _step('catálogo: Banda y Mariachis en Eventos; Grúa en Mecánica lleva al servicio de grúa', () async {
+        int idOf(String slug) => categories.firstWhere((c) => c.slug == slug).id;
+        final eventos = (await customer.problems(idOf('eventos'))).map((p) => p.name);
+        expect(eventos, containsAll(['Banda', 'Mariachis']));
+        final grua = (await customer.problems(idOf('mecanica'))).firstWhere((p) => p.name == 'Grúa');
+        expect(grua.opensCategoryId, idOf('grua'));
+        final tow = (await customer.problems(idOf('grua'))).map((p) => p.name);
+        expect(tow, contains('Remolque de vehículo'));
+        expect(
+          categories.firstWhere((c) => c.slug == 'grua').requiredDoc,
+          isNotNull,
+          reason: 'la grúa exige documentos',
+        );
+      });
       // Un servicio que no exige documento extra; la cerrajería y similares se prueban aparte.
       final category = categories.firstWhere((c) => c.requiredDoc == null && c.allowsYa).id;
       final sensitive = categories.where((c) => c.requiredDoc != null).firstOrNull;
@@ -283,30 +297,27 @@ void main() {
         expect(shared.trip?.live, isTrue);
         await expectLater(anon.sharedTrip('codigo-que-no-existe'), _code('HMY_SHARE_NOT_FOUND'));
       });
-      // Código de llegada (migración 0014). Mientras no esté aplicada en dev, se avisa y se sigue.
-      ArrivalPin? pin;
-      try {
-        pin = await pro.markArrived(bookingId);
-      } on PostgrestException catch (e) {
-        if (e.code != 'PGRST202') rethrow;
-        // ignore: avoid_print
-        print('aviso - el código de llegada (0014) todavía no está aplicado en dev');
-      }
-      if (pin != null) {
-        await _step('sin llegada verificada no se empieza el trabajo', () async {
-          await expectLater(pro.updateProgress(bookingId, BookingStatus.inProgress), throwsA(anything));
-        });
-        await _step('el profesional no puede verificarse solo', () async {
-          await expectLater(pro.verifyArrivalPin(bookingId, pin!.pin), throwsA(anything));
-        });
-        await _step('el cliente verifica la llegada con el código', () async {
-          expect((await customer.verifyArrivalPin(bookingId, pin!.pin)).result, ArrivalCheckResult.verified);
-          expect((await pro.arrival(bookingId)).verified, isTrue);
-        });
-        await _step('al verificar la llegada se deja de compartir la posición', () async {
-          expect((await customer.tripLocation(bookingId)).live, isFalse);
-        });
-      }
+      // Código de llegada: el trabajo empieza solo cuando el cliente confirma con su código.
+      final pin = await _step('el profesional marca que llegó y se genera el código', () => pro.markArrived(bookingId));
+      await _step('sin llegada verificada no se empieza el trabajo', () async {
+        await expectLater(pro.updateProgress(bookingId, BookingStatus.inProgress), throwsA(anything));
+      });
+      await _step('el profesional no puede verificarse solo', () async {
+        await expectLater(pro.verifyArrivalPin(bookingId, pin.pin), throwsA(anything));
+      });
+      await _step('un código equivocado no verifica la llegada', () async {
+        final last = pin.pin[pin.pin.length - 1];
+        final wrong = pin.pin.substring(0, pin.pin.length - 1) + (last == '0' ? '1' : '0');
+        expect((await customer.verifyArrivalPin(bookingId, wrong)).result, isNot(ArrivalCheckResult.verified));
+        expect((await pro.arrival(bookingId)).verified, isFalse);
+      });
+      await _step('el cliente verifica la llegada con el código', () async {
+        expect((await customer.verifyArrivalPin(bookingId, pin.pin)).result, ArrivalCheckResult.verified);
+        expect((await pro.arrival(bookingId)).verified, isTrue);
+      });
+      await _step('al verificar la llegada se deja de compartir la posición', () async {
+        expect((await customer.tripLocation(bookingId)).live, isFalse);
+      });
       await _step('en progreso y trabajo terminado', () async {
         await pro.updateProgress(bookingId, BookingStatus.inProgress);
         await pro.updateProgress(bookingId, BookingStatus.workFinished, finalAmount: 150);
@@ -771,5 +782,96 @@ void main() {
     },
     skip: configured ? false : 'Falta E2E_URL, E2E_ANON_KEY o E2E_PASSWORD',
     timeout: const Timeout(Duration(minutes: 4)),
+  );
+
+  // Corre al final: suspender cuentas y comprobar que dejan de poder pedir o atender.
+  test(
+    'seguridad: un profesional suspendido sale del ¡Ya!, pierde sus pedidos y no ve direcciones; un cliente suspendido no pide',
+    () async {
+      final customer = await _step('el cliente entra', () => _signIn('e2e-cliente@test.bo'));
+      final pro = await _step('el profesional entra', () => _signIn('e2e-pro@test.bo'));
+      final owner = await _step('el propietario entra', () => _signIn('e2e-admin@test.bo'));
+      final city = (await customer.cities()).first.id;
+      final category = (await customer.categories()).firstWhere((c) => c.requiredDoc == null && c.allowsYa).id;
+      Future<int> nearby() =>
+          customer.countYaAvailable(categoryId: category, cityId: city, latitude: -17.79, longitude: -63.18);
+      BookingDraft direct(String what) => BookingDraft(
+        categoryId: category,
+        cityId: city,
+        mode: BookingMode.now,
+        professionalId: _proId,
+        description: 'Prueba E2E: $what',
+        address: 'Calle Suspensión 9',
+      );
+
+      await _step('el profesional vuelve a estar disponible', () => pro.setAvailability(true));
+      final before = await _step('¡Ya! lo cuenta cerca', nearby);
+      expect(before, greaterThanOrEqualTo(1));
+      final pending = await _step(
+        'el cliente le pide directo',
+        () => customer.create(direct('pedido antes de suspender')),
+      );
+
+      await _step('el propietario no suspende sin motivo', () async {
+        await expectLater(owner.setSuspension(_proId, suspend: true, reason: ' '), _code('HMY_REASON_REQUIRED'));
+      });
+      await _step('el propietario suspende al profesional', () async {
+        await owner.setSuspension(_proId, suspend: true, reason: 'Prueba E2E de suspensión');
+      });
+      await _step('su pedido sin empezar se cancela y nunca ve la dirección', () async {
+        expect((await customer.detail(pending)).status, BookingStatus.cancelled);
+        await expectLater(pro.accept(pending, isOffer: false), throwsA(anything));
+        final d = await pro.detail(pending).then<BookingDetail?>((d) => d, onError: (_) => null);
+        expect(d?.address, isNull);
+      });
+      await _step('sale del ¡Ya! y no puede ponerse disponible', () async {
+        expect(await nearby(), before - 1);
+        await expectLater(pro.setAvailability(true), _code('HMY_ACCOUNT_SUSPENDED'));
+      });
+      await _step('nadie le puede pedir directo', () async {
+        await expectLater(
+          customer.create(direct('pedido a un suspendido')),
+          throwsA(
+            predicate(
+              (e) => {'HMY_PROFESSIONAL_NOT_AVAILABLE', 'HMY_PRO_NOT_CLEARED'}.contains(AppError.from(e!).code),
+              'pedido rechazado',
+            ),
+          ),
+        );
+      });
+      await _step('el profesional recibe el aviso de la suspensión', () async {
+        expect((await pro.list()).where((n) => n.kind == 'account'), isNotEmpty);
+      });
+      await _step('al levantar la suspensión vuelve a estar aprobado', () async {
+        await owner.setSuspension(_proId, suspend: false);
+        await pro.setAvailability(true);
+        expect(await nearby(), before);
+      });
+
+      final open = await _step(
+        'el cliente pide otra vez',
+        () => customer.create(direct('pedido antes de suspender al cliente')),
+      );
+      await _step('el propietario suspende al cliente', () async {
+        await owner.setSuspension('e2e00000-0000-4000-8000-0000000000c1', suspend: true, reason: 'Prueba E2E');
+      });
+      await _step('su pedido se cancela y el profesional no va a esa casa', () async {
+        expect((await pro.detail(open)).status, BookingStatus.cancelled);
+        expect((await pro.detail(open)).address, isNull);
+        await expectLater(pro.accept(open, isOffer: false), throwsA(anything));
+      });
+      await _step('un cliente suspendido no puede pedir', () async {
+        await expectLater(customer.create(direct('pedido de un suspendido')), _code('HMY_ACCOUNT_SUSPENDED'));
+      });
+      await _step('el profesional no puede suspender a nadie', () async {
+        await expectLater(pro.setSuspension(_managerId, suspend: true, reason: 'Prueba E2E'), _code('HMY_FORBIDDEN'));
+      });
+      await _step('se levanta la suspensión del cliente', () async {
+        await owner.setSuspension('e2e00000-0000-4000-8000-0000000000c1', suspend: false);
+        await pro.setAvailability(false);
+      });
+    },
+    skip: configured ? false : 'Falta E2E_URL, E2E_ANON_KEY o E2E_PASSWORD',
+    timeout: const Timeout(Duration(minutes: 3)),
   );
 }
