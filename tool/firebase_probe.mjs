@@ -134,9 +134,43 @@ console.log(
 console.log(`El ID de la app es de Android: ${appId.includes(':android:') ? 'sí' : 'NO'}.`);
 
 let ok = await check('FIREBASE_API_KEY (la guardada)', process.env.FIREBASE_API_KEY ?? '');
+// Otra forma de preguntar, para descartar que la prueba esté mal hecha: la
+// clave en la dirección (?key=) en vez del encabezado, y una API distinta.
+// Con una clave que existe, Google responde otra cosa que API_KEY_INVALID
+// (por ejemplo, API_KEY_SERVICE_BLOCKED si la API no está en su lista).
+async function crossCheck(label, key) {
+  const k = key.trim();
+  const viaQuery = await fetch(
+    `https://firebaseinstallations.googleapis.com/v1/projects/${project}/installations?key=${encodeURIComponent(k)}`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fid: fid(), appId, authVersion: 'FIS_v2', sdkVersion: 'a:18.0.0' }) },
+  );
+  const q = viaQuery.ok ? { status: 200 } : { status: viaQuery.status, ...reason(await viaQuery.json().catch(() => ({}))) };
+  console.log(`  ${label}, clave en la dirección: HTTP ${q.status} ${q.reason ?? ''}`.trimEnd());
+  const other = await fetch(`https://identitytoolkit.googleapis.com/v1/projects?key=${encodeURIComponent(k)}`);
+  const o = other.ok ? { status: 200 } : { status: other.status, ...reason(await other.json().catch(() => ({}))) };
+  console.log(
+    `  ${label}, otra API de Google (Identity Toolkit): HTTP ${o.status} ${o.reason ?? ''}` +
+      (o.reason === 'API_KEY_INVALID' ? ' → Google tampoco reconoce la clave ahí' : ' → Google sí reconoce la clave'),
+  );
+}
+
+await crossCheck('FIREBASE_API_KEY (la guardada)', process.env.FIREBASE_API_KEY ?? '');
+
 if (process.env.FIREBASE_API_KEY_NEW) {
-  const same = (process.env.FIREBASE_API_KEY ?? '').trim() === process.env.FIREBASE_API_KEY_NEW.trim();
+  const a = (process.env.FIREBASE_API_KEY ?? '').trim();
+  const b = process.env.FIREBASE_API_KEY_NEW.trim();
+  const same = a === b;
   console.log(`FIREBASE_API_KEY_NEW es ${same ? 'IGUAL' : 'DISTINTA'} a la guardada.`);
+  if (!same) {
+    // Dónde difieren, sin mostrar ningún carácter.
+    const diff = [...Array(Math.max(a.length, b.length)).keys()].filter((i) => a[i] !== b[i]);
+    const sameIgnoringCase = a.toLowerCase() === b.toLowerCase();
+    console.log(
+      `  largo guardada ${a.length}, nueva ${b.length}; ${diff.length} posiciones distintas, la primera es la ${diff[0] + 1}` +
+        (sameIgnoringCase ? '; solo cambian mayúsculas y minúsculas' : ''),
+    );
+  }
+  await crossCheck('FIREBASE_API_KEY_NEW (la nueva)', b);
   ok = (await check('FIREBASE_API_KEY_NEW (la nueva)', process.env.FIREBASE_API_KEY_NEW)) || ok;
 }
 if (!ok) process.exitCode = 1;
