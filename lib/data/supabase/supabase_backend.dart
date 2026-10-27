@@ -268,7 +268,7 @@ class SupabaseBackend
   Future<List<ServiceProblem>> problems(int categoryId) async => _rows(
     await _db
         .from('service_problems')
-        .select('id, category_id, name, icon, is_other, sort_order')
+        .select('id, category_id, name, icon, is_other, sort_order, opens_category_id')
         .eq('category_id', categoryId)
         .eq('is_active', true)
         .order('sort_order')
