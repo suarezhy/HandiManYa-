@@ -55,7 +55,9 @@ begin
   perform test.eq(r ->> 'status', 'approved', 'identidad: guarda el resultado');
   perform test.eq((select status from public.professional_profiles where user_id = '00000000-0000-0000-0000-0000000009e1')::text,
                   'submitted', 'identidad: el resultado no aprueba al profesional');
-  perform test.eq((select to_jsonb(c)::text ~* 'Marta|1990' from public.identity_checks c where session_id = 'ses-sbx-1'), false,
+  -- Sin las fechas propias de la fila: una hora como 20:40:31.199012 también contiene "1990".
+  perform test.eq((select (to_jsonb(c) - 'created_at' - 'updated_at' - 'decided_at' - 'vendor_deleted_at')::text ~* 'Marta|1990'
+                   from public.identity_checks c where session_id = 'ses-sbx-1'), false,
                   'identidad: no guarda nombre ni fecha de nacimiento');
   perform test.eq(public.hmy_identity_decision('ses-sbx-1', 'Approved', '{}', 'ev1', true) ->> 'reason', 'duplicate',
                   'identidad: el mismo aviso dos veces no cambia nada');
