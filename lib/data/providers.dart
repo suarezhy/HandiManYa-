@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
 
 import '../core/config/env.dart';
 import 'demo/demo_backend.dart';
+import 'models/ads.dart';
 import 'models/booking.dart';
 import 'models/catalog.dart';
 import 'models/messaging.dart';
@@ -33,7 +34,8 @@ abstract interface class AppBackend
         StaffRepository,
         DrilldownRepository,
         AiControlRepository,
-        FinanceRepository {}
+        FinanceRepository,
+        AdsRepository {}
 
 class _SupabaseAppBackend extends SupabaseBackend implements AppBackend {
   _SupabaseAppBackend(super.db);
@@ -154,6 +156,21 @@ final homeMapProvider = FutureProvider.autoDispose<HomeMapData?>((ref) async {
   if (cities.isEmpty || city == null) return null;
   return ref.watch(backendProvider).homeMap(city.id);
 });
+
+/// Anuncio del inicio (publicidad propia). Se pide una vez al abrir el inicio
+/// y al deslizar para actualizar; cada pedido cuenta una vista. Si falla, el
+/// espacio simplemente no aparece.
+final homeAdProvider = FutureProvider.autoDispose<HomeAd?>((ref) async {
+  final city = ref.watch(currentCityProvider);
+  if (city == null) return null;
+  try {
+    return await ref.watch(backendProvider).homeAd(city.id);
+  } catch (_) {
+    return null;
+  }
+});
+
+final ownerAdsProvider = FutureProvider.autoDispose<List<OwnerAd>>((ref) => ref.watch(backendProvider).ownerAds());
 
 /// Dirección de los mosaicos del mapa; null no los dibuja (las pruebas no
 /// salen a internet).

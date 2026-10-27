@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../models/admin.dart';
 import '../models/ai_control.dart';
 import '../models/booking.dart';
+import '../models/ads.dart';
 import '../models/catalog.dart';
 import '../models/costs.dart';
 import '../models/drilldown.dart';
@@ -455,4 +456,24 @@ abstract interface class DrilldownRepository {
   Future<Listed<PersonRow>> adminPeople(PeopleFilter filter, {String query = ''});
   Future<Listed<RiskItem>> riskItems(RiskKind kind);
   Future<WalletList> ownerWallets({String query = '', WalletSort sort = WalletSort.available});
+}
+
+/// Publicidad propia del inicio (0051).
+abstract interface class AdsRepository {
+  /// El anuncio que toca mostrar en el inicio, o null si no hay ninguno
+  /// aprobado y vigente. El servidor cuenta la vista.
+  Future<HomeAd?> homeAd(int cityId);
+
+  /// Cuenta el toque y devuelve el enlace (null si el anuncio no tiene).
+  Future<String?> adClick(int id);
+
+  // Propietario
+  Future<List<OwnerAd>> ownerAds();
+
+  /// Crea o cambia un anuncio y devuelve su id. Siempre queda en borrador.
+  Future<int> saveAd(AdDraft draft);
+  Future<void> setAdStatus(int id, AdAction action);
+
+  /// Sube un logo o imagen al bucket público de anuncios y devuelve su ruta.
+  Future<String> uploadAdImage(PhotoUpload image);
 }

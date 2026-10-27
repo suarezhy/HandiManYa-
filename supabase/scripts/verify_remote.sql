@@ -13,8 +13,8 @@ declare
     'departments','disputes','identity_checks','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
     'professional_zones','profiles','promotions','reviews','security_confirmations','security_settings','service_categories','service_problems','service_zones','support_tickets',
-    'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets','staff_members','ops_cases','ops_case_notes','receiving_accounts','push_devices','push_outbox'];
-  v_buckets jsonb := '{"avatars":true,"portfolio":true,"booking-photos":false,"chat-images":false,"payment-qr":false,"professional-documents":false,"topup-proofs":false}';
+    'topup_methods','topup_requests','trip_locations','trip_shares','user_blocks','user_reports','user_roles','verification_events','wallet_ledger','wallets','staff_members','ops_cases','ops_case_notes','receiving_accounts','push_devices','push_outbox','ad_campaigns','ad_daily_stats'];
+  v_buckets jsonb := '{"avatars":true,"portfolio":true,"booking-photos":false,"chat-images":false,"payment-qr":false,"professional-documents":false,"topup-proofs":false,"ads":true}';
   v_functions text[] := array['handle_new_user','create_booking','create_ya_request','claim_ya_request','ya_eligible_professionals',
     'accept_booking','cancel_booking','confirm_completion','booking_detail','can_see_booking_address','set_booking_approx_point',
     'booking_distance_for_me','wallet_post','request_topup','review_topup','_commission_reserve','_commission_capture',
@@ -38,7 +38,8 @@ declare
     'hmy_booking_deadline_guard','expire_my_overdue_bookings','hmy_response_deadline',
     'hmy_professional_active','hmy_booking_pro_active_guard','hmy_cancel_unstarted_bookings','hmy_pro_inactive_cleanup','hmy_suspension_cleanup',
     'hmy_map_jitter','home_map_professionals',
-    'hmy_check_booking_extras','_create_booking_problems','_create_ya_request_problems','_booking_detail_problems'];
+    'hmy_check_booking_extras','_create_booking_problems','_create_ya_request_problems','_booking_detail_problems',
+    'hmy_ad_day','hmy_ad_live','home_ad','ad_click','owner_ads','owner_save_ad','owner_set_ad_status'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -174,6 +175,12 @@ begin
                  and has_function_privilege('authenticated', oid, 'EXECUTE'))
      and exists (select 1 from public.service_categories where slug = 'grua' and required_doc = 'documentos_grua'),
      'grúa: solo profesionales habilitados y destino privado'),
+    (not has_table_privilege('authenticated', 'public.ad_campaigns', 'SELECT')
+     and not has_table_privilege('authenticated', 'public.ad_daily_stats', 'SELECT')
+     and not has_function_privilege('anon', 'public.home_ad(smallint)', 'EXECUTE')
+     and not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'ad_daily_stats'
+                     and column_name not in ('campaign_id', 'day', 'impressions', 'clicks')),
+     'publicidad: solo el Propietario la administra; las cuentas no guardan quién vio o tocó'),
     (to_regprocedure('public.owner_grant_staff(uuid, text)') is null and to_regprocedure('public.owner_grant_staff(uuid, text, text)') is not null,
      'equipo: dar un rol exige confirmación del propietario')
   ) as v(ok, what) loop

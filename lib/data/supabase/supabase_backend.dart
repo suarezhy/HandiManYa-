@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthUser;
 import '../../core/services/push_tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../models/admin.dart';
+import '../models/ads.dart';
 import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
@@ -45,7 +46,8 @@ class SupabaseBackend
         StaffRepository,
         DrilldownRepository,
         AiControlRepository,
-        FinanceRepository {
+        FinanceRepository,
+        AdsRepository {
   SupabaseBackend(this._db);
 
   final SupabaseClient _db;
@@ -1667,4 +1669,54 @@ class SupabaseBackend
     for (final m in _rows(await _db.rpc('owner_finance_audit', params: {'p_limit': limit})))
       FinanceAuditEntry.fromMap(m),
   ];
+
+  // ---------------------------------------------------------------- Publicidad
+  String? _adImage(String? path) => (path == null || path.isEmpty) ? null : _db.storage.from('ads').getPublicUrl(path);
+
+  @override
+  Future<HomeAd?> homeAd(int cityId) async {
+    final m = await _db.rpc('home_ad', params: {'p_city': cityId});
+    if (m == null) return null;
+    return HomeAd.fromMap(Map<String, dynamic>.from(m as Map), image: _adImage);
+  }
+
+  @override
+  Future<String?> adClick(int id) async => await _db.rpc('ad_click', params: {'p_id': id}) as String?;
+
+  @override
+  Future<List<OwnerAd>> ownerAds() async => [
+    for (final m in _rows(await _db.rpc('owner_ads'))) OwnerAd.fromMap(m, image: _adImage),
+  ];
+
+  @override
+  Future<int> saveAd(AdDraft d) async => (await _db.rpc(
+    'owner_save_ad',
+    params: {
+      'p_id': d.id,
+      'p_advertiser': d.advertiser,
+      'p_title': d.title,
+      'p_body': d.body,
+      'p_logo_path': d.logoPath,
+      'p_image_path': d.imagePath,
+      'p_link_url': d.linkUrl,
+      'p_label': d.label,
+      'p_city': d.cityId,
+      'p_starts_at': d.startsAt?.toUtc().toIso8601String(),
+      'p_ends_at': d.endsAt?.toUtc().toIso8601String(),
+    },
+  ) as num).toInt();
+
+  @override
+  Future<void> setAdStatus(int id, AdAction action) =>
+      _db.rpc('owner_set_ad_status', params: {'p_id': id, 'p_action': action.key});
+
+  @override
+  Future<String> uploadAdImage(PhotoUpload image) async {
+    final ext = image.contentType.split('/').last.replaceAll('jpeg', 'jpg');
+    final path = '$_uid/anuncio_${DateTime.now().millisecondsSinceEpoch}.$ext';
+    await _db.storage
+        .from('ads')
+        .uploadBinary(path, image.bytes, fileOptions: FileOptions(contentType: image.contentType, upsert: false));
+    return path;
+  }
 }

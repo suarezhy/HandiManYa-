@@ -799,6 +799,7 @@ class ReceivingAccountsPage extends ConsumerWidget {
     ),
     body: AdminList<ReceivingAccount>(
       value: ref.watch(receivingAccountsProvider),
+      hasFab: true,
       onRefresh: () => ref.refresh(receivingAccountsProvider.future),
       emptyIcon: Icons.account_balance_outlined,
       emptyTitle: 'Pendiente de configuración: todavía no registraste cuentas de cobro.',

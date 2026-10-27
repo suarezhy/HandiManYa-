@@ -330,6 +330,7 @@ class StaffProfilePage extends ConsumerWidget {
                     title: 'Catálogo y ciudades',
                     onTap: () => context.push(Routes.adminCatalog),
                   ),
+                  _Row(icon: Icons.campaign_outlined, title: 'Publicidad', onTap: () => context.push(Routes.adminAds)),
                   _Row(
                     icon: Icons.history,
                     title: 'Auditoría',

@@ -58,6 +58,7 @@ class AdminList<T> extends StatelessWidget {
     required this.emptyTitle,
     this.emptyIcon = Icons.check_circle_outline,
     this.header,
+    this.hasFab = false,
   });
 
   final AsyncValue<List<T>> value;
@@ -67,12 +68,16 @@ class AdminList<T> extends StatelessWidget {
   final IconData emptyIcon;
   final Widget? header;
 
+  /// La página tiene un botón flotante: se deja espacio al final para que no
+  /// tape los botones de la última tarjeta.
+  final bool hasFab;
+
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
-        padding: bottomSafePadding(context, top: HySpacing.sm),
+        padding: bottomSafePadding(context, top: HySpacing.sm, bottom: hasFab ? 96 : HySpacing.xxl),
         children: [
           PageBody(
             child: Column(

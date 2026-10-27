@@ -48,5 +48,6 @@ end $$;
 \ir 99q_home_map_tests.sql
 \ir 99r_catalog_grua_banda_tests.sql
 \ir 99s_catalog_mariachis_tests.sql
+\ir 99t_home_ads_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'

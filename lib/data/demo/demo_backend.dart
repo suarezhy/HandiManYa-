@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import '../../core/utils/app_error.dart';
 import '../../core/utils/formatters.dart';
 import '../models/admin.dart';
+import '../models/ads.dart';
 import '../models/ai_control.dart';
 import '../models/booking.dart';
 import '../models/catalog.dart';
@@ -44,7 +45,8 @@ class DemoBackend
         StaffRepository,
         DrilldownRepository,
         AiControlRepository,
-        FinanceRepository {
+        FinanceRepository,
+        AdsRepository {
   DemoBackend({this.simulateDelays = true, this.codeCooldown = const Duration(seconds: 60)}) {
     _seed();
     _seedAdmin();
@@ -4675,6 +4677,168 @@ class DemoBackend
 
   /// En la demostración la imagen del QR está en memoria.
   Uint8List? receivingQrBytes(String path) => _receivingQr[path];
+
+  // ------------------------------------------------- Publicidad (demo)
+  /// Un anuncio de ejemplo aprobado, para ver el espacio en la demostración.
+  final Map<int, OwnerAd> _ads = {
+    1: const OwnerAd(
+      id: 1,
+      advertiser: 'Ferretería El Tornillo',
+      title: '10% en herramientas',
+      body: 'Presenta la app en caja. Válido esta semana.',
+      linkUrl: 'https://ferreteria.example.bo',
+      status: AdStatus.approved,
+      live: true,
+    ),
+  };
+  final Map<(int, String), int> _adStats = {};
+
+  String get _adDay => DateTime.now().toIso8601String().substring(0, 10);
+  int _adCount(int id, String what) => _adStats[(id, '$_adDay $what')] ?? 0;
+  void _adBump(int id, String what) => _adStats[(id, '$_adDay $what')] = _adCount(id, what) + 1;
+  final Map<int, int> _adTotals = {};
+  final Map<int, int> _adClickTotals = {};
+
+  bool _adLive(OwnerAd a) {
+    final now = DateTime.now();
+    return a.status == AdStatus.approved &&
+        (a.startsAt == null || !a.startsAt!.isAfter(now)) &&
+        (a.endsAt == null || a.endsAt!.isAfter(now));
+  }
+
+  OwnerAd _adWith(OwnerAd a, {AdStatus? status}) => OwnerAd(
+    id: a.id,
+    advertiser: a.advertiser,
+    title: a.title,
+    body: a.body,
+    logoPath: a.logoPath,
+    imagePath: a.imagePath,
+    linkUrl: a.linkUrl,
+    label: a.label,
+    cityId: a.cityId,
+    cityName: a.cityId == null ? null : _cityName(a.cityId!),
+    status: status ?? a.status,
+    startsAt: a.startsAt,
+    endsAt: a.endsAt,
+  );
+
+  @override
+  Future<HomeAd?> homeAd(int cityId) async {
+    await _latency(150);
+    _me;
+    final live = _ads.values.where((a) => _adLive(a) && (a.cityId == null || a.cityId == cityId)).toList()
+      ..shuffle()
+      ..sort((a, b) => _adCount(a.id, 'v').compareTo(_adCount(b.id, 'v')));
+    if (live.isEmpty) return null;
+    final ad = live.first;
+    _adBump(ad.id, 'v');
+    _adTotals[ad.id] = (_adTotals[ad.id] ?? 0) + 1;
+    return ad.preview;
+  }
+
+  @override
+  Future<String?> adClick(int id) async {
+    await _latency(100);
+    final ad = _ads[id];
+    if (ad == null || !_adLive(ad)) throw AppError.from('HMY_NOT_FOUND');
+    _adBump(id, 'c');
+    _adClickTotals[id] = (_adClickTotals[id] ?? 0) + 1;
+    return ad.linkUrl;
+  }
+
+  @override
+  Future<List<OwnerAd>> ownerAds() async {
+    await _latency();
+    _admin();
+    final list = [
+      for (final a in _ads.values)
+        OwnerAd(
+          id: a.id,
+          advertiser: a.advertiser,
+          title: a.title,
+          body: a.body,
+          logoPath: a.logoPath,
+          imagePath: a.imagePath,
+          linkUrl: a.linkUrl,
+          label: a.label,
+          cityId: a.cityId,
+          cityName: a.cityName,
+          status: a.status,
+          live: _adLive(a),
+          startsAt: a.startsAt,
+          endsAt: a.endsAt,
+          impressions: _adTotals[a.id] ?? 0,
+          clicks: _adClickTotals[a.id] ?? 0,
+          impressionsToday: _adCount(a.id, 'v'),
+          clicksToday: _adCount(a.id, 'c'),
+        ),
+    ];
+    list.sort((a, b) {
+      final r = (a.status == AdStatus.removed ? 1 : 0).compareTo(b.status == AdStatus.removed ? 1 : 0);
+      if (r != 0) return r;
+      final l = (b.live ? 1 : 0).compareTo(a.live ? 1 : 0);
+      return l != 0 ? l : b.id.compareTo(a.id);
+    });
+    return list;
+  }
+
+  @override
+  Future<int> saveAd(AdDraft d) async {
+    await _latency();
+    _admin();
+    final link = d.linkUrl?.trim();
+    if (link != null && link.isNotEmpty && !isValidAdLink(link)) throw AppError.from('HMY_INVALID_LINK');
+    if (d.advertiser.trim().length < 2 || d.title.trim().length < 2) throw AppError.from('HMY_INVALID_INPUT');
+    if (d.startsAt != null && d.endsAt != null && !d.endsAt!.isAfter(d.startsAt!)) {
+      throw AppError.from('HMY_INVALID_DATES');
+    }
+    if (d.id != null && (_ads[d.id] == null || _ads[d.id]!.status == AdStatus.removed)) {
+      throw AppError.from('HMY_NOT_FOUND');
+    }
+    final id = d.id ?? (_ads.keys.fold(0, max) + 1);
+    final body = d.body?.trim();
+    _ads[id] = OwnerAd(
+      id: id,
+      advertiser: d.advertiser.trim(),
+      title: d.title.trim(),
+      body: (body == null || body.isEmpty) ? null : body,
+      logoPath: d.logoPath,
+      imagePath: d.imagePath,
+      linkUrl: (link == null || link.isEmpty) ? null : link,
+      label: d.label,
+      cityId: d.cityId,
+      cityName: d.cityId == null ? null : _cityName(d.cityId!),
+      startsAt: d.startsAt,
+      endsAt: d.endsAt,
+    );
+    return id;
+  }
+
+  @override
+  Future<void> setAdStatus(int id, AdAction action) async {
+    await _latency();
+    _admin();
+    final ad = _ads[id];
+    if (ad == null || ad.status == AdStatus.removed) throw AppError.from('HMY_NOT_FOUND');
+    switch (action) {
+      case AdAction.approve:
+        if (ad.status != AdStatus.draft && ad.status != AdStatus.paused) throw AppError.from('HMY_INVALID_STATE');
+        if (ad.endsAt != null && !ad.endsAt!.isAfter(DateTime.now())) throw AppError.from('HMY_AD_EXPIRED');
+        _ads[id] = _adWith(ad, status: AdStatus.approved);
+      case AdAction.pause:
+        if (ad.status != AdStatus.approved) throw AppError.from('HMY_INVALID_STATE');
+        _ads[id] = _adWith(ad, status: AdStatus.paused);
+      case AdAction.remove:
+        _ads[id] = _adWith(ad, status: AdStatus.removed);
+    }
+  }
+
+  @override
+  Future<String> uploadAdImage(PhotoUpload image) async {
+    await _latency(300);
+    final me = _admin();
+    return '${me.id}/anuncio_${_seq++}.png';
+  }
 
   @override
   Future<List<FinanceAuditEntry>> financeAudit({int limit = 100}) async {

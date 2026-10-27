@@ -167,6 +167,7 @@ class AdminCommissionsPage extends ConsumerWidget {
       ),
       body: AdminList<CommissionRule>(
         value: ref.watch(commissionRulesProvider),
+        hasFab: true,
         onRefresh: () => ref.refresh(commissionRulesProvider.future),
         emptyTitle: 'Todavía no hay reglas. Sin reglas no se cobra comisión.',
         emptyIcon: Icons.percent,

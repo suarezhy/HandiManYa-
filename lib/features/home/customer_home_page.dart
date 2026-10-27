@@ -16,6 +16,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/city_picker.dart';
 import '../common/professional_card.dart';
+import 'home_ad.dart';
 import 'home_map.dart';
 import '../../core/widgets/word_safe_text.dart';
 
@@ -36,6 +37,7 @@ class CustomerHomePage extends ConsumerWidget {
     Future<void> refresh() async {
       ref.invalidate(nearbyProfessionalsProvider);
       ref.invalidate(homeMapProvider);
+      ref.invalidate(homeAdProvider);
       await Future.wait([ref.read(nearbyProfessionalsProvider.future), ref.read(homeMapProvider.future)]);
     }
 
@@ -96,6 +98,8 @@ class CustomerHomePage extends ConsumerWidget {
                         label: const Text('Buscar profesionales'),
                       ),
                     ),
+                    // Publicidad propia: solo si hay un anuncio aprobado.
+                    const HomeAdSlot(),
                     SectionHeader(
                       title: 'Servicios',
                       actionLabel: 'Ver todos',

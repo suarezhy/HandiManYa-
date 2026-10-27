@@ -52,6 +52,12 @@ void main() {
     testWidgets(name, skip: skip != null, (tester) async {
       await pumpCustomerHome(tester, size, scale: scale, city: city);
       await shot(tester, name);
+      final ad = find.byKey(const Key('home-ad'));
+      if (ad.evaluate().isNotEmpty) {
+        await tester.ensureVisible(ad);
+        await tester.pumpAndSettle();
+        await shot(tester, '$name-anuncio');
+      }
       final list = tester.state<ScrollableState>(find.byType(Scrollable).first);
       list.position.jumpTo(list.position.maxScrollExtent);
       await tester.pumpAndSettle();

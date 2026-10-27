@@ -13,6 +13,7 @@ import 'features/auth/phone_auth_page.dart';
 import 'features/auth/recover_account_page.dart';
 import 'features/admin/admin_applications_page.dart';
 import 'features/admin/admin_cases_pages.dart';
+import 'features/admin/admin_ads_pages.dart';
 import 'features/admin/admin_catalog_audit_pages.dart';
 import 'features/admin/admin_costs_page.dart';
 import 'features/admin/admin_services_pages.dart';
@@ -95,6 +96,7 @@ abstract final class Routes {
   static const adminAudit = '/admin/auditoria';
   static const adminAi = '/admin/centro-ia';
   static const adminCosts = '/admin/costos';
+  static const adminAds = '/admin/publicidad';
   static const adminFinance = '/admin/finanzas';
   static const adminFinanceAccounts = '/admin/finanzas/cuentas';
   static const adminFinanceReconcile = '/admin/finanzas/conciliar';
@@ -479,6 +481,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       _route(path: Routes.adminAudit, builder: (_, _) => const AdminAuditPage()),
       _route(path: Routes.adminCosts, builder: (_, _) => const AdminCostsPage()),
+      // Publicidad: solo el propietario (no está en _managerAdminRoutes).
+      _route(path: Routes.adminAds, builder: (_, _) => const AdminAdsPage()),
       // Finanzas y Bancos: solo el propietario (no está en _managerAdminRoutes).
       _route(path: Routes.adminFinance, builder: (_, _) => const FinancePage()),
       _route(path: Routes.adminFinanceAccounts, builder: (_, _) => const ReceivingAccountsPage()),

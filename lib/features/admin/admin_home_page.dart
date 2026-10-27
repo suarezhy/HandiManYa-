@@ -563,6 +563,13 @@ class OwnerManagePage extends ConsumerWidget {
                   onTap: () => go(Routes.adminCatalog),
                 ),
                 PanelTile(
+                  key: const Key('owner-ads'),
+                  icon: Icons.campaign_outlined,
+                  title: 'Publicidad',
+                  subtitle: 'Anuncios del inicio, vistas y toques',
+                  onTap: () => go(Routes.adminAds),
+                ),
+                PanelTile(
                   icon: Icons.history,
                   title: 'Auditoría',
                   subtitle: 'Quién cambió qué',

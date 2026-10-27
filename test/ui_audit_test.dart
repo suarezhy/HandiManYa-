@@ -311,6 +311,7 @@ void main() {
     Routes.adminAudit,
     Routes.adminAi,
     Routes.adminCosts,
+    Routes.adminAds,
     Routes.adminFinance,
     Routes.opsBookings,
     Routes.adminRisk,
