@@ -1,0 +1,39 @@
+name: Prueba ¡Ya! con un teléfono (handimanya-flutter-dev)
+
+# Hace lo de la "otra" cuenta de prueba (…01 o …02) mientras el Samsung tiene
+# abierta la suya: pedir, aceptar, ir en camino o ver el estado. La acción es la
+# palabra de supabase/e2e/samsung_ya_action.txt. Usa las mismas funciones que la
+# app, se niega si el pedido llegaría a otro profesional o si hay teléfonos de
+# otras cuentas, y nunca imprime tokens, secretos ni el código de llegada.
+#
+# Solo se activa al subir la rama supabase/samsung-ya-dev, con permiso del dueño.
+
+on:
+  push:
+    branches: [supabase/samsung-ya-dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev-db
+  cancel-in-progress: false
+
+jobs:
+  step:
+    name: Un paso de la prueba ¡Ya!
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      EXPECTED_REF: yldqopeldibwgbwmdnzy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar que es el proyecto nuevo
+        run: supabase/scripts/check_target.sh
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
+      - name: Hacer el paso
+        run: |
+          action="$(tr -d '[:space:]' < supabase/e2e/samsung_ya_action.txt)"
+          echo "Acción: $action · $(date -u '+%H:%M:%S UTC')" | tee -a "$GITHUB_STEP_SUMMARY"
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -v action="$action" -f supabase/e2e/samsung_ya.sql | tee -a "$GITHUB_STEP_SUMMARY"
