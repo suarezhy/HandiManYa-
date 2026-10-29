@@ -187,7 +187,11 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
           ),
       success: quiet ? null : 'Borrador guardado',
     );
-    if (ok && mounted) setState(() => _savedSnapshot = snapshot);
+    if (ok && mounted) {
+      setState(() => _savedSnapshot = snapshot);
+      // Guardar crea la postulación: Perfil pasa a "Postulación: Borrador".
+      ref.invalidate(accountProvider);
+    }
     return ok;
   }
 

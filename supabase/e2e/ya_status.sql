@@ -20,7 +20,12 @@ select '…' || right(u.phone, 2)
                                          from public.service_categories c
                                          where c.id = pp.primary_category_id
                                             or exists (select 1 from public.professional_services s where s.professional_id = pp.user_id and s.category_id = c.id)), '')
-       || coalesce(' · zonas: ' || nullif((select count(*) from public.professional_zones z where z.professional_id = pp.user_id), 0)::text, '')
+       || coalesce(' · zonas: ' || (select string_agg(zn.name, ', ' order by zn.name) from public.professional_zones z
+                                     join public.service_zones zn on zn.id = z.zone_id where z.professional_id = pp.user_id), '')
+       || case when pp.user_id is null then ''
+               else ' · documentos: ' || (select count(*) from public.professional_documents d where d.professional_id = pp.user_id)
+                    || ' (aceptados ' || (select count(*) from public.professional_documents d where d.professional_id = pp.user_id and d.status = 'accepted') || ')'
+                    || ' · nombre profesional cargado=' || (pp.display_name <> '')::text end
        || case when pp.user_id is null then ''
                when exists (select 1 from public.professional_locations l where l.professional_id = pp.user_id)
                then ' · base en el mapa, radio ' || (select service_radius_km from public.professional_locations where professional_id = pp.user_id) || ' km'

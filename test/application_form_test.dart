@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/core/theme/app_theme.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
+import 'package:handimanya/data/models/user.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:handimanya/features/pro_mode/application_page.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -145,8 +146,18 @@ void main() {
     await _fillServices(tester);
     await _tapKey(tester, 'application-next');
     await _chooseUyuni(tester);
+    // Perfil ya leyó la cuenta (sin postulación) antes de guardar.
+    final container = ProviderScope.containerOf(tester.element(find.byType(ApplicationPage)));
+    final auth = container.listen(authUserProvider, (_, _) {});
+    await container.read(authUserProvider.future);
+    final account = container.listen(accountProvider, (_, _) {});
+    expect((await container.read(accountProvider.future))!.professionalStatus, VerificationStatus.notStarted);
     await _tapKey(tester, 'application-save-draft');
     expect(find.text('Borrador guardado'), findsOneWidget);
+    // Perfil pasa a "Postulación: Borrador" sin volver a abrir la app.
+    expect((await container.read(accountProvider.future))!.professionalStatus, VerificationStatus.draft);
+    account.close();
+    auth.close();
 
     final app = await backend.application();
     expect(app.status.canEdit, isTrue, reason: 'guardar no envía la postulación');

@@ -1230,13 +1230,19 @@ class _AvailableCount extends ConsumerWidget {
         return InfoBanner(
           icon: n > 0 ? Icons.bolt_rounded : Icons.hourglass_empty_rounded,
           tone: n > 0 ? StatusTone.success : StatusTone.warning,
-          text: n == 0
-              ? 'Ahora no hay profesionales disponibles para este servicio en esta zona. Prueba con "Todo el municipio" o programa para después.'
-              : n == 1
-              ? '1 profesional disponible cerca de ti recibirá tu pedido.'
-              : '$n profesionales disponibles cerca de ti recibirán tu pedido. El primero que acepte irá.',
+          text: availabilityMessage(n, wholeCity: zoneId == null),
         );
       },
     );
   }
 }
+
+/// Lo que ve el cliente según cuántos profesionales recibirían su pedido ¡Ya!.
+/// Si ya eligió "Todo el municipio", no se le sugiere elegirlo otra vez.
+@visibleForTesting
+String availabilityMessage(int n, {required bool wholeCity}) => switch (n) {
+  0 when wholeCity => 'Ahora no hay profesionales disponibles para este servicio en el municipio. Programa para después o prueba más tarde.',
+  0 => 'Ahora no hay profesionales disponibles para este servicio en esta zona. Prueba con "Todo el municipio" o programa para después.',
+  1 => '1 profesional disponible cerca de ti recibirá tu pedido.',
+  _ => '$n profesionales disponibles cerca de ti recibirán tu pedido. El primero que acepte irá.',
+};
