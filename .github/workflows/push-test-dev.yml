@@ -1,6 +1,6 @@
 name: Aviso de prueba con retraso (handimanya-flutter-dev)
 
-# Manda UN aviso de prueba a la cuenta de prueba …01 en DESARROLLO, 2 minutos
+# Manda UN aviso de prueba a la cuenta de prueba …01 en DESARROLLO, 60 segundos
 # después de empezar, para probarlo con el teléfono ya bloqueado. Usa el mismo
 # camino que el botón de la app y se niega si hay teléfonos de otras cuentas.
 # Después muestra el estado (solo lectura). Nunca imprime tokens ni secretos.
@@ -31,8 +31,8 @@ jobs:
         run: supabase/scripts/check_target.sh
       - name: Instalar cliente de PostgreSQL
         run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
-      - name: Esperar 2 minutos (bloquea el teléfono)
-        run: sleep 120
+      - name: Esperar 60 segundos (bloquea el teléfono)
+        run: sleep 60
       - name: Mandar el aviso de prueba
         run: |
           date -u '+Enviado a las %H:%M:%S UTC' | tee -a "$GITHUB_STEP_SUMMARY"
