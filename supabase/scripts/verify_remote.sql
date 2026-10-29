@@ -42,7 +42,9 @@ declare
     'hmy_ad_day','hmy_ad_live','home_ad','ad_click','owner_ads','owner_save_ad','owner_set_ad_status',
     'create_scheduled_request','_claim_ya_request_base','hmy_scheduled_eligible_professionals','_hmy_offer_scheduled',
     '_hmy_offer_pending_to','hmy_offer_pending_on_profile','hmy_offer_pending_on_service',
-    'hmy_pro_busy_now','_create_ya_request_extras','_claim_ya_request_scheduled'];
+    'hmy_pro_busy_now','_create_ya_request_extras','_claim_ya_request_scheduled',
+    'hmy_test_fixture_guard','hmy_is_test_fixture','_search_professionals_base','_get_professional_public_base',
+    '_booking_detail_destination','_trip_share_view_base'];
   v_missing text;
   v_count int;
   v_failed int := 0;

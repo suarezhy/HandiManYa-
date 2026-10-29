@@ -106,6 +106,12 @@ which includes the database password). It checks the string points at
   `supabase/migrations/` in **one transaction**. On the first error it stops
   and nothing is kept.
 
+- Push the branch `supabase/fixture-dev`: the test professional …02. The word in
+  `supabase/e2e/dev_fixture_action.txt` decides: `aprobar` approves …02 as a
+  test profile (`test_fixture`, migration 0061; never shown as "Verificado",
+  no identity check), `revertir` puts it back to a draft, `estado` only reads.
+  It refuses if the database has any account that isn't a test account.
+
 After applying:
 1. Authentication → Email: turn on "Confirm email" and put `{{ .Token }}` in
    the "Confirm signup" and "Reset password" templates (6-digit codes).

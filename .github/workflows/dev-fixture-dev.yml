@@ -1,0 +1,40 @@
+name: Profesional de prueba …02 (handimanya-flutter-dev)
+
+# Aprueba a la cuenta de prueba …02 como PERFIL DE PRUEBA (sin verificación de
+# identidad real; los clientes no lo ven como "Verificado"), lo revierte, o
+# muestra su estado. La acción es la palabra de supabase/e2e/dev_fixture_action.txt
+# (aprobar, revertir o estado). Solo en el proyecto de desarrollo, y se niega si
+# hay cuentas que no son de prueba. Nunca imprime tokens, secretos ni códigos.
+#
+# Solo se activa al subir la rama supabase/fixture-dev, con permiso del dueño.
+
+on:
+  push:
+    branches: [supabase/fixture-dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev-db
+  cancel-in-progress: false
+
+jobs:
+  fixture:
+    name: Profesional de prueba …02
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      EXPECTED_REF: yldqopeldibwgbwmdnzy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar que es el proyecto nuevo
+        run: supabase/scripts/check_target.sh
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
+      - name: Hacer la acción
+        run: |
+          action="$(tr -d '[:space:]' < supabase/e2e/dev_fixture_action.txt)"
+          echo "Acción: $action · $(date -u '+%H:%M:%S UTC')" | tee -a "$GITHUB_STEP_SUMMARY"
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -v action="$action" -f supabase/e2e/dev_fixture_pro.sql 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "${PIPESTATUS[0]}"

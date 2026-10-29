@@ -58,5 +58,6 @@ end $$;
 \ir 99z1_ya_claim_order_tests.sql
 \ir 99z2_ya_retry_validates_tests.sql
 \ir 99z3_claim_lock_review_once_tests.sql
+\ir 99z4_dev_test_fixture_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'
