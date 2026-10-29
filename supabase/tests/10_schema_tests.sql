@@ -250,7 +250,7 @@ select test.login('00000000-0000-0000-0000-0000000000c1');
 select public.acknowledge_payment((select v from t_ids where k = 'b1'), 'cash');
 select test.eq(public.confirm_completion((select v from t_ids where k = 'b1'))::text, 'completed', 'el cliente confirma el trabajo');
 select public.submit_review((select v from t_ids where k = 'b1'), 5, 'Muy puntual y prolijo');
-select test.expect_error(format('select public.submit_review(%L, 4)', (select v from t_ids where k = 'b1')), 'duplicate key');
+select test.expect_error(format('select public.submit_review(%L, 4)', (select v from t_ids where k = 'b1')), 'HMY_ALREADY_RATED');
 select test.logout();
 
 do $$

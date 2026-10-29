@@ -1144,4 +1144,126 @@ void main() {
     skip: configured ? false : 'Falta E2E_URL, E2E_ANON_KEY o E2E_PASSWORD',
     timeout: const Timeout(Duration(minutes: 3)),
   );
+
+  // Corre al final: rechazar un ¡Ya!, una solicitud programada publicada, una
+  // cotización aceptada y otra rechazada, y las reseñas en el perfil.
+  test(
+    'rechazo, programada, cotización y reseñas: cada paso con su aviso y sin pedidos repetidos',
+    () async {
+      final customer = await _step('el cliente entra', () => _signIn('e2e-cliente@test.bo'));
+      final pro = await _step('el profesional entra', () => _signIn('e2e-pro@test.bo'));
+      final city = (await customer.cities()).first.id;
+      final category = (await customer.categories()).firstWhere((c) => c.requiredDoc == null && c.allowsYa).id;
+      BookingDraft near(String what, {BookingMode mode = BookingMode.now, String? professionalId, DateTime? start}) =>
+          BookingDraft(
+            categoryId: category,
+            cityId: city,
+            mode: mode,
+            professionalId: professionalId,
+            scheduledStart: start,
+            description: what,
+            address: 'Calle Prueba 789',
+            paymentMethod: PaymentMethod.cash,
+            latitude: -17.7912,
+            longitude: -63.1801,
+          );
+      await _step('el profesional se pone disponible', () => pro.setAvailability(true));
+
+      // Rechazar un ¡Ya!: la oferta se va y no se puede aceptar después.
+      final yaId = await _step('el cliente pide ¡Ya!', () => customer.create(near('Prueba E2E: ¡Ya! que se rechaza')));
+      await _step('el profesional rechaza la oferta', () async {
+        expect((await pro.myBookings(asProfessional: true)).firstWhere((b) => b.id == yaId).isOffer, isTrue);
+        await pro.decline(yaId, isOffer: true);
+        expect((await pro.myBookings(asProfessional: true)).where((b) => b.id == yaId && b.isOffer), isEmpty);
+      });
+      await _step('después de rechazar no puede aceptarlo ni rechazarlo otra vez', () async {
+        await expectLater(pro.accept(yaId, isOffer: true), _code('HMY_FORBIDDEN'));
+        await expectLater(pro.decline(yaId, isOffer: true), _code('HMY_NOT_FOUND'));
+      });
+      await _step('el pedido del cliente sigue buscando profesional y lo cancela', () async {
+        expect((await customer.detail(yaId)).status, BookingStatus.awaitingResponse);
+        await customer.cancel(yaId, 'Prueba E2E: ya no hace falta');
+        expect((await customer.detail(yaId)).status, BookingStatus.cancelled);
+      });
+
+      // Programada sin elegir profesional: le llega al profesional de la zona.
+      final tomorrow = DateTime.now().add(const Duration(days: 1));
+      final start = DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 10);
+      final schedId = await _step('el cliente publica una solicitud programada', () {
+        return customer.create(near('Prueba E2E: programada', mode: BookingMode.scheduled, start: start));
+      });
+      await _step('la misma solicitud otra vez se rechaza', () async {
+        await expectLater(
+          customer.create(near('Prueba E2E: programada', mode: BookingMode.scheduled, start: start)),
+          _code('HMY_DUPLICATE_REQUEST'),
+        );
+      });
+      await _step('al profesional le llega, sin dirección, con aviso', () async {
+        final offer = (await pro.myBookings(asProfessional: true)).firstWhere((b) => b.id == schedId);
+        expect(offer.isOffer, isTrue);
+        expect((await pro.detail(schedId)).address, isNull);
+        expect((await pro.list()).where((n) => n.kind == 'booking_new' && n.bookingId == schedId), isNotEmpty);
+      });
+      await _step('el profesional la acepta y el cliente recibe el aviso', () async {
+        await pro.accept(schedId, isOffer: true);
+        final d = await pro.detail(schedId);
+        expect(d.status, BookingStatus.confirmed);
+        expect(d.address?.line, 'Calle Prueba 789');
+        final notes = (await customer.list()).where((n) => n.kind == 'booking_status' && n.bookingId == schedId);
+        expect(notes, isNotEmpty);
+      });
+      await _step('aceptarla otra vez dice que ya está tomada', () async {
+        await expectLater(pro.accept(schedId, isOffer: true), _code('HMY_ALREADY_TAKEN'));
+      });
+      await _step('el cliente cancela la programada y no queda reserva', () async {
+        await customer.cancel(schedId, 'Prueba E2E: cambio de planes');
+        expect((await pro.detail(schedId)).status, BookingStatus.cancelled);
+        expect((await pro.wallet()).reserved, 0);
+      });
+
+      // Cotización: el profesional cotiza; el cliente acepta una y rechaza otra.
+      final quotedId = await _step('el cliente pide directo y el profesional cotiza', () async {
+        final id = await customer.create(near('Prueba E2E: cotización aceptada', professionalId: _proId));
+        await expectLater(customer.sendQuote(id, 1, null), _code('HMY_INVALID_TRANSITION'));
+        await expectLater(pro.sendQuote(id, 0, null), _code('HMY_INVALID_AMOUNT'));
+        await pro.sendQuote(id, 150, 'Prueba E2E');
+        final d = await customer.detail(id);
+        expect(d.status, BookingStatus.quoteSent);
+        expect(d.quoteAmount, closeTo(150, 0.005));
+        return id;
+      });
+      await _step('el profesional no puede responder su propia cotización', () async {
+        await expectLater(pro.respondQuote(quotedId, accept: true), throwsA(anything));
+        expect((await customer.detail(quotedId)).status, BookingStatus.quoteSent);
+      });
+      await _step('el cliente acepta la cotización: queda confirmado', () async {
+        await customer.respondQuote(quotedId, accept: true);
+        expect((await pro.detail(quotedId)).status, BookingStatus.confirmed);
+        await customer.cancel(quotedId, 'Prueba E2E: fin de la prueba');
+      });
+      await _step('otra cotización rechazada cancela el pedido', () async {
+        final id = await customer.create(near('Prueba E2E: cotización rechazada', professionalId: _proId));
+        await pro.sendQuote(id, 300, null);
+        await customer.respondQuote(id, accept: false);
+        expect((await pro.detail(id)).status, BookingStatus.cancelled);
+        expect((await pro.wallet()).reserved, 0);
+      });
+
+      // Reseñas: la de la grúa aparece en el perfil y no se puede repetir.
+      await _step('la reseña aparece en el perfil del profesional', () async {
+        final reviews = await customer.reviews(_proId);
+        expect(reviews.map((r) => r.comment), contains('Prueba E2E: grúa puntual'));
+        expect((await customer.professionalDetail(_proId))?.summary.ratingCount, greaterThanOrEqualTo(1));
+      });
+      await _step('el mismo trabajo no se califica dos veces', () async {
+        final done = (await customer.myBookings(asProfessional: false))
+            .where((b) => b.status == BookingStatus.completed);
+        expect(done, isNotEmpty);
+        await expectLater(customer.submitReview(done.first.id, 1, 'Otra vez'), _code('HMY_ALREADY_RATED'));
+      });
+      await _step('el profesional deja de estar disponible', () => pro.setAvailability(false));
+    },
+    skip: configured ? false : 'Falta E2E_URL, E2E_ANON_KEY o E2E_PASSWORD',
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
 }

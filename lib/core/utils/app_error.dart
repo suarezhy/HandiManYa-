@@ -192,6 +192,7 @@ class AppError implements Exception {
     'HMY_NAME_REQUIRED': 'Escribe un nombre.',
     'HMY_NOTE_REQUIRED': 'Escribe una nota corta: queda en la auditoría.',
     'HMY_ALREADY_REVIEWED': 'Esto ya fue revisado. Actualiza la pantalla.',
+    'HMY_ALREADY_RATED': 'Ya calificaste este trabajo.',
     'HMY_INVALID_STATUS': 'Esta acción ya no está disponible. Actualiza la pantalla.',
     'HMY_INVALID_PROBLEM': 'Una de las opciones elegidas ya no está disponible. Vuelve a elegir.',
     'HMY_OTHER_REQUIRED': 'Cuéntanos qué necesitas en "Otro".',

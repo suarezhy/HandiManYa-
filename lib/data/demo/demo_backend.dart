@@ -1628,7 +1628,7 @@ class DemoBackend
     final b = _get(bookingId);
     if (b.customerId != _me.id) throw AppError.from('HMY_FORBIDDEN');
     if (b.status != BookingStatus.completed) throw AppError.from('HMY_REVIEW_NOT_ALLOWED');
-    if (b.hasReview) throw const AppError('Ya calificaste este trabajo.');
+    if (b.hasReview) throw AppError.from('HMY_ALREADY_RATED');
     b.hasReview = true;
     final pro = _pros[b.professionalId]!;
     pro.ratingAvg = ((pro.ratingAvg * pro.ratingCount) + rating) / (pro.ratingCount + 1);
