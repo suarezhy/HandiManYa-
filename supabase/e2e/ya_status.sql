@@ -47,6 +47,21 @@ where pp.status = 'approved' and pp.is_available
 select 'Cuentas en total: ' || count(*) || ' · de prueba E2E que quedaron: ' || count(*) filter (where email like 'e2e-%@test.bo')
 from auth.users;
 
+\echo '== ¿A quién le llegaría un ¡Ya! de Plomería de 01 en la ciudad de 02? =='
+select 'Todo el municipio: ' || coalesce(string_agg('…' || right(u.phone, 2), ', '), 'a nadie')
+from public.ya_eligible_professionals(
+       (select id from public.service_categories where slug = 'plomeria'),
+       (select pp.city_id from public.professional_profiles pp join auth.users x on x.id = pp.user_id where x.phone = '59170000002'),
+       null, (select id from auth.users where phone = '59170000001')) e(id)
+left join auth.users u on u.id = e.id;
+select 'Zona ' || zn.name || ': ' || coalesce((select string_agg('…' || right(u.phone, 2), ', ')
+         from public.ya_eligible_professionals((select id from public.service_categories where slug = 'plomeria'),
+                zn.city_id, zn.id, (select id from auth.users where phone = '59170000001')) e(id)
+         left join auth.users u on u.id = e.id), 'a nadie')
+from public.service_zones zn
+where zn.city_id = (select pp.city_id from public.professional_profiles pp join auth.users x on x.id = pp.user_id where x.phone = '59170000002')
+order by zn.name;
+
 \echo '== Pedidos ¡Ya! abiertos ahora =='
 select 'Esperando profesional: ' || count(*) || ' · vencidos sin cerrar: '
        || count(*) filter (where public.hmy_response_deadline(b) < now())
