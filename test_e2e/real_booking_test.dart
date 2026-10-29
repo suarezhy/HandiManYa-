@@ -1150,10 +1150,16 @@ void main() {
   test(
     'rechazo, programada, cotización y reseñas: cada paso con su aviso y sin pedidos repetidos',
     () async {
-      final customer = await _step('el cliente entra', () => _signIn('e2e-cliente@test.bo'));
+      // Otro cliente: el primero ya hizo los pedidos que el límite por hora permite.
+      final customer = await _step('el cliente 2 entra', () => _signIn('e2e-cliente2@test.bo'));
+      final reviewer = await _step('el cliente 1 entra', () => _signIn('e2e-cliente@test.bo'));
       final pro = await _step('el profesional entra', () => _signIn('e2e-pro@test.bo'));
       final city = (await customer.cities()).first.id;
       final category = (await customer.categories()).firstWhere((c) => c.requiredDoc == null && c.allowsYa).id;
+      await _step(
+        'perfil completo: Cliente Dos E2E',
+        () => customer.completeSignup(fullName: 'Cliente Dos E2E', cityId: city, acceptTerms: true),
+      );
       BookingDraft near(String what, {BookingMode mode = BookingMode.now, String? professionalId, DateTime? start}) =>
           BookingDraft(
             categoryId: category,
@@ -1251,15 +1257,15 @@ void main() {
 
       // Reseñas: la de la grúa aparece en el perfil y no se puede repetir.
       await _step('la reseña aparece en el perfil del profesional', () async {
-        final reviews = await customer.reviews(_proId);
+        final reviews = await reviewer.reviews(_proId);
         expect(reviews.map((r) => r.comment), contains('Prueba E2E: grúa puntual'));
-        expect((await customer.professionalDetail(_proId))?.summary.ratingCount, greaterThanOrEqualTo(1));
+        expect((await reviewer.professionalDetail(_proId))?.summary.ratingCount, greaterThanOrEqualTo(1));
       });
       await _step('el mismo trabajo no se califica dos veces', () async {
-        final done = (await customer.myBookings(asProfessional: false))
+        final done = (await reviewer.myBookings(asProfessional: false))
             .where((b) => b.status == BookingStatus.completed);
         expect(done, isNotEmpty);
-        await expectLater(customer.submitReview(done.first.id, 1, 'Otra vez'), _code('HMY_ALREADY_RATED'));
+        await expectLater(reviewer.submitReview(done.first.id, 1, 'Otra vez'), _code('HMY_ALREADY_RATED'));
       });
       await _step('el profesional deja de estar disponible', () => pro.setAvailability(false));
     },

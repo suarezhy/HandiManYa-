@@ -28,7 +28,10 @@ insert into e2e_users values
   -- se lo da por la API (owner_grant_staff), como en la app.
   ('e2e00000-0000-4000-8000-0000000000e0', 'e2e-gerente@test.bo', '59160000904', 'Gerente Prueba E2E', false),
   ('e2e00000-0000-4000-8000-0000000000e1', 'e2e-empleado1@test.bo', '59160000905', 'Empleado Uno E2E', false),
-  ('e2e00000-0000-4000-8000-0000000000e2', 'e2e-empleado2@test.bo', '59160000906', 'Empleado Dos E2E', false);
+  ('e2e00000-0000-4000-8000-0000000000e2', 'e2e-empleado2@test.bo', '59160000906', 'Empleado Dos E2E', false),
+  -- Un segundo cliente para la última prueba: el primero ya llega al límite
+  -- de 10 pedidos por hora (guard_new_booking).
+  ('e2e00000-0000-4000-8000-0000000000c2', 'e2e-cliente2@test.bo', '59160000907', 'Cliente Dos E2E', false);
 
 -- Como una cuenta creada por Supabase Auth con correo confirmado. Las columnas
 -- de tokens van vacías (no nulas) porque Auth las lee como texto.
