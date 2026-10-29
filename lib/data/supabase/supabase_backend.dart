@@ -493,6 +493,66 @@ class SupabaseBackend
     }
   }
 
+  /// Las filas de [table] con [column] = [value], al día en vivo.
+  ///
+  /// Se leen otra vez cuando el canal termina de conectarse (tarda unos
+  /// segundos): `.stream()` de Supabase solo lee al empezar, así que un mensaje
+  /// que llegaba en ese rato no aparecía hasta volver a abrir el chat.
+  Stream<List<Map<String, dynamic>>> _liveRows(String table, String column, Object value) {
+    final rows = <Object?, Map<String, dynamic>>{};
+    final controller = StreamController<List<Map<String, dynamic>>>();
+    var closed = false;
+    void emit() {
+      if (!closed) controller.add(rows.values.toList());
+    }
+
+    // Lo que llegó en vivo mientras se leía es más nuevo que la lectura.
+    final live = <Object?>{};
+    Future<void> load() async {
+      live.clear();
+      try {
+        final data = _rows(await _db.from(table).select().eq(column, value));
+        for (final r in data) {
+          if (!live.contains(r['id'])) rows[r['id']] = r;
+        }
+        emit();
+      } catch (e, s) {
+        if (!closed) controller.addError(e, s);
+      }
+    }
+
+    final channel = _db
+        .channel('$table-$value-${DateTime.now().microsecondsSinceEpoch}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: table,
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: column, value: value),
+          callback: (p) {
+            live.add((p.eventType == PostgresChangeEvent.delete ? p.oldRecord : p.newRecord)['id']);
+            if (p.eventType == PostgresChangeEvent.delete) {
+              rows.remove(p.oldRecord['id']);
+            } else {
+              rows[p.newRecord['id']] = p.newRecord;
+            }
+            emit();
+          },
+        )
+        .subscribe((status, [error]) {
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            unawaited(load());
+          } else if (status == RealtimeSubscribeStatus.channelError || status == RealtimeSubscribeStatus.timedOut) {
+            if (!closed) controller.addError(RealtimeSubscribeException(status, error));
+          }
+        });
+    unawaited(load());
+    controller.onCancel = () async {
+      closed = true;
+      await _db.removeChannel(channel);
+    };
+    return controller.stream;
+  }
+
   @override
   Stream<void> changes() {
     final controller = StreamController<void>.broadcast();
@@ -635,12 +695,11 @@ class SupabaseBackend
       _rows(await _db.rpc('my_conversations')).map(Conversation.fromMap).toList();
 
   @override
-  Stream<List<ChatMessage>> watchMessages(String conversationId) => _db
-      .from('messages')
-      .stream(primaryKey: ['id'])
-      .eq('conversation_id', conversationId)
-      .order('created_at')
-      .map((rows) => rows.map(ChatMessage.fromMap).toList());
+  Stream<List<ChatMessage>> watchMessages(String conversationId) =>
+      _liveRows('messages', 'conversation_id', conversationId).map((rows) {
+        rows.sort((a, b) => '${a['created_at']}'.compareTo('${b['created_at']}'));
+        return rows.map(ChatMessage.fromMap).toList();
+      });
 
   @override
   Future<void> send(String conversationId, String body) =>
@@ -658,11 +717,8 @@ class SupabaseBackend
           .toList();
 
   @override
-  Stream<int> unreadCount() => _db
-      .from('notifications')
-      .stream(primaryKey: ['id'])
-      .eq('user_id', _uid)
-      .map((rows) => rows.where((r) => r['read_at'] == null).length);
+  Stream<int> unreadCount() =>
+      _liveRows('notifications', 'user_id', _uid).map((rows) => rows.where((r) => r['read_at'] == null).length);
 
   @override
   Future<void> markAllRead() => _db.rpc('mark_notifications_read');

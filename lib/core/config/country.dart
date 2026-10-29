@@ -48,6 +48,7 @@ class Country {
   final String currencyCode;
   final String currencySymbol;
   final String currencyName;
+
   /// Para los números (separador decimal y de miles).
   final String locale;
   final String timezone;

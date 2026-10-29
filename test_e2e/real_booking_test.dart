@@ -1249,13 +1249,12 @@ void main() {
       // Tiempo real (Supabase Realtime): lo que ve la app sin recargar.
       await _step('tiempo real: el mensaje del profesional le llega al cliente al momento', () async {
         final conv = (await customer.conversations()).firstWhere((c) => c.bookingId == quotedId);
-        // El canal tarda unos segundos en conectarse: un mensaje enviado antes
-        // no llega en vivo (aparece al volver a abrir el chat).
+        // Se envía al abrir el chat, antes de que el canal termine de
+        // conectarse (tarda unos segundos): igual tiene que aparecer.
         final arrived = customer
             .watchMessages(conv.id)
             .firstWhere((list) => list.any((m) => m.body == 'Prueba E2E: tiempo real'))
             .timeout(const Duration(seconds: 20));
-        await Future<void>.delayed(const Duration(seconds: 5));
         await pro.send(conv.id, 'Prueba E2E: tiempo real');
         await arrived;
       });
@@ -1264,9 +1263,10 @@ void main() {
         await pro.markAllRead();
         final unread = pro.unreadCount().firstWhere((n) => n > 0).timeout(const Duration(seconds: 20));
         final changed = pro.changes().first.timeout(const Duration(seconds: 20));
-        await Future<void>.delayed(const Duration(seconds: 5));
         await customer.send(conv.id, 'Prueba E2E: ¿viene hoy?');
         await unread;
+        // changes() solo avisa lo que pasa con el canal ya conectado.
+        await Future<void>.delayed(const Duration(seconds: 5));
         await customer.cancel(quotedId, 'Prueba E2E: fin de la prueba');
         await changed;
       });
