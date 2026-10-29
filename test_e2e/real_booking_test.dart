@@ -1245,7 +1245,28 @@ void main() {
       await _step('el cliente acepta la cotización: queda confirmado', () async {
         await customer.respondQuote(quotedId, accept: true);
         expect((await pro.detail(quotedId)).status, BookingStatus.confirmed);
+      });
+      // Tiempo real (Supabase Realtime): lo que ve la app sin recargar.
+      await _step('tiempo real: el mensaje del profesional le llega al cliente al momento', () async {
+        final conv = (await customer.conversations()).firstWhere((c) => c.bookingId == quotedId);
+        final arrived = customer
+            .watchMessages(conv.id)
+            .firstWhere((list) => list.any((m) => m.body == 'Prueba E2E: tiempo real'))
+            .timeout(const Duration(seconds: 20));
+        await Future<void>.delayed(const Duration(seconds: 2));
+        await pro.send(conv.id, 'Prueba E2E: tiempo real');
+        await arrived;
+      });
+      await _step('tiempo real: el aviso sin leer y el cambio de estado llegan solos', () async {
+        final conv = (await pro.conversations()).firstWhere((c) => c.bookingId == quotedId);
+        await pro.markAllRead();
+        final unread = pro.unreadCount().firstWhere((n) => n > 0).timeout(const Duration(seconds: 20));
+        final changed = pro.changes().first.timeout(const Duration(seconds: 20));
+        await Future<void>.delayed(const Duration(seconds: 2));
+        await customer.send(conv.id, 'Prueba E2E: ¿viene hoy?');
+        await unread;
         await customer.cancel(quotedId, 'Prueba E2E: fin de la prueba');
+        await changed;
       });
       await _step('otra cotización rechazada cancela el pedido', () async {
         final id = await customer.create(near('Prueba E2E: cotización rechazada', professionalId: _proId));
