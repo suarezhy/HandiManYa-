@@ -114,6 +114,37 @@ void _checkButtons(WidgetTester tester, String route, String where) {
   }
 }
 
+/// Un título de la barra que se repite como encabezado grande en la pantalla.
+void _checkDuplicateHeading(WidgetTester tester, String where) {
+  for (final bar in find.byType(AppBar).evaluate()) {
+    final title = (bar.widget as AppBar).title;
+    final texts = title == null
+        ? const <Element>[]
+        : find.descendant(of: find.byWidget(title), matching: find.byType(RichText)).evaluate();
+    for (final t in texts) {
+      final name = (t.widget as RichText).text.toPlainText().trim();
+      if (name.length < 4) continue;
+      final repeated = find
+          .byWidgetPredicate((w) {
+            if (w is! RichText || w.text.toPlainText().trim() != name) return false;
+            return (w.text.style?.fontSize ?? 14) >= 18;
+          })
+          .evaluate()
+          .where((e) {
+            if (find
+                .descendant(of: find.byWidget(bar.widget), matching: find.byWidget(e.widget))
+                .evaluate()
+                .isNotEmpty) {
+              return false;
+            }
+            final box = e.renderObject as RenderBox?;
+            return box != null && box.attached && box.hasSize;
+          });
+      if (repeated.isNotEmpty) _add(where, 'título repetido: "$name"');
+    }
+  }
+}
+
 /// Recorre la pantalla de arriba abajo anotando lo que esté mal.
 Future<void> _sweep(WidgetTester tester, String where, Size screen, String route) async {
   void collect() {
@@ -123,6 +154,7 @@ Future<void> _sweep(WidgetTester tester, String where, Size screen, String route
     final e = tester.takeException();
     if (e != null) _add(where, 'error: ${e.toString().split('\n').first}');
     _checkButtons(tester, route, where);
+    _checkDuplicateHeading(tester, where);
   }
 
   collect();
