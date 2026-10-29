@@ -1273,6 +1273,7 @@ class DemoBackend
     final me = _me.id;
     final b = _get(bookingId);
     if (isOffer) {
+      if (b.status == BookingStatus.cancelled) throw AppError.from('HMY_REQUEST_CANCELLED');
       if (b.status != BookingStatus.awaitingResponse || b.professionalId != null) {
         throw const AppError('Otro profesional ya tomó este pedido.', code: 'HMY_ALREADY_TAKEN');
       }

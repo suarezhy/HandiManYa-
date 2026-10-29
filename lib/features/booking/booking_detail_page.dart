@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/utils/app_error.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
@@ -43,7 +44,11 @@ class BookingDetailPage extends ConsumerWidget {
       body: detail.when(
         skipLoadingOnReload: true,
         loading: () => const LoadingView(),
-        error: (e, _) => ErrorView(error: e, onRetry: () => ref.invalidate(bookingDetailProvider(id))),
+        error: (e, _) => ErrorView(
+          // Un aviso viejo: otro profesional tomó el pedido o el cliente lo canceló.
+          error: AppError.from(e).code == 'HMY_NOT_FOUND' ? const AppError('Este pedido ya no está disponible.') : e,
+          onRetry: () => ref.invalidate(bookingDetailProvider(id)),
+        ),
         data: (b) => RefreshIndicator(
           color: HyColors.primary,
           onRefresh: () async => ref.invalidate(bookingDetailProvider(id)),

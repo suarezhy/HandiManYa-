@@ -39,15 +39,21 @@ class PushController extends AsyncNotifier<PushState> {
 
   StreamSubscription<String>? _refresh;
   StreamSubscription<Map<String, String>>? _opened;
+  // Aviso tocado antes de que la sesión y la cuenta estén listas (por ejemplo,
+  // con la app cerrada): se abre en cuanto se pueda, no se pierde.
+  Map<String, String>? _pendingTap;
 
   @override
   Future<PushState> build() async {
     final platform = ref.watch(pushPlatformProvider);
     final user = ref.watch(authUserProvider).value;
     if (platform == null) return PushState.unavailable;
+    final delegate = ref.read(routerProvider).routerDelegate;
+    delegate.addListener(_openPending);
     ref.onDispose(() {
       _refresh?.cancel();
       _opened?.cancel();
+      delegate.removeListener(_openPending);
     });
     if (!await platform.isSupported()) return PushState.unsupported;
     _opened = platform.opened.listen(_open);
@@ -124,7 +130,22 @@ class PushController extends AsyncNotifier<PushState> {
   }
 
   void _open(Map<String, String> data) {
+    _pendingTap = data;
+    _openPending();
+  }
+
+  void _openPending() {
+    final data = _pendingTap;
+    if (data == null) return;
     final router = ref.read(routerProvider);
+    final loc = router.routerDelegate.currentConfiguration.uri.path;
+    final ready =
+        ref.read(accountProvider).value?.profileComplete == true &&
+        loc != Routes.splash &&
+        loc != Routes.completeProfile &&
+        !Routes.publicRoutes.contains(loc);
+    if (!ready) return;
+    _pendingTap = null;
     final conversation = data['conversation_id'];
     final booking = data['booking_id'];
     if (conversation != null && conversation.isNotEmpty) {

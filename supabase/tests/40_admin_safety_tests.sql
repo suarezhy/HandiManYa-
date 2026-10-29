@@ -30,6 +30,13 @@ select test.eq((public.admin_application_detail('00000000-0000-0000-0000-0000000
 select test.logout();
 
 -- 2. Bloqueos: corta el chat y las ofertas ¡Ya!
+-- e1 tiene un pedido ¡Ya! aceptado (de 30_) y desde 0057 un profesional con
+-- trabajo en curso no recibe pedidos ¡Ya!. Para probar solo el bloqueo, ese
+-- trabajo queda terminado mientras tanto y después vuelve a su estado.
+create temp table t_e1_busy as select id, status from public.bookings
+  where professional_id = '00000000-0000-0000-0000-0000000000e1'
+    and (status in ('on_the_way', 'in_progress') or (status = 'confirmed' and mode = 'now'));
+update public.bookings set status = 'work_finished' where id in (select id from t_e1_busy);
 select test.login('00000000-0000-0000-0000-0000000000c1');
 select public.send_message((select v::uuid from t_adm where k = 'conv_e1'), 'Hola, ¿a qué hora llega?');
 select test.logout();
@@ -50,6 +57,9 @@ select public.unblock_user('00000000-0000-0000-0000-0000000000c1');
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000c1');
 select test.eq(public.count_ya_available(3, 1::smallint), 3, 'bloqueo: al desbloquear vuelve a recibir pedidos');
+select test.logout();
+update public.bookings b set status = t.status from t_e1_busy t where b.id = t.id;
+select test.login('00000000-0000-0000-0000-0000000000c1');
 
 -- 3. Reportes con límite diario
 select test.expect_error($$select public.report_user('00000000-0000-0000-0000-0000000000c1', 'fraude')$$, 'HMY_NOT_FOUND');

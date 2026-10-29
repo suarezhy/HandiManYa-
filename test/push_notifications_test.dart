@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:handimanya/app.dart';
 import 'package:handimanya/core/services/push_platform.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
+import 'package:handimanya/data/models/booking.dart';
+import 'package:handimanya/features/booking/booking_detail_page.dart';
 import 'package:handimanya/data/providers.dart';
 import 'package:handimanya/features/messages/chat_page.dart';
 import 'package:handimanya/features/notifications/push_controller.dart';
@@ -250,6 +252,33 @@ void main() {
     await tester.pumpAndSettle();
     final chat = tester.widget<ChatPage>(find.byType(ChatPage));
     expect(chat.conversationId, 'conv-1');
+    PushTokens.current = null;
+  });
+
+  testWidgets('un aviso tocado con la app recién abierta espera a la sesión y abre la solicitud', (tester) async {
+    // Con la app cerrada, el toque llega antes de que la sesión y la cuenta
+    // estén listas: antes se perdía y la app abría Inicio.
+    final push = _FakePush()..perm = PushPermission.granted;
+    final (backend, _) = await _pump(tester, push);
+    final id = await backend.create(
+      const BookingDraft(
+        categoryId: 1,
+        cityId: 1,
+        mode: BookingMode.now,
+        description: 'Gotea el caño de la cocina',
+        address: 'Calle Los Pinos 123',
+      ),
+    );
+    await backend.signOut();
+    await tester.pumpAndSettle();
+    push.taps.add({'kind': 'booking_status', 'booking_id': id});
+    await tester.pumpAndSettle();
+    expect(find.byType(BookingDetailPage), findsNothing);
+    await backend.signInAs(DemoBackend.customerPhone);
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(tester.widget<BookingDetailPage>(find.byType(BookingDetailPage)).id, id);
     PushTokens.current = null;
   });
 

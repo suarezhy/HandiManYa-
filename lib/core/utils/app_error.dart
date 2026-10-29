@@ -93,6 +93,8 @@ class AppError implements Exception {
     'HMY_NO_PROFESSIONALS_AVAILABLE': 'No hay profesionales disponibles ahora para este servicio en tu zona. Prueba en otra zona o programa para después.',
     'HMY_ALREADY_TAKEN': 'Otro profesional ya tomó este pedido.',
     'HMY_REQUEST_EXPIRED': 'Esta solicitud ya venció: pasó el tiempo para responder.',
+    'HMY_REQUEST_CANCELLED': 'El cliente canceló este pedido.',
+    'HMY_PRO_BUSY': 'Ya tienes un trabajo en curso. Termínalo antes de aceptar otro pedido ¡Ya!',
     'HMY_IDENTITY_PAUSED':
         'La verificación de identidad está en pausa por ahora. Tu postulación sigue en revisión; te avisaremos.',
     'HMY_IDENTITY_OFF': 'La verificación de identidad todavía no está disponible. Tu postulación sigue en revisión.',
