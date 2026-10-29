@@ -64,4 +64,14 @@ select 'Tablas en supabase_realtime: ' || coalesce(string_agg(tablename, ', ' or
 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public'
   and tablename in ('bookings', 'notifications', 'messages', 'booking_offers');
 
+\echo '== Pedidos de código de las cuentas de prueba, 24 h (hora de La Paz) =='
+\echo 'Un número de prueba de Supabase no pasa por aquí: si aparece, Supabase no lo trató como de prueba.'
+select '…' || right(phone, 2) || ' · ' || channel || ' · permitido=' || allowed
+       || ' · motivo ' || coalesce(reason, '-') || ' · ' || to_char(created_at at time zone 'America/La_Paz', 'DD-MM HH24:MI:SS')
+from public.otp_sends
+where right(phone, 8) in ('70000001', '70000002', '70000003') and created_at > now() - interval '24 hours'
+order by created_at desc limit 20;
+select 'Pedidos de código de otros números en 24 h: ' || count(*)
+from public.otp_sends where right(phone, 8) not in ('70000001', '70000002', '70000003') and created_at > now() - interval '24 hours';
+
 commit;
