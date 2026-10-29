@@ -5,6 +5,7 @@
 // Solo corre en el flujo .github/workflows/e2e-dev.yml, que antes crea las
 // cuentas temporales (supabase/e2e/setup.sql) y después borra todo
 // (supabase/e2e/cleanup.sql). Sin E2E_URL, E2E_ANON_KEY y E2E_PASSWORD se salta.
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -1249,13 +1250,36 @@ void main() {
       // Tiempo real (Supabase Realtime): lo que ve la app sin recargar.
       await _step('tiempo real: el mensaje del profesional le llega al cliente al momento', () async {
         final conv = (await customer.conversations()).firstWhere((c) => c.bookingId == quotedId);
-        final arrived = customer
-            .watchMessages(conv.id)
-            .firstWhere((list) => list.any((m) => m.body == 'Prueba E2E: tiempo real'))
-            .timeout(const Duration(seconds: 20));
-        await Future<void>.delayed(const Duration(seconds: 2));
+        // Diagnóstico: un canal propio muestra si el tiempo real se conecta.
+        final (_, raw) = await _signInWithClient('e2e-cliente2@test.bo');
+        final statuses = <String>[];
+        var rawInserts = 0;
+        final ch = raw
+            .channel('e2e-diag')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.insert,
+              schema: 'public',
+              table: 'messages',
+              callback: (_) => rawInserts++,
+            )
+            .subscribe((status, [error]) => statuses.add('$status${error == null ? '' : ' ($error)'}'));
+        final seen = <int>[];
+        final errors = <Object>[];
+        final arrived = Completer<void>();
+        final sub = customer.watchMessages(conv.id).listen((list) {
+          seen.add(list.length);
+          if (list.any((m) => m.body == 'Prueba E2E: tiempo real') && !arrived.isCompleted) arrived.complete();
+        }, onError: errors.add);
+        await Future<void>.delayed(const Duration(seconds: 4));
         await pro.send(conv.id, 'Prueba E2E: tiempo real');
-        await arrived;
+        try {
+          await arrived.future.timeout(const Duration(seconds: 20));
+        } finally {
+          // ignore: avoid_print
+          print('  diagnóstico: canal $statuses · inserciones vistas $rawInserts · emisiones $seen · errores $errors');
+          await sub.cancel();
+          await raw.removeChannel(ch);
+        }
       });
       await _step('tiempo real: el aviso sin leer y el cambio de estado llegan solos', () async {
         final conv = (await pro.conversations()).firstWhere((c) => c.bookingId == quotedId);
