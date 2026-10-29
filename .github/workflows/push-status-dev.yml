@@ -35,3 +35,5 @@ jobs:
         run: psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -f supabase/e2e/push_status.sql | tee -a "$GITHUB_STEP_SUMMARY"
       - name: send-push no está abierto (sin secreto responde 401)
         run: bash tool/push_endpoint_check.sh | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Lo necesito ahora (solo lectura)
+        run: psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -f supabase/e2e/ya_status.sql | tee -a "$GITHUB_STEP_SUMMARY"
