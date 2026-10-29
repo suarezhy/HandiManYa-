@@ -30,6 +30,22 @@ select 'Pendientes que saldrían al activar send-push (menos de 24 h): ' || coun
 from public.push_outbox o join public.push_devices d on d.id = o.device_id
 where o.status in ('pending', 'sending') and o.created_at > now() - interval '24 hours' and d.disabled_at is null;
 
+\echo '== Cada envío de las últimas 3 horas (hora de La Paz) =='
+select '#' || o.id || ' · ' || n.kind || ' · ' || coalesce('…' || right(u.phone, 2), 'otra cuenta')
+       || ' · ' || o.status || ' · intentos ' || o.attempts
+       || ' · creado ' || to_char(o.created_at at time zone 'America/La_Paz', 'HH24:MI:SS')
+       || coalesce(' · tomado ' || to_char(o.claimed_at at time zone 'America/La_Paz', 'HH24:MI:SS'), '')
+       || coalesce(' · enviado ' || to_char(o.sent_at at time zone 'America/La_Paz', 'HH24:MI:SS'), '')
+       || coalesce(' · error: ' || left(o.last_error, 100), '')
+from public.push_outbox o
+join public.notifications n on n.id = o.notification_id
+join public.push_devices d on d.id = o.device_id
+left join auth.users u on u.id = d.user_id and u.phone in ('59170000001', '59170000002', '59170000003')
+where o.created_at > now() - interval '3 hours'
+order by o.id;
+select 'Avisos de prueba creados en 3 h (en la app): ' || count(*)
+from public.notifications where kind = 'push_test' and created_at > now() - interval '3 hours';
+
 \echo '== ¿Hay un webhook que llame a send-push? =='
 select 'Disparadores de webhook en push_outbox: ' || count(*)
 from pg_trigger t join pg_class c on c.oid = t.tgrelid
@@ -72,7 +88,7 @@ select to_regclass('net._http_response') is not null as hay_net \gset
 select to_char(r.created at time zone 'America/La_Paz', 'DD-MM HH24:MI:SS') || ' · HTTP '
        || coalesce(r.status_code::text, 'sin respuesta')
        || case when r.content ~ '^\{"(error|sent)"' then ' · ' || left(r.content, 80)
-               when r.error_msg is not null then ' · error de red' else '' end
+               when r.error_msg is not null then ' · error de pg_net: ' || left(r.error_msg, 100) else '' end
 from net._http_response r
 where r.created > now() - interval '24 hours'
 order by r.created desc limit 10;
