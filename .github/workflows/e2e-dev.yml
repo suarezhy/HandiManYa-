@@ -55,6 +55,17 @@ jobs:
           echo "::add-mask::${pw}"
           echo "E2E_PASSWORD=${pw}" >> "$GITHUB_ENV"
 
+      - name: Ningún profesional de verdad o de prueba recibiría los pedidos de la prueba
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          do $$ begin
+            if exists (select 1 from public.professional_profiles pp join auth.users u on u.id = pp.user_id
+                       where pp.status = 'approved' and pp.is_available and coalesce(u.email, '') not like 'e2e-%@test.bo') then
+              raise exception 'HMY: hay un profesional aprobado y disponible fuera de la prueba (por ejemplo …02 en un teléfono). Ponlo no disponible o revierte el perfil de prueba antes de correr esto.';
+            end if;
+          end $$;
+          SQL
+
       - name: Borrar restos de una corrida anterior
         run: psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -f supabase/e2e/cleanup.sql
 
