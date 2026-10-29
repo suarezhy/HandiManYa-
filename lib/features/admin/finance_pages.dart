@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/config/country.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
@@ -893,7 +894,7 @@ class _ReceivingAccountFormPageState extends ConsumerState<ReceivingAccountFormP
   late final _number = TextEditingController(text: widget.account?.accountNumber);
   late final _notes = TextEditingController(text: widget.account?.notes);
   late var _type = widget.account?.type ?? ReceivingAccountType.savings;
-  late var _currency = widget.account?.currency ?? 'BOB';
+  late var _currency = widget.account?.currency ?? kCountry.currencyCode;
   late final String? _qrPath = widget.account?.qrPath;
   PhotoUpload? _qr;
   var _dirty = false;

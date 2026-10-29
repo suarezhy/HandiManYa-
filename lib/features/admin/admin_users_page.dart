@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/country.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/common.dart';
@@ -291,7 +292,7 @@ class _AdjustDialogState extends State<_AdjustDialog> {
               controller: _amount,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
-              decoration: const InputDecoration(labelText: 'Monto', prefixText: 'Bs '),
+              decoration: InputDecoration(labelText: 'Monto', prefixText: kCountry.moneyPrefix),
               validator: (v) {
                 final n = double.tryParse((v ?? '').replaceAll(',', '.'));
                 return n == null || n <= 0 || n > 10000 ? 'Revisa el monto' : null;

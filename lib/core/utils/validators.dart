@@ -1,3 +1,5 @@
+import '../config/country.dart';
+
 /// Validaciones de formularios con mensajes en español.
 abstract final class Validators {
   static final _email = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]{2,}$');
@@ -30,20 +32,17 @@ abstract final class Validators {
     return null;
   }
 
-  /// Celular boliviano: 8 dígitos que empiezan con 6 o 7. Acepta espacios,
-  /// guiones y el prefijo +591.
-  static String? boliviaPhone(String? v) {
+  /// Celular del país (en Bolivia, 8 dígitos que empiezan con 6 o 7). Acepta
+  /// espacios, guiones y el prefijo del país.
+  static String? phone(String? v) {
     if (v == null || v.trim().isEmpty) return 'Escribe tu número de celular';
-    return normalizeBoliviaPhone(v) == null ? 'Debe ser un celular de 8 dígitos, por ejemplo 71234567' : null;
+    return normalizePhone(v) == null
+        ? 'Debe ser un celular de ${kCountry.mobileLength} dígitos, por ejemplo ${kCountry.mobileExample}'
+        : null;
   }
 
   /// Devuelve el número en formato +591XXXXXXXX, o null si no es válido.
-  static String? normalizeBoliviaPhone(String v) {
-    var digits = v.replaceAll(RegExp(r'[^\d]'), '');
-    if (digits.startsWith('591') && digits.length == 11) digits = digits.substring(3);
-    if (!RegExp(r'^[67]\d{7}$').hasMatch(digits)) return null;
-    return '+591$digits';
-  }
+  static String? normalizePhone(String v) => kCountry.normalizeMobile(v);
 
   static String? otp(String? v) {
     if (v == null || !RegExp(r'^\d{6}$').hasMatch(v.trim())) return 'El código tiene 6 números';

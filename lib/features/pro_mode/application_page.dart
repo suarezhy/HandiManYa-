@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/config/country.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/category_order.dart';
 import '../../core/widgets/buttons.dart';
@@ -368,10 +369,10 @@ class _ApplicationFormState extends ConsumerState<_ApplicationForm> {
                   const SizedBox(height: HySpacing.xs),
                   TextFormField(
                     controller: _price,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Precios de referencia (opcional)',
-                      hintText: 'Ej.: Visita Bs 50, el resto según el trabajo',
-                      prefixIcon: Icon(Icons.sell_outlined),
+                      hintText: 'Ej.: Visita ${kCountry.moneyPrefix}50, el resto según el trabajo',
+                      prefixIcon: const Icon(Icons.sell_outlined),
                     ),
                   ),
                 ],

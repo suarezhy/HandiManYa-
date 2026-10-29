@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/config/country.dart';
 import '../../core/utils/app_error.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
@@ -961,7 +962,7 @@ Future<(double, String?)?> showQuoteSheet(BuildContext context) async {
   final r = await showAmountSheet(
     context,
     title: 'Enviar cotización',
-    hint: 'Precio total en Bs',
+    hint: 'Precio total en ${kCountry.currencySymbol}',
     withNote: true,
     required: true,
   );
@@ -999,7 +1000,7 @@ Future<(double?, String?)?> showAmountSheet(
               autofocus: true,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
-              decoration: InputDecoration(labelText: hint, prefixText: 'Bs '),
+              decoration: InputDecoration(labelText: hint, prefixText: kCountry.moneyPrefix),
               validator: (v) {
                 final t = (v ?? '').replaceAll(',', '.').trim();
                 if (t.isEmpty) return required ? 'Escribe el monto' : null;

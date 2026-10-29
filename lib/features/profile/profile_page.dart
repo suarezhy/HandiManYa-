@@ -13,7 +13,7 @@ import '../legal/legal_texts.dart';
 import '../management/management_common.dart';
 import '../safety/safety_sheets.dart';
 import 'profile_photo.dart';
-import '../auth/auth_scaffold.dart' show formatBoliviaPhone;
+import '../auth/auth_scaffold.dart' show formatPhone;
 
 /// Perfil compartido por cliente y profesional. Desde aquí se cambia de modo.
 class ProfilePage extends ConsumerWidget {
@@ -56,7 +56,7 @@ class ProfilePage extends ConsumerWidget {
                             WordSafeText(account.email, style: const TextStyle(color: HyColors.textSecondary)),
                             if (account.phone != null)
                               OneLineText(
-                                formatBoliviaPhone(account.phone!),
+                                formatPhone(account.phone!),
                                 style: const TextStyle(color: HyColors.textSecondary),
                               ),
                             const SizedBox(height: 4),

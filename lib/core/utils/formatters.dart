@@ -1,19 +1,33 @@
 import 'package:intl/intl.dart';
 
+import '../config/country.dart';
+
 abstract final class Fmt {
-  static final _money = NumberFormat.currency(locale: 'es_BO', symbol: 'Bs ', decimalDigits: 2);
-  static final _moneyShort = NumberFormat.currency(locale: 'es_BO', symbol: 'Bs ', decimalDigits: 0);
+  // El símbolo va adelante ("Bs 80"). Con es_BO, intl usa los datos de "es"
+  // (España), que lo ponen al final ("80 Bs"): por eso el formato es propio.
+  static final _money = NumberFormat.currency(
+    locale: kCountry.locale,
+    symbol: kCountry.moneyPrefix,
+    customPattern: '\u00A4#,##0.00',
+    decimalDigits: 2,
+  );
+  static final _moneyShort = NumberFormat.currency(
+    locale: kCountry.locale,
+    symbol: kCountry.moneyPrefix,
+    customPattern: '\u00A4#,##0',
+    decimalDigits: 0,
+  );
 
   static String bs(num value) => _money.format(value);
 
   /// Sin decimales cuando el monto es entero ("Bs 80").
   static String bsShort(num value) => value == value.roundToDouble() ? _moneyShort.format(value) : _money.format(value);
 
-  static String rating(double value) => NumberFormat('0.0', 'es_BO').format(value);
+  static String rating(double value) => NumberFormat('0.0', kCountry.locale).format(value);
 
   /// "1,2 km" o "800 m".
   static String km(double value) =>
-      value < 1 ? '${(value * 1000).round()} m' : '${NumberFormat('0.0', 'es_BO').format(value)} km';
+      value < 1 ? '${(value * 1000).round()} m' : '${NumberFormat('0.0', kCountry.locale).format(value)} km';
 
   static String date(DateTime d) => DateFormat("EEEE d 'de' MMMM", 'es').format(d.toLocal());
   static String shortDate(DateTime d) => DateFormat('d MMM', 'es').format(d.toLocal());
@@ -49,7 +63,10 @@ abstract final class Fmt {
 String? maskPhone(String? phone) {
   final d = (phone ?? '').replaceAll(RegExp(r'\D'), '');
   if (d.length < 6) return null;
-  if (d.startsWith('591') && d.length == 11) return '+591 ${d[3]}••• ••${d.substring(9)}';
+  final cc = kCountry.dialCode;
+  if (d.startsWith(cc) && d.length == cc.length + kCountry.mobileLength) {
+    return '+$cc ${d[cc.length]}••• ••${d.substring(d.length - 2)}';
+  }
   return '••• ${d.substring(d.length - 2)}';
 }
 

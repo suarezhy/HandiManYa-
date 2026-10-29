@@ -40,7 +40,7 @@ class _PhoneAuthPageState extends ConsumerState<PhoneAuthPage> with ResendCooldo
   }
 
   Future<void> _send({CodeChannel? channel}) async {
-    final phone = _sentTo ?? Validators.normalizeBoliviaPhone(_phone.text);
+    final phone = _sentTo ?? Validators.normalizePhone(_phone.text);
     if (_sentTo == null && !_phoneForm.currentState!.validate()) return;
     if (phone == null || _loading) return;
     final via = channel ?? _channel;
@@ -87,7 +87,7 @@ class _PhoneAuthPageState extends ConsumerState<PhoneAuthPage> with ResendCooldo
       title: sent == null ? 'Bienvenido a HandiMan ¡Ya!' : 'Escribe el código',
       subtitle: sent == null
           ? 'Escribe tu número de celular. Te enviaremos un código para entrar o crear tu cuenta.'
-          : 'Te lo enviamos por ${_channel.label} al ${formatBoliviaPhone(sent)}. Vence en 5 minutos.',
+          : 'Te lo enviamos por ${_channel.label} al ${formatPhone(sent)}. Vence en 5 minutos.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [const DemoAccountsHint(), if (sent == null) ..._phoneStep() else ..._codeStep()],

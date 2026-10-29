@@ -110,7 +110,7 @@ void main() {
           final tile = find.byKey(const Key('confirm-code'));
           expect(find.descendant(of: tile, matching: find.text('Código por celular')), findsOneWidget);
           final phone = find.byKey(const Key('confirm-code-phone'));
-          expect(tester.widget<Text>(phone).data, formatBoliviaPhone(DemoBackend.adminPhone));
+          expect(tester.widget<Text>(phone).data, formatPhone(DemoBackend.adminPhone));
           expect(tester.widget<Text>(phone).data, '+591 7000 0000');
           final paragraph = tester.renderObject<RenderParagraph>(phone);
           final length = paragraph.text.toPlainText().length;
@@ -136,6 +136,6 @@ void main() {
   });
 
   test('el número se arma con espacios que no se cortan', () {
-    expect(formatBoliviaPhone('+59170000003'), '+591 7000 0003');
+    expect(formatPhone('+59170000003'), '+591 7000 0003');
   });
 }

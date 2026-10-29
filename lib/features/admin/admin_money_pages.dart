@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/country.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
@@ -361,7 +362,7 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
                       controller: _fixed,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       inputFormatters: numberInput,
-                      decoration: const InputDecoration(labelText: 'Cargo fijo', prefixText: 'Bs '),
+                      decoration: InputDecoration(labelText: 'Cargo fijo', prefixText: kCountry.moneyPrefix),
                       validator: _money,
                     ),
                   ),
@@ -382,7 +383,7 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
                       controller: _reserve,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       inputFormatters: numberInput,
-                      decoration: const InputDecoration(labelText: 'Reserva al aceptar', prefixText: 'Bs '),
+                      decoration: InputDecoration(labelText: 'Reserva al aceptar', prefixText: kCountry.moneyPrefix),
                       validator: _money,
                     ),
                   ),
@@ -392,7 +393,7 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
                       controller: _min,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       inputFormatters: numberInput,
-                      decoration: const InputDecoration(labelText: 'Saldo mínimo', prefixText: 'Bs '),
+                      decoration: InputDecoration(labelText: 'Saldo mínimo', prefixText: kCountry.moneyPrefix),
                       validator: _money,
                     ),
                   ),

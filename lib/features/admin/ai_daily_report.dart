@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/config/country.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
@@ -222,15 +223,14 @@ class DailyReportView extends StatelessWidget {
       (report.data['timezone_label'] as String?) ??
       switch (report.timezone) {
         'America/New_York' => 'Hora de Miami',
-        'America/La_Paz' => 'Hora de Bolivia',
-        _ => report.timezone,
+        final tz => Country.all.where((c) => c.timezone == tz).firstOrNull?.timezoneLabel ?? tz,
       };
 
   String _value(_Metric m, Object? v) {
     if (v is! num) return 'Sin dato';
     if (m.money) return Fmt.bs(v);
     if (m.usd) return 'US\$ ${v.toStringAsFixed(2)}';
-    return NumberFormat.decimalPattern('es_BO').format(v);
+    return NumberFormat.decimalPattern(kCountry.locale).format(v);
   }
 
   @override

@@ -266,7 +266,7 @@ class _ConfirmIdentitySheetState extends ConsumerState<ConfirmIdentitySheet> wit
               key: const Key('confirm-code'),
               icon: Icons.sms_outlined,
               label: 'Código por celular',
-              detail: phone == null ? null : formatBoliviaPhone(phone),
+              detail: phone == null ? null : formatPhone(phone),
               selected: _method == null,
               onTap: _busy
                   ? null

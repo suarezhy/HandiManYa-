@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/country.dart';
 import '../../core/services/device_auth.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
@@ -117,7 +118,10 @@ class _BalanceCard extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Saldo disponible (Bs)', style: TextStyle(color: Colors.white70, fontSize: 16)),
+        Text(
+          'Saldo disponible (${kCountry.currencySymbol})',
+          style: const TextStyle(color: Colors.white70, fontSize: 16),
+        ),
         const SizedBox(height: 4),
         Text(
           Fmt.bs(wallet.available),
@@ -398,11 +402,11 @@ class _TopupSheetState extends ConsumerState<_TopupSheet> {
                   FilteringTextInputFormatter.allow(RegExp(r'[\d.,]')),
                   LengthLimitingTextInputFormatter(8),
                 ],
-                decoration: const InputDecoration(labelText: 'Monto', prefixText: 'Bs '),
+                decoration: InputDecoration(labelText: 'Monto', prefixText: kCountry.moneyPrefix),
                 validator: (v) {
                   final n = double.tryParse((v ?? '').replaceAll(',', '.'));
                   if (n == null || n <= 0) return 'Escribe el monto';
-                  if (n < 10) return 'El monto mínimo es Bs 10';
+                  if (n < 10) return 'El monto mínimo es ${Fmt.bsShort(10)}';
                   return null;
                 },
               ),

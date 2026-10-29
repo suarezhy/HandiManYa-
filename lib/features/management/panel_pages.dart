@@ -12,7 +12,7 @@ import '../../data/providers.dart';
 import '../../router.dart';
 import 'management_common.dart';
 import '../../core/widgets/word_safe_text.dart';
-import '../auth/auth_scaffold.dart' show formatBoliviaPhone;
+import '../auth/auth_scaffold.dart' show formatPhone;
 
 /// Resumen del Panel del Gerente: solo operación, sin dinero. Los números
 /// vienen de ops_dashboard, que no manda montos.
@@ -271,7 +271,7 @@ class StaffProfilePage extends ConsumerWidget {
                             WordSafeText(account.fullName, style: text.titleLarge),
                             if (account.phone != null)
                               OneLineText(
-                                formatBoliviaPhone(account.phone!),
+                                formatPhone(account.phone!),
                                 style: const TextStyle(color: HyColors.textSecondary),
                               ),
                             if (account.email.isNotEmpty)

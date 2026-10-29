@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/country.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/brand_logo.dart';
@@ -123,7 +124,7 @@ class DemoAccountsHint extends ConsumerWidget {
   }
 }
 
-/// Celular de Bolivia con +591 fijo.
+/// Celular con el prefijo del país fijo (+591 en Bolivia).
 class PhoneField extends StatelessWidget {
   const PhoneField({super.key, required this.controller, this.onSubmitted, this.label = 'Número de celular'});
 
@@ -135,7 +136,7 @@ class PhoneField extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
       // En un celular angosto con letra grande, el ícono le quita lugar al
-      // número: "+591" y las 8 cifras deben verse enteras.
+      // número: el prefijo y las cifras deben verse enteros.
       final factor = MediaQuery.textScalerOf(context).scale(1);
       return _field(box.maxWidth / factor >= 220);
     },
@@ -151,11 +152,11 @@ class PhoneField extends StatelessWidget {
     inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d +\-]')), LengthLimitingTextInputFormatter(16)],
     decoration: InputDecoration(
       labelText: label,
-      hintText: '7123 4567',
+      hintText: kCountry.mobileHint,
       prefixIcon: withIcon ? const Icon(Icons.phone_iphone) : null,
-      prefixText: '🇧🇴 +591  ',
+      prefixText: kCountry.phonePrefix,
     ),
-    validator: Validators.boliviaPhone,
+    validator: Validators.phone,
     onFieldSubmitted: onSubmitted,
   );
 }
@@ -232,12 +233,9 @@ class CodeField extends StatelessWidget {
   );
 }
 
-/// +591 7123 4567
-String formatBoliviaPhone(String phone) {
-  final d = phone.replaceFirst('+591', '');
-  // Espacios que no se cortan: el número nunca queda partido en dos líneas.
-  return d.length == 8 ? '+591\u00A0${d.substring(0, 4)}\u00A0${d.substring(4)}' : phone;
-}
+/// +591 7123 4567, con espacios que no se cortan: el número nunca queda
+/// partido en dos líneas.
+String formatPhone(String phone) => kCountry.formatMobile(phone);
 
 /// Cuenta regresiva para volver a pedir un código.
 mixin ResendCooldown<T extends StatefulWidget> on State<T> {

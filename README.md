@@ -54,6 +54,15 @@ the distance; the exact address and point unlock after acceptance. Up to 5
 problem photos per request, visible only to the customer, professionals with a
 pending offer, and the assigned professional.
 
+Countries: one app for Bolivia, Ecuador and Panama. The phone prefix and
+rules, currency, number format and time zone come from
+`lib/core/config/country.dart`, chosen at build time with
+`--dart-define=HMY_COUNTRY=BO` (the default). Only Bolivia is launched; Ecuador
+and Panama are defined but switched off, and a build for them falls back to
+Bolivia. Before turning one on, the server still needs that country's cities,
+code sending (send-otp only accepts +591 today), payment methods and currency
+(Ecuador and Panama use US dollars), and its legal texts.
+
 The app never decides permissions. Row level security and server functions in
 the database do: who can see an exact address, who can accept an offer, wallet
 movements, status changes.

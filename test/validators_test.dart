@@ -4,16 +4,16 @@ import 'package:handimanya/core/utils/validators.dart';
 void main() {
   group('Celular de Bolivia', () {
     test('acepta números móviles con o sin +591', () {
-      expect(Validators.boliviaPhone('71234567'), isNull);
-      expect(Validators.boliviaPhone('+591 6123 4567'), isNull);
-      expect(Validators.normalizeBoliviaPhone('712-345-67'), '+59171234567');
-      expect(Validators.normalizeBoliviaPhone('+59161234567'), '+59161234567');
+      expect(Validators.phone('71234567'), isNull);
+      expect(Validators.phone('+591 6123 4567'), isNull);
+      expect(Validators.normalizePhone('712-345-67'), '+59171234567');
+      expect(Validators.normalizePhone('+59161234567'), '+59161234567');
     });
 
     test('rechaza números que no son móviles bolivianos', () {
-      expect(Validators.boliviaPhone('51234567'), isNotNull);
-      expect(Validators.boliviaPhone('7123456'), isNotNull);
-      expect(Validators.boliviaPhone(''), isNotNull);
+      expect(Validators.phone('51234567'), isNotNull);
+      expect(Validators.phone('7123456'), isNotNull);
+      expect(Validators.phone(''), isNotNull);
     });
   });
 

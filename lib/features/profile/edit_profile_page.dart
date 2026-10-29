@@ -117,7 +117,7 @@ class _FormState extends ConsumerState<_Form> {
                   key: const Key('profile-phone'),
                   icon: Icons.phone_iphone,
                   label: 'Celular',
-                  value: a.phone == null ? 'Sin número' : formatBoliviaPhone(a.phone!),
+                  value: a.phone == null ? 'Sin número' : formatPhone(a.phone!),
                   action: a.phone == null ? 'Agregar' : 'Cambiar',
                   onTap: () => _change(const _ChangePhoneSheet()),
                 ),
@@ -216,7 +216,7 @@ class _ChangePhoneSheetState extends ConsumerState<_ChangePhoneSheet> with Resen
 
   Future<void> _send() async {
     if (!_form.currentState!.validate()) return;
-    final phone = Validators.normalizeBoliviaPhone(_phone.text)!;
+    final phone = Validators.normalizePhone(_phone.text)!;
     setState(() => _busy = true);
     final ok = await runGuarded(
       context,
@@ -236,7 +236,7 @@ class _ChangePhoneSheetState extends ConsumerState<_ChangePhoneSheet> with Resen
     final ok = await runGuarded(
       context,
       () => ref.read(backendProvider).verifyPhoneChange(phone: _sentTo!, code: _code.text),
-      success: 'Listo. Desde ahora entras con ${formatBoliviaPhone(_sentTo!)}.',
+      success: 'Listo. Desde ahora entras con ${formatPhone(_sentTo!)}.',
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -248,7 +248,7 @@ class _ChangePhoneSheetState extends ConsumerState<_ChangePhoneSheet> with Resen
     title: _sentTo == null ? 'Cambiar número' : 'Escribe el código',
     subtitle: _sentTo == null
         ? 'Te enviaremos un código al número nuevo. Tus pedidos, tu perfil y tu billetera se mantienen.'
-        : 'Lo enviamos por ${_channel.label} al ${formatBoliviaPhone(_sentTo!)}.',
+        : 'Lo enviamos por ${_channel.label} al ${formatPhone(_sentTo!)}.',
     child: Form(
       key: _form,
       child: Column(
