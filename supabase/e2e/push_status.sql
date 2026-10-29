@@ -34,5 +34,50 @@ where o.status in ('pending', 'sending') and o.created_at > now() - interval '24
 select 'Disparadores de webhook en push_outbox: ' || count(*)
 from pg_trigger t join pg_class c on c.oid = t.tgrelid
 where c.relname = 'push_outbox' and not t.tgisinternal;
+-- Cada webhook: tabla, momento, eventos, función y adónde llama. Del encabezado
+-- secreto solo se dice si está y si mide al menos 32; nunca su valor.
+with t as (
+  select t.tgname, n.nspname || '.' || c.relname as tabla, t.tgenabled, t.tgtype,
+         pn.nspname || '.' || p.proname as funcion,
+         string_to_array(encode(t.tgargs, 'escape'), '\000') as args
+  from pg_trigger t
+  join pg_class c on c.oid = t.tgrelid join pg_namespace n on n.oid = c.relnamespace
+  join pg_proc p on p.oid = t.tgfoid join pg_namespace pn on pn.oid = p.pronamespace
+  where c.relname = 'push_outbox' and not t.tgisinternal
+), h as (
+  select t.*, case when args[3] ~ '^\s*\{' then args[3]::jsonb end as headers from t
+)
+select 'Webhook ' || tgname || ' · tabla ' || tabla
+       || ' · ' || case when tgtype & 2 = 2 then 'antes' else 'después' end
+       || ' · eventos: ' || concat_ws(',', case when tgtype & 4 = 4 then 'INSERT' end,
+            case when tgtype & 16 = 16 then 'UPDATE' end, case when tgtype & 8 = 8 then 'DELETE' end,
+            case when tgtype & 32 = 32 then 'TRUNCATE' end)
+       || ' · ' || case when tgtype & 1 = 1 then 'por fila' else 'por sentencia' end
+       || ' · activo=' || (tgenabled <> 'D')::text
+       || ' · función ' || funcion
+       || ' · método ' || coalesce(args[2], '?')
+       || ' · dirección ' || coalesce(args[1], '?')
+       || ' · es la de send-push en dev=' || (args[1] = 'https://yldqopeldibwgbwmdnzy.supabase.co/functions/v1/send-push')::text
+       || ' · encabezados: ' || coalesce((select string_agg(k, ', ' order by k) from jsonb_object_keys(headers) k), 'ninguno')
+       || ' · x-hmy-push-secret presente=' || (headers ? 'x-hmy-push-secret')::text
+       || ' · mide 32 o más=' || coalesce((length(headers ->> 'x-hmy-push-secret') >= 32)::text, 'false')
+       || ' · sin espacios=' || coalesce(((headers ->> 'x-hmy-push-secret') !~ '\s')::text, 'false')
+       || ' · espera ' || coalesce(args[5], '?') || ' ms'
+from h order by tgname;
+select 'pg_net instalado: ' || exists (select 1 from pg_extension where extname = 'pg_net')::text;
+
+\echo '== Últimas respuestas a los webhooks, 24 h (solo estado; el texto solo si es de send-push) =='
+select to_regclass('net._http_response') is not null as hay_net \gset
+\if :hay_net
+select to_char(r.created at time zone 'America/La_Paz', 'DD-MM HH24:MI:SS') || ' · HTTP '
+       || coalesce(r.status_code::text, 'sin respuesta')
+       || case when r.content ~ '^\{"(error|sent)"' then ' · ' || left(r.content, 80)
+               when r.error_msg is not null then ' · error de red' else '' end
+from net._http_response r
+where r.created > now() - interval '24 hours'
+order by r.created desc limit 10;
+\else
+\echo 'No hay registro de respuestas (pg_net no está instalado).'
+\endif
 
 commit;
