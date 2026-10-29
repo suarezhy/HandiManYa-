@@ -74,7 +74,7 @@ select test.login('00000000-0000-0000-0000-000009a97002');
 select test.eq(public.claim_ya_request((select v from t57 where k = 'a'))::text, 'confirmed', 'el plomero 1 acepta');
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a97003');
-select test.expect_error($$select public.claim_ya_request((select v from t57 where k = 'a'))$$, 'HMY_ACCOUNT_SUSPENDED');
+select test.expect_error($$select public.claim_ya_request((select v from t57 where k = 'a'))$$, 'HMY_ALREADY_TAKEN');
 select test.logout();
 update public.profiles set suspended_at = null where id = '00000000-0000-0000-0000-000009a97003';
 select test.login('00000000-0000-0000-0000-000009a97003');
