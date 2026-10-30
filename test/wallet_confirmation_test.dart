@@ -95,9 +95,15 @@ Future<void> _confirmWithCode(WidgetTester tester, {String code = DemoBackend.de
   await tester.pumpAndSettle();
 }
 
-/// Abre "Recargar saldo", llena el formulario y toca Continuar.
+/// Recargar saldo → Transferencia bancaria.
+Future<void> _openTransfer(WidgetTester tester) async {
+  await _tap(tester, find.byKey(const Key('wallet-recharge')));
+  await _tap(tester, find.byKey(const Key('recharge-transfer')));
+}
+
+/// Abre la transferencia bancaria, llena el formulario y toca Continuar.
 Future<void> _startTopup(WidgetTester tester, {String amount = '150'}) async {
-  await _tap(tester, find.text('Recargar saldo'));
+  await _openTransfer(tester);
   await _tap(tester, find.text('QR (ejemplo)'));
   await tester.enterText(find.widgetWithText(TextFormField, 'Monto'), amount);
   await tester.enterText(find.widgetWithText(TextFormField, 'Número de comprobante (opcional)'), 'TX-77');
@@ -253,7 +259,7 @@ void main() {
     testWidgets('toques repetidos crean una sola solicitud', (tester) async {
       final device = _FakeDeviceAuth();
       final r = await _pump(tester, const WalletPage(), deviceAuth: device, biometricOn: true);
-      await _tap(tester, find.text('Recargar saldo'));
+      await _openTransfer(tester);
       await _tap(tester, find.text('QR (ejemplo)'));
       await tester.enterText(find.widgetWithText(TextFormField, 'Monto'), '80');
       final cont = find.byKey(const Key('topup-continue'));
