@@ -69,6 +69,37 @@ begin
   perform test.login(p_pro);
 end $$;
 
+-- Precio acordado (0062): el cliente pone su precio y el profesional con
+-- sesión lo acepta. Reemplaza a claim_ya_request / accept_booking de antes.
+create function test._customer_price(p_booking uuid, p_amount numeric) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare b public.bookings; v_id bigint;
+begin
+  -- Con el pedido bloqueado, como propose_price (si no, dos a la vez se trancan).
+  select * into b from public.bookings where id = p_booking for update;
+  if not found then return null; end if;
+  select id into v_id from public.price_offers
+  where booking_id = b.id and author_role = 'customer' and status = 'open'
+    and (professional_id is null or professional_id = auth.uid()) order by professional_id nulls last, id desc limit 1;
+  if v_id is null then
+    insert into public.price_offers (booking_id, professional_id, author_id, author_role, kind, amount)
+    values (b.id, b.professional_id, b.customer_id, 'customer', 'service', p_amount) returning id into v_id;
+  end if;
+  return v_id;
+end $$;
+
+create function test.agree(p_booking uuid, p_amount numeric default 100) returns public.booking_status
+language plpgsql as $$
+declare v_offer bigint := test._customer_price(p_booking, p_amount);
+begin
+  if v_offer is null then raise exception 'HMY_NOT_FOUND'; end if;
+  return public.accept_price_offer(v_offer);
+end $$;
+
+-- La comisión general de 0062 (10 %) se apaga para las pruebas de antes;
+-- 99z6 la prueba. (En dev todo esto termina en ROLLBACK.)
+update public.commission_rules set is_active = false where name = 'Comisión general (10 %)';
+
 grant usage on schema test to anon, authenticated;
 grant execute on all functions in schema test to anon, authenticated;
 
@@ -190,7 +221,7 @@ do $$ begin
   perform test.eq((select count(*)::int from public.booking_addresses), 0, 'dirección oculta antes de aceptar');
   perform test.eq((select count(*)::int from public.notifications where kind = 'booking_new'), 1, 'el profesional recibe notificación');
 end $$;
-select test.expect_error(format('select public.accept_booking(%L)', (select v from t_ids where k = 'b1')), 'HMY_INSUFFICIENT_BALANCE');
+select test.expect_error(format('select test.agree(%L)', (select v from t_ids where k = 'b1')), 'HMY_INSUFFICIENT_BALANCE');
 select test.expect_error($$select public.request_topup(100, 999, null, null, 'password', gen_random_uuid())$$, 'HMY_INVALID_METHOD');
 create temp table t_topup as select public.request_topup(100, (select id from public.topup_methods limit 1), 'REF-1', null, 'password', gen_random_uuid()) as id;
 select test.eq((select available from public.wallets), 0.00::numeric, 'pedir recarga no acredita saldo');
@@ -198,7 +229,7 @@ select test.logout();
 
 select test.login('00000000-0000-0000-0000-0000000000b2');
 select test.eq((select count(*)::int from public.bookings), 0, 'otro profesional no ve la solicitud');
-select test.expect_error(format('select public.accept_booking(%L)', (select v from t_ids where k = 'b1')), 'HMY_FORBIDDEN');
+select test.expect_error(format('select test.agree(%L)', (select v from t_ids where k = 'b1')), 'HMY_FORBIDDEN');
 select test.logout();
 
 select test.login('00000000-0000-0000-0000-00000000000a');
@@ -208,8 +239,8 @@ select test.logout();
 
 select test.login('00000000-0000-0000-0000-0000000000b1');
 select test.eq((select available from public.wallets), 100.00::numeric, 'recarga aprobada acredita Bs 100');
-select test.eq(public.accept_booking((select v from t_ids where k = 'b1'))::text, 'confirmed', 'el profesional acepta');
-select test.expect_error(format('select public.accept_booking(%L)', (select v from t_ids where k = 'b1')), 'HMY_INVALID_TRANSITION');
+select test.eq(test.agree((select v from t_ids where k = 'b1'))::text, 'confirmed', 'el profesional acepta');
+select test.expect_error(format('select test.agree(%L)', (select v from t_ids where k = 'b1')), 'HMY_INVALID_TRANSITION');
 do $$ begin
   perform test.eq((select available from public.wallets), 85.00::numeric, 'aceptar reserva la comisión completa (disponible, 0043)');
   perform test.eq((select reserved from public.wallets), 15.00::numeric, 'aceptar reserva la comisión completa (reservado, 0043)');
@@ -275,7 +306,7 @@ select test.login('00000000-0000-0000-0000-0000000000c1');
 insert into t_ids select 'b2', public.create_booking('00000000-0000-0000-0000-0000000000b1', 1, 'now', 'Gotea el grifo de la cocina', 'Calle Sucre 45');
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000b1');
-select public.accept_booking((select v from t_ids where k = 'b2'));
+select test.agree((select v from t_ids where k = 'b2'));
 select test.eq((select reserved from public.wallets), 15.00::numeric, 'segunda reserva retenida (comisión completa)');
 select test.expect_error(format('select public.cancel_booking(%L, %L)', (select v from t_ids where k = 'b2'), ''), 'HMY_REASON_REQUIRED');
 select public.cancel_booking((select v from t_ids where k = 'b2'), 'Emergencia familiar');
@@ -320,8 +351,8 @@ insert into t_ids select 's1', public.create_booking('00000000-0000-0000-0000-00
 insert into t_ids select 's2', public.create_booking('00000000-0000-0000-0000-0000000000b1', 1, 'scheduled', 'Revisar el tanque de agua', 'Calle 1', null, null, date_trunc('hour', now()) + interval '2 days 1 hour', 60);
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000b1');
-select public.accept_booking((select v from t_ids where k = 's1'));
-select test.expect_error(format('select public.accept_booking(%L)', (select v from t_ids where k = 's2')), 'bookings_no_overlap|conflicting key');
+select test.agree((select v from t_ids where k = 's1'));
+select test.expect_error(format('select test.agree(%L)', (select v from t_ids where k = 's2')), 'bookings_no_overlap|conflicting key');
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000c2');
 select test.expect_error($$select public.create_booking('00000000-0000-0000-0000-0000000000b1', 1, 'scheduled', 'Otra cosa en el mismo horario', 'Calle 2', null, null, date_trunc('hour', now()) + interval '2 days 30 minutes', 60)$$, 'HMY_SLOT_TAKEN');

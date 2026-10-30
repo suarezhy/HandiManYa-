@@ -20,8 +20,8 @@ insert into t58 select 'a', public.create_ya_request((select id from public.serv
   (select id from public.cities where slug = 'cobija'), 'Gotea el caño', 'Calle 1');
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a98002');
-select test.eq(public.claim_ya_request((select v from t58 where k = 'a'))::text, 'confirmed', 'el plomero acepta');
-select test.expect_error($$select public.claim_ya_request((select v from t58 where k = 'a'))$$, 'HMY_ALREADY_TAKEN');
+select test.eq(test.agree((select v from t58 where k = 'a'))::text, 'confirmed', 'el plomero acepta');
+select test.expect_error($$select test.agree((select v from t58 where k = 'a'))$$, 'HMY_ALREADY_TAKEN');
 select test.logout();
 
 -- Otro pedido abierto (con oferta): sigue ocupado.
@@ -32,7 +32,7 @@ insert into public.bookings (id, customer_id, category_id, city_id, mode, descri
 insert into public.booking_offers (booking_id, professional_id)
 values ('00000000-0000-0000-0000-000009a98b01', '00000000-0000-0000-0000-000009a98002');
 select test.login('00000000-0000-0000-0000-000009a98002');
-select test.expect_error($$select public.claim_ya_request('00000000-0000-0000-0000-000009a98b01')$$, 'HMY_PRO_BUSY');
+select test.expect_error($$select test.agree('00000000-0000-0000-0000-000009a98b01')$$, 'HMY_PRO_BUSY');
 select test.logout();
 
 \o

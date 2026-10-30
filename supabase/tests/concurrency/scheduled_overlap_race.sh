@@ -40,7 +40,7 @@ SQL
 
 claim() { # pedido
   psql -X -At -d "$DB" -c "select set_config('request.jwt.claims', json_build_object('sub', '$P', 'role', 'authenticated')::text, false) is null;" \
-       -c "set role authenticated" -c "select public.claim_ya_request('$1')" 2>&1 | grep -oE "confirmed|HMY_[A-Z_]+" | head -1
+       -c "set role authenticated" -c "select test.agree('$1')" 2>&1 | grep -oE "confirmed|HMY_[A-Z_]+" | head -1
 }
 ok=0; other=0
 for i in $(seq 1 "$N"); do

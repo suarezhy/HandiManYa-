@@ -32,7 +32,7 @@ select public.set_availability(true);
 select test.login('00000000-0000-0000-0000-0000000009c1');
 insert into t_ar select 'b1', public.create_booking('00000000-0000-0000-0000-0000000009b1', 1, 'now', 'Gotea el grifo', 'Calle Llegada 1');
 select test.login('00000000-0000-0000-0000-0000000009b1');
-select public.accept_booking((select v from t_ar where k = 'b1')::uuid);
+select test.agree((select v from t_ar where k = 'b1')::uuid);
 
 -- 1. Sin "En camino" no hay código; sin llegada verificada no se empieza.
 select test.expect_error(format('select public.mark_arrived(%L)', (select v from t_ar where k = 'b1')), 'HMY_INVALID_TRANSITION');
@@ -119,7 +119,7 @@ end $$;
 select test.login('00000000-0000-0000-0000-0000000009c1');
 insert into t_ar select 'b2', public.create_booking('00000000-0000-0000-0000-0000000009b1', 1, 'now', 'Revisar la ducha', 'Calle Llegada 2');
 select test.login('00000000-0000-0000-0000-0000000009b1');
-select public.accept_booking((select v from t_ar where k = 'b2')::uuid);
+select test.agree((select v from t_ar where k = 'b2')::uuid);
 select public.update_job_progress((select v from t_ar where k = 'b2')::uuid, 'on_the_way');
 insert into t_ar select 'pin2', public.mark_arrived((select v from t_ar where k = 'b2')::uuid) ->> 'pin';
 select test.login('00000000-0000-0000-0000-0000000009c1');
@@ -181,7 +181,7 @@ end $$;
 select test.login('00000000-0000-0000-0000-0000000009c1');
 insert into t_ar select 'b3', public.create_booking('00000000-0000-0000-0000-0000000009b1', 1, 'now', 'Cambiar el flotador', 'Calle Llegada 3');
 select test.login('00000000-0000-0000-0000-0000000009b1');
-select public.accept_booking((select v from t_ar where k = 'b3')::uuid);
+select test.agree((select v from t_ar where k = 'b3')::uuid);
 select public.update_job_progress((select v from t_ar where k = 'b3')::uuid, 'on_the_way');
 insert into t_ar select 'pin4', public.mark_arrived((select v from t_ar where k = 'b3')::uuid) ->> 'pin';
 select public.cancel_booking((select v from t_ar where k = 'b3')::uuid, 'No encontré la dirección');
@@ -197,7 +197,7 @@ select test.login('00000000-0000-0000-0000-0000000009c1');
 insert into t_ar select 'b4', public.create_booking('00000000-0000-0000-0000-0000000009b1', 1, 'scheduled', 'Instalar lavamanos',
   'Calle Llegada 4', null, null, date_trunc('hour', now()) + interval '3 days', 60);
 select test.login('00000000-0000-0000-0000-0000000009b1');
-select public.accept_booking((select v from t_ar where k = 'b4')::uuid);
+select test.agree((select v from t_ar where k = 'b4')::uuid);
 select test.logout();
 update public.bookings set scheduled_start = now() - interval '25 minutes' where id = (select v from t_ar where k = 'b4')::uuid;
 select test.login('00000000-0000-0000-0000-0000000009b1');

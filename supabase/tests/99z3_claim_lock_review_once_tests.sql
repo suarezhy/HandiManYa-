@@ -41,9 +41,9 @@ select test.eq((select count(*)::int from public.reviews where booking_id = '000
                'una sola reseña por servicio');
 
 select test.login('00000000-0000-0000-0000-000009a92e02');
-select test.eq(public.claim_ya_request('00000000-0000-0000-0000-000009a92b02')::text, 'confirmed',
+select test.eq(test.agree('00000000-0000-0000-0000-000009a92b02')::text, 'confirmed',
                'acepta la primera programada');
-select test.expect_error($$select public.claim_ya_request('00000000-0000-0000-0000-000009a92b03')$$, 'HMY_SLOT_TAKEN');
+select test.expect_error($$select test.agree('00000000-0000-0000-0000-000009a92b03')$$, 'HMY_SLOT_TAKEN');
 select test.logout();
 
 \o

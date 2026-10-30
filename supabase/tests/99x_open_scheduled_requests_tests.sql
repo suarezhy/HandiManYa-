@@ -93,11 +93,11 @@ select test.login('00000000-0000-0000-0000-000009a95002');
 select test.eq((select count(*)::int from public.my_bookings('professional')
                 where id = (select v from t_prog where k = 's1') and is_offer), 1, 'P la ve como oferta');
 select test.eq(public.can_see_booking_address((select v from t_prog where k = 's1')), false, 'P no ve la dirección antes de aceptar');
-select test.eq(public.claim_ya_request((select v from t_prog where k = 's1'))::text, 'confirmed', 'P acepta y queda confirmada');
+select test.eq(test.agree((select v from t_prog where k = 's1'))::text, 'confirmed', 'P acepta y queda confirmada');
 select test.eq(public.can_see_booking_address((select v from t_prog where k = 's1')), true, 'P ve la dirección después de aceptar');
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a95003');
-select test.expect_error($$select public.claim_ya_request((select v from t_prog where k = 's1'))$$, 'HMY_ALREADY_TAKEN');
+select test.expect_error($$select test.agree((select v from t_prog where k = 's1'))$$, 'HMY_ALREADY_TAKEN');
 select test.eq(public.can_see_booking_address((select v from t_prog where k = 's1')), false, 'Q nunca ve la dirección');
 select test.logout();
 
@@ -109,7 +109,7 @@ insert into t_prog select 's2', public.create_scheduled_request(3, 2::smallint, 
   'Av. Prueba 456', date_trunc('hour', now()) + interval '2 days 11 hours', 60, null, null, 'qr');
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a95002');
-select test.expect_error($$select public.claim_ya_request((select v from t_prog where k = 's2'))$$, 'HMY_SLOT_TAKEN');
+select test.expect_error($$select test.agree((select v from t_prog where k = 's2'))$$, 'HMY_SLOT_TAKEN');
 select test.logout();
 
 -- ---------------------------------------------------------------------------

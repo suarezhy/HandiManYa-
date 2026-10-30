@@ -41,10 +41,10 @@ values ('00000000-0000-0000-0000-000009a6b002', '00000000-0000-0000-0000-000009a
 
 -- 1. Nadie acepta ni cotiza tarde.
 select test.login('00000000-0000-0000-0000-000009a60002');
-select test.expect_error($$select public.accept_booking('00000000-0000-0000-0000-000009a6b001')$$, 'HMY_REQUEST_EXPIRED');
+select test.expect_error($$select test.agree('00000000-0000-0000-0000-000009a6b001')$$, 'HMY_REQUEST_EXPIRED');
 select test.expect_error($$select public.send_quote('00000000-0000-0000-0000-000009a6b001', 150)$$, 'HMY_REQUEST_EXPIRED');
-select test.expect_error($$select public.claim_ya_request('00000000-0000-0000-0000-000009a6b002')$$, 'HMY_REQUEST_EXPIRED');
-select test.expect_error($$select public.accept_booking('00000000-0000-0000-0000-000009a6b006')$$, 'HMY_REQUEST_EXPIRED');
+select test.expect_error($$select test.agree('00000000-0000-0000-0000-000009a6b002')$$, 'HMY_REQUEST_EXPIRED');
+select test.expect_error($$select test.agree('00000000-0000-0000-0000-000009a6b006')$$, 'HMY_REQUEST_EXPIRED');
 select test.logout();
 select test.eq((select professional_id from public.bookings where id = '00000000-0000-0000-0000-000009a6b002'), null::uuid,
                'vencido: el ¡Ya! no queda asignado a nadie');

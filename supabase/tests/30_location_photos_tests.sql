@@ -73,7 +73,7 @@ select test.eq((select count(*)::int from public.booking_photos where booking_id
 select test.logout();
 
 select test.login('00000000-0000-0000-0000-0000000000e1');
-select public.claim_ya_request((select v from t_loc));
+select test.agree((select v from t_loc));
 select test.eq((public.booking_detail((select v from t_loc)) -> 'address' ->> 'latitude')::numeric, -17.776123::numeric, 'privacidad: quien aceptó recibe el punto exacto');
 
 -- Comprobante de recarga en la carpeta propia

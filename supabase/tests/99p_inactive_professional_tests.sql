@@ -82,7 +82,7 @@ insert into public.bookings (id, customer_id, professional_id, category_id, city
 insert into public.booking_addresses (booking_id, address_line, latitude, longitude)
 values ('00000000-0000-0000-0000-000009a7b009', 'Calle Prueba 3', -16.5, -68.1);
 select test.login('00000000-0000-0000-0000-000009a70002');
-select test.expect_error($$select public.accept_booking('00000000-0000-0000-0000-000009a7b008')$$, 'HMY_PROFESSIONAL_NOT_APPROVED');
+select test.expect_error($$select test.agree('00000000-0000-0000-0000-000009a7b008')$$, 'HMY_PROFESSIONAL_NOT_APPROVED');
 select test.expect_error($$select public.send_quote('00000000-0000-0000-0000-000009a7b008', 150)$$, 'HMY_PROFESSIONAL_NOT_APPROVED');
 select test.expect_error($$select public.update_job_progress('00000000-0000-0000-0000-000009a7b009', 'on_the_way')$$,
                          'HMY_PROFESSIONAL_NOT_APPROVED');

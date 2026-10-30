@@ -55,12 +55,12 @@ do $$ begin
   perform test.eq((public.booking_detail((select v from t_ya)) -> 'address') = 'null'::jsonb or (public.booking_detail((select v from t_ya)) -> 'address') is null, true, '¡Ya!: el detalle tampoco expone la dirección');
   perform test.eq(public.booking_detail((select v from t_ya)) ->> 'zone', 'Zona Norte', '¡Ya!: muestra solo la zona general');
 end $$;
-select test.eq(public.claim_ya_request((select v from t_ya))::text, 'confirmed', '¡Ya!: el primero que acepta se queda con el trabajo');
+select test.eq(test.agree((select v from t_ya))::text, 'confirmed', '¡Ya!: el primero que acepta se queda con el trabajo');
 select test.eq((select count(*)::int from public.booking_addresses), 1, '¡Ya!: dirección visible para quien aceptó');
 select test.logout();
 
 select test.login('00000000-0000-0000-0000-0000000000d2');
-select test.expect_error(format('select public.claim_ya_request(%L)', (select v from t_ya)), 'HMY_ALREADY_TAKEN|HMY_FORBIDDEN');
+select test.expect_error(format('select test.agree(%L)', (select v from t_ya)), 'HMY_ALREADY_TAKEN|HMY_FORBIDDEN');
 select test.eq((select count(*)::int from public.bookings where id = (select v from t_ya)), 0, '¡Ya!: quien no ganó deja de ver el pedido');
 select test.logout();
 

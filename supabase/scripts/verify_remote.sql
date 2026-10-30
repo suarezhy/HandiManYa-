@@ -8,7 +8,7 @@ select set_config('hmy.versions', :'versions', false);
 
 do $$
 declare
-  v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','arrival_pin_attempts','booking_addresses','booking_arrivals','booking_events','booking_offers','booking_photos',
+  v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','arrival_pin_attempts','booking_addresses','booking_arrivals','booking_events','booking_offers','booking_photos','price_offers',
     'booking_transitions','bookings','cities','commission_rules','daily_reports','consent_records','conversation_reads','conversations','cost_usage','cost_vendors',
     'departments','disputes','identity_checks','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
@@ -44,7 +44,10 @@ declare
     '_hmy_offer_pending_to','hmy_offer_pending_on_profile','hmy_offer_pending_on_service',
     'hmy_pro_busy_now','_create_ya_request_extras','_claim_ya_request_scheduled',
     'hmy_test_fixture_guard','hmy_is_test_fixture','_search_professionals_base','_get_professional_public_base',
-    '_booking_detail_destination','_trip_share_view_base'];
+    '_booking_detail_destination','_trip_share_view_base',
+    'hmy_price_lock','hmy_price_offers_close','hmy_price_offers_close_for_pro','hmy_price_role','propose_price','_hmy_assign_pro','hmy_commission_need','commission_for_amount','_hmy_require_cover','_hmy_reserve_extra',
+    'accept_price_offer','reject_price_offer','_create_ya_request_unpriced','_create_scheduled_request_unpriced',
+    '_create_booking_unpriced','_booking_detail_unpriced'];
   v_missing text;
   v_count int;
   v_failed int := 0;

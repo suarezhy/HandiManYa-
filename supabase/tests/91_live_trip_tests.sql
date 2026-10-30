@@ -12,7 +12,7 @@ insert into t_tr select 'b', public.create_booking('00000000-0000-0000-0000-0000
 select test.logout();
 update public.booking_addresses set latitude = -17.783300, longitude = -63.182100 where booking_id = (select v from t_tr where k = 'b')::uuid;
 select test.login('00000000-0000-0000-0000-0000000009b1');
-select public.accept_booking((select v from t_tr where k = 'b')::uuid);
+select test.agree((select v from t_tr where k = 'b')::uuid);
 
 -- 1. Solo mientras está "en camino".
 select test.expect_error(format('select public.share_trip_location(%L, -17.79, -63.19)', (select v from t_tr where k = 'b')),
@@ -114,7 +114,7 @@ select test.logout();
 select test.login('00000000-0000-0000-0000-0000000009c1');
 insert into t_tr select 'b2', public.create_booking('00000000-0000-0000-0000-0000000009b1', 1, 'now', 'Cambiar la llave', 'Calle Viaje 2');
 select test.login('00000000-0000-0000-0000-0000000009b1');
-select public.accept_booking((select v from t_tr where k = 'b2')::uuid);
+select test.agree((select v from t_tr where k = 'b2')::uuid);
 select public.update_job_progress((select v from t_tr where k = 'b2')::uuid, 'on_the_way');
 select public.share_trip_location((select v from t_tr where k = 'b2')::uuid, -17.8, -63.2);
 select public.stop_trip_location((select v from t_tr where k = 'b2')::uuid);

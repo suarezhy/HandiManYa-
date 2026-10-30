@@ -12,7 +12,7 @@ insert into t_ra select 'b', public.create_booking('00000000-0000-0000-0000-0000
 insert into t_ra select 'l' || i, public.create_booking('00000000-0000-0000-0000-0000000009b1', 1, 'now', 'Trabajo ' || i, 'Calle Reglas 2')
   from generate_series(1, 3) i;
 select test.login('00000000-0000-0000-0000-0000000009b1');
-select public.accept_booking((select v from t_ra where k = 'b')::uuid);
+select test.agree((select v from t_ra where k = 'b')::uuid);
 select public.update_job_progress((select v from t_ra where k = 'b')::uuid, 'on_the_way');
 select test.logout();
 update public.booking_events set created_at = now() - interval '4 hours'

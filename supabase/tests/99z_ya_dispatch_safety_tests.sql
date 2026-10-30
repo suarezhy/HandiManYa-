@@ -64,21 +64,21 @@ select test.eq((select count(*)::int from public.notifications where user_id = '
 -- ---------------------------------------------------------------------------
 update public.profiles set suspended_at = now() where id = '00000000-0000-0000-0000-000009a97003';
 select test.login('00000000-0000-0000-0000-000009a97003');
-select test.expect_error($$select public.claim_ya_request((select v from t57 where k = 'a'))$$, 'HMY_ACCOUNT_SUSPENDED');
+select test.expect_error($$select test.agree((select v from t57 where k = 'a'))$$, 'HMY_ACCOUNT_SUSPENDED');
 select test.logout();
 
 -- ---------------------------------------------------------------------------
 -- 4. El primero acepta; después queda ocupado para otros pedidos ¡Ya!.
 -- ---------------------------------------------------------------------------
 select test.login('00000000-0000-0000-0000-000009a97002');
-select test.eq(public.claim_ya_request((select v from t57 where k = 'a'))::text, 'confirmed', 'el plomero 1 acepta');
+select test.eq(test.agree((select v from t57 where k = 'a'))::text, 'confirmed', 'el plomero 1 acepta');
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a97003');
-select test.expect_error($$select public.claim_ya_request((select v from t57 where k = 'a'))$$, 'HMY_ALREADY_TAKEN');
+select test.expect_error($$select test.agree((select v from t57 where k = 'a'))$$, 'HMY_ALREADY_TAKEN');
 select test.logout();
 update public.profiles set suspended_at = null where id = '00000000-0000-0000-0000-000009a97003';
 select test.login('00000000-0000-0000-0000-000009a97003');
-select test.expect_error($$select public.claim_ya_request((select v from t57 where k = 'a'))$$, 'HMY_ALREADY_TAKEN');
+select test.expect_error($$select test.agree((select v from t57 where k = 'a'))$$, 'HMY_ALREADY_TAKEN');
 select test.logout();
 select test.eq((select count(*)::int from public.notifications where user_id = '00000000-0000-0000-0000-000009a97001'
                 and kind = 'booking_status' and data ->> 'status' = 'confirmed'), 1, 'el cliente recibe un aviso al aceptar');
@@ -95,7 +95,7 @@ select test.eq((select count(*)::int from public.booking_offers where booking_id
 insert into public.booking_offers (booking_id, professional_id)
 values ((select v from t57 where k = 'b'), '00000000-0000-0000-0000-000009a97002');
 select test.login('00000000-0000-0000-0000-000009a97002');
-select test.expect_error($$select public.claim_ya_request((select v from t57 where k = 'b'))$$, 'HMY_PRO_BUSY');
+select test.expect_error($$select test.agree((select v from t57 where k = 'b'))$$, 'HMY_PRO_BUSY');
 select test.logout();
 
 -- ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ select test.login('00000000-0000-0000-0000-000009a97001');
 select public.cancel_booking((select v from t57 where k = 'b'), null);
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a97003');
-select test.expect_error($$select public.claim_ya_request((select v from t57 where k = 'b'))$$, 'HMY_REQUEST_CANCELLED');
+select test.expect_error($$select test.agree((select v from t57 where k = 'b'))$$, 'HMY_REQUEST_CANCELLED');
 select test.logout();
 select test.eq((select status::text from public.bookings where id = (select v from t57 where k = 'b')), 'cancelled',
                'sigue cancelado');
