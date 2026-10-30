@@ -23,7 +23,10 @@ class BookingCard extends StatelessWidget {
             : b.status == BookingStatus.awaitingResponse
             ? 'Buscando profesional…'
             : 'Sin asignar');
+    final price = b.priceBs;
+    final live = b.status.isOpen || b.status.isActive;
     return AppCard(
+      key: Key('booking-card-${b.id}'),
       onTap: () => context.push(Routes.booking(b.id)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -31,11 +34,19 @@ class BookingCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Text(b.category, style: Theme.of(context).textTheme.titleMedium)),
+              Expanded(
+                child: Text(
+                  'Solicitud #${b.code}',
+                  key: Key('booking-code-${b.id}'),
+                  style: const TextStyle(color: HyColors.textSecondary, fontSize: 15, fontWeight: FontWeight.w700),
+                ),
+              ),
               const SizedBox(width: HySpacing.xs),
               Flexible(child: StatusChip(b.status, mode: b.mode)),
             ],
           ),
+          const SizedBox(height: 2),
+          Text(b.category, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: HySpacing.xs),
           if (b.problems.isNotEmpty)
             Text(
@@ -47,6 +58,30 @@ class BookingCard extends StatelessWidget {
           if (b.problems.isEmpty || b.description != b.problems.join('. '))
             Text(b.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
           const SizedBox(height: HySpacing.xs),
+          price == null
+              ? Text(
+                  'Precio pendiente',
+                  key: Key('booking-price-${b.id}'),
+                  style: const TextStyle(color: HyColors.textMuted, fontSize: 17, fontWeight: FontWeight.w700),
+                )
+              : Text.rich(
+                  key: Key('booking-price-${b.id}'),
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: b.status == BookingStatus.completed && b.finalAmount != null
+                            ? 'Total '
+                            : 'Precio acordado ',
+                        style: const TextStyle(color: HyColors.textSecondary, fontSize: 15),
+                      ),
+                      TextSpan(
+                        text: Fmt.bs(price),
+                        style: const TextStyle(color: HyColors.navy, fontSize: 20, fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                  ),
+                ),
+          const SizedBox(height: HySpacing.xs),
           Wrap(
             spacing: HySpacing.md,
             runSpacing: 4,
@@ -55,12 +90,11 @@ class BookingCard extends StatelessWidget {
               _Meta(
                 icon: b.mode == BookingMode.now ? Icons.bolt_rounded : Icons.event_outlined,
                 text: b.mode == BookingMode.now
-                    ? 'Ahora · ${Fmt.relative(b.createdAt)}'
+                    ? (live ? 'Ahora' : Fmt.dateTime(b.createdAt))
                     : Fmt.dateTime(b.scheduledStart ?? b.createdAt),
               ),
               _Meta(icon: Icons.place_outlined, text: b.zone ?? b.city.replaceAll(' de la Sierra', '')),
               if (b.distanceKm != null) _Meta(icon: Icons.near_me_outlined, text: 'A ${Fmt.km(b.distanceKm!)}'),
-              if (b.quoteAmount != null) _Meta(icon: Icons.request_quote_outlined, text: Fmt.bs(b.quoteAmount!)),
             ],
           ),
           if (b.isOffer && asProfessional) ...[

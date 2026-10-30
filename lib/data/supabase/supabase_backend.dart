@@ -559,6 +559,7 @@ class SupabaseBackend
   @override
   Stream<void> changes() {
     final controller = StreamController<void>.broadcast();
+    var joined = false;
     final channel = _db
         .channel('bookings-${DateTime.now().microsecondsSinceEpoch}')
         .onPostgresChanges(
@@ -573,7 +574,14 @@ class SupabaseBackend
           table: 'notifications',
           callback: (_) => controller.add(null),
         )
-        .subscribe();
+        .subscribe((status, [_]) {
+          // Al reconectarse (señal débil, app de fondo) los cambios de ese
+          // rato no llegaron: se avisa para recargar. La primera vez no hace falta.
+          if (status == RealtimeSubscribeStatus.subscribed) {
+            if (joined && !controller.isClosed) controller.add(null);
+            joined = true;
+          }
+        });
     controller.onCancel = () => _db.removeChannel(channel);
     return controller.stream;
   }

@@ -1192,6 +1192,8 @@ class DemoBackend
       isOffer: b.professionalId == null,
       distanceKm: asProfessional ? _distanceFor(_me.id, b.draft) : null,
       problems: b.problems,
+      agreedAmount: b.agreedAmount,
+      extrasAmount: b.extras,
     );
   }
 

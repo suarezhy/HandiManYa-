@@ -3,7 +3,7 @@ name: Profesional de prueba …02 (handimanya-flutter-dev)
 # Aprueba a la cuenta de prueba …02 como PERFIL DE PRUEBA (sin verificación de
 # identidad real; los clientes no lo ven como "Verificado"), lo revierte, o
 # muestra su estado. La acción es la palabra de supabase/e2e/dev_fixture_action.txt
-# (aprobar, revertir o estado). Solo en el proyecto de desarrollo, y se niega si
+# (aprobar, revertir, saldo, qr-simulado, qr-apagado o estado). Solo en el proyecto de desarrollo, y se niega si
 # hay cuentas que no son de prueba. Nunca imprime tokens, secretos ni códigos.
 #
 # Solo se activa al subir la rama supabase/fixture-dev, con permiso del dueño.

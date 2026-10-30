@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Supabase;
@@ -189,7 +190,17 @@ final professionalReviewsProvider = FutureProvider.autoDispose.family<List<Revie
 /// lo escuchan para refrescarse solas.
 final bookingChangesProvider = StreamProvider<int>((ref) {
   var tick = 0;
-  return ref.watch(backendProvider).changes().map((_) => ++tick);
+  final controller = StreamController<int>();
+  final sub = ref.watch(backendProvider).changes().listen((_) => controller.add(++tick));
+  // Con el teléfono bloqueado o la app de fondo, Android corta el tiempo real
+  // y esos cambios no llegan: al volver a la app se recargan las listas.
+  final lifecycle = AppLifecycleListener(onResume: () => controller.add(++tick));
+  ref.onDispose(() {
+    lifecycle.dispose();
+    unawaited(sub.cancel());
+    unawaited(controller.close());
+  });
+  return controller.stream;
 });
 
 final myBookingsProvider = FutureProvider.autoDispose.family<List<BookingSummary>, bool>((ref, asProfessional) {

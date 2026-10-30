@@ -155,6 +155,8 @@ class BookingSummary {
     this.isOffer = false,
     this.distanceKm,
     this.problems = const [],
+    this.agreedAmount,
+    this.extrasAmount = 0,
   });
 
   final String id;
@@ -168,6 +170,14 @@ class BookingSummary {
   final String description;
   final DateTime? scheduledStart;
   final DateTime createdAt;
+
+  /// Precio que aceptaron los dos (0062) y montos aparte aceptados.
+  final double? agreedAmount;
+  final double extrasAmount;
+
+  /// Lo que muestra la tarjeta: el monto final si ya terminó; si no, el precio
+  /// acordado más lo aparte; null es "Precio pendiente".
+  double? get priceBs => finalAmount ?? (agreedAmount == null ? quoteAmount : agreedAmount! + extrasAmount);
 
   /// Lo que eligió el cliente en "¿Qué necesitas solucionar?".
   final List<String> problems;
@@ -203,6 +213,8 @@ class BookingSummary {
     isOffer: m['is_offer'] as bool? ?? false,
     distanceKm: _dn(m['distance_km']),
     problems: [for (final p in (m['problems'] as List? ?? const [])) p as String],
+    agreedAmount: _dn(m['agreed_amount']),
+    extrasAmount: _dn(m['extras_amount']) ?? 0,
   );
 }
 
