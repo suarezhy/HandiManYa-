@@ -10,11 +10,31 @@ import 'push_controller.dart';
 
 /// Avisos en este teléfono: activarlos, probarlos y ver el último envío.
 /// Nunca dice "entregado": el servidor solo sabe si Firebase aceptó el aviso.
-class PushCard extends ConsumerWidget {
+class PushCard extends ConsumerStatefulWidget {
   const PushCard({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PushCard> createState() => _PushCardState();
+}
+
+class _PushCardState extends ConsumerState<PushCard> {
+  // Al volver de los ajustes del teléfono se revisa otra vez el permiso.
+  late final _lifecycle = AppLifecycleListener(onResume: () => ref.read(pushControllerProvider.notifier).recheck());
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycle;
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(pushControllerProvider);
     final value = state.value;
     if (value == null || value == PushState.unavailable) return const SizedBox.shrink();
@@ -34,9 +54,15 @@ class PushCard extends ConsumerWidget {
       ),
       PushState.denied => (
         'Avisos bloqueados',
-        'Los avisos de HandiMan ¡Ya! están bloqueados en los ajustes de este teléfono. '
-            'Actívalos ahí y vuelve a esta pantalla.',
-        const <Widget>[],
+        'Los avisos de HandiMan ¡Ya! están bloqueados en este teléfono. '
+            'Toca "Abrir ajustes", activa "Permitir notificaciones" y vuelve a la app.',
+        [
+          FilledButton(
+            key: const Key('push-settings'),
+            onPressed: () => runGuarded(context, controller.openSettings),
+            child: const Text('Abrir ajustes'),
+          ),
+        ],
       ),
       PushState.off => (
         'Recibe avisos en este teléfono',

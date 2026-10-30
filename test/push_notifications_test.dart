@@ -43,6 +43,18 @@ class _FakePush implements PushPlatform {
   Stream<String> get tokenRefresh => refresh.stream;
   @override
   Stream<Map<String, String>> get opened => taps.stream;
+  int settingsOpened = 0;
+  @override
+  Future<bool> openSettings() async {
+    settingsOpened++;
+    return true;
+  }
+}
+
+/// Firebase que nunca contesta al revisar el permiso (como si se colgara).
+class _HangingPush extends _FakePush {
+  @override
+  Future<PushPermission> permission() => Completer<PushPermission>().future;
 }
 
 class _NoTokenPush extends _FakePush {
@@ -66,7 +78,11 @@ class _Backend extends DemoAppBackend {
   Future<void> unregisterPushDevice(String token) async => unregistered.add(token);
 }
 
-Future<(_Backend, ProviderContainer)> _pump(WidgetTester tester, _FakePush push) async {
+Future<(_Backend, ProviderContainer)> _pump(
+  WidgetTester tester,
+  _FakePush push, {
+  String phone = DemoBackend.customerPhone,
+}) async {
   await initializeDateFormatting('es');
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -85,7 +101,7 @@ Future<(_Backend, ProviderContainer)> _pump(WidgetTester tester, _FakePush push)
   addTearDown(container.dispose);
   await tester.pumpWidget(UncontrolledProviderScope(container: container, child: const HandiManYaApp()));
   await tester.pumpAndSettle();
-  await loginWithPhone(tester, DemoBackend.customerPhone);
+  await loginWithPhone(tester, phone);
   return (backend, container);
 }
 
@@ -244,6 +260,62 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Avisos en este navegador'), findsOneWidget);
   });
+
+  testWidgets('bloqueados: "Abrir ajustes" lleva a los ajustes y al volver se registra', (tester) async {
+    final push = _FakePush()..perm = PushPermission.denied;
+    final (backend, c) = await _pump(tester, push);
+    await _openNotifications(tester, c);
+    await tester.tap(find.byKey(const Key('push-settings')));
+    await tester.pumpAndSettle();
+    expect(push.settingsOpened, 1);
+    expect(backend.registered, isEmpty);
+
+    // La persona activa los avisos en los ajustes y vuelve a la app.
+    push.perm = PushPermission.granted;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.text('Avisos activados en este teléfono'), findsOneWidget);
+    expect(backend.registered, ['token-de-prueba-0000000000000/android']);
+    PushTokens.current = null;
+  });
+
+  testWidgets('si Firebase no contesta al revisar, igual ofrece "Activar avisos"', (tester) async {
+    final push = _HangingPush();
+    final (_, c) = await _pump(tester, push);
+    await _openNotifications(tester, c);
+    await tester.pump(PushController.checkTimeout);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('push-enable')), findsOneWidget);
+  });
+
+  for (final (role, phone, profile) in [
+    ('cliente', DemoBackend.customerPhone, Routes.profile),
+    ('profesional', DemoBackend.professionalPhone, Routes.proProfile),
+  ]) {
+    testWidgets('Perfil del $role: dice cómo están los avisos y lleva a activarlos', (tester) async {
+      final push = _FakePush();
+      final (backend, c) = await _pump(tester, push, phone: phone);
+      c.read(routerProvider).go(profile);
+      await tester.pumpAndSettle();
+      final row = find.byKey(const Key('profile-notifications'));
+      // En el centro de la pantalla: la barra de abajo no la tapa.
+      await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+      await Scrollable.ensureVisible(tester.element(row), alignment: 0.5);
+      await tester.pumpAndSettle();
+      expect(find.text('Toca para activar los avisos en este teléfono'), findsOneWidget);
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('push-enable')));
+      await tester.pumpAndSettle();
+      expect(backend.registered, ['token-de-prueba-0000000000000/android']);
+      c.read(routerProvider).go(profile);
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+      expect(find.text('Avisos activados en este teléfono'), findsOneWidget);
+      PushTokens.current = null;
+    });
+  }
 
   testWidgets('tocar un aviso abre el chat o la solicitud', (tester) async {
     final push = _FakePush()..perm = PushPermission.granted;

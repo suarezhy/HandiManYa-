@@ -55,9 +55,16 @@ class PushController extends AsyncNotifier<PushState> {
       _opened?.cancel();
       delegate.removeListener(_openPending);
     });
-    if (!await platform.isSupported()) return PushState.unsupported;
-    _opened = platform.opened.listen(_open);
-    final permission = await platform.permission();
+    final PushPermission permission;
+    try {
+      if (!await platform.isSupported().timeout(checkTimeout)) return PushState.unsupported;
+      _opened = platform.opened.listen(_open);
+      permission = await platform.permission().timeout(checkTimeout);
+    } catch (_) {
+      // Si Firebase o el teléfono no responden, igual se ofrece "Activar avisos":
+      // al tocarlo se pide el permiso y se muestra el motivo si algo falla.
+      return PushState.off;
+    }
     if (permission == PushPermission.denied) return PushState.denied;
     if (permission == PushPermission.notAsked || user == null || _turnedOff) return PushState.off;
     _refresh = platform.tokenRefresh.listen((t) => _register(t).ignore());
@@ -113,6 +120,23 @@ class PushController extends AsyncNotifier<PushState> {
 
   /// Cuánto se espera a Firebase antes de decir que no respondió.
   static const tokenTimeout = Duration(seconds: 25);
+
+  /// Cuánto se espera al revisar, al abrir la pantalla, si hay permiso.
+  static const checkTimeout = Duration(seconds: 10);
+
+  /// Abre los ajustes de avisos del teléfono (cuando ya no muestra la pregunta).
+  Future<void> openSettings() async {
+    final platform = ref.read(pushPlatformProvider);
+    if (platform == null) return;
+    if (!await platform.openSettings()) {
+      throw const AppError(
+        'No pudimos abrir los ajustes. Ábrelos tú: Ajustes → Aplicaciones → HandiMan ¡Ya! → Notificaciones.',
+      );
+    }
+  }
+
+  /// Vuelve a revisar el permiso (por ejemplo, al volver de los ajustes).
+  void recheck() => ref.invalidateSelf();
 
   /// Deja de recibir avisos en este teléfono (los de dentro de la app siguen).
   Future<void> disable() async {

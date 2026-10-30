@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 export 'push_tokens.dart';
 
@@ -59,6 +61,10 @@ abstract interface class PushPlatform {
 
   /// Datos de un aviso que la persona tocó (incluido el que abrió la app).
   Stream<Map<String, String>> get opened;
+
+  /// Abre los ajustes de avisos de esta app en el teléfono (para activarlos
+  /// cuando el teléfono ya no muestra la pregunta). Falso si no se pudo.
+  Future<bool> openSettings();
 }
 
 class FirebasePushPlatform implements PushPlatform {
@@ -135,6 +141,15 @@ class FirebasePushPlatform implements PushPlatform {
     _initial = null;
     if (initial != null) yield initial;
     yield* _opened.stream;
+  }
+
+  static const _settings = MethodChannel('bo.handimanya/notifications');
+
+  @override
+  Future<bool> openSettings() async {
+    if (kIsWeb) return false;
+    if (defaultTargetPlatform == TargetPlatform.iOS) return launchUrl(Uri.parse('app-settings:'));
+    return await _settings.invokeMethod<bool>('openSettings') ?? false;
   }
 
   static String get webWorkerPath => Uri(

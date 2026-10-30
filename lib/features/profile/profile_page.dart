@@ -14,6 +14,7 @@ import '../management/management_common.dart';
 import '../safety/safety_sheets.dart';
 import 'profile_photo.dart';
 import '../auth/auth_scaffold.dart' show formatPhone;
+import '../notifications/push_controller.dart';
 
 /// Perfil compartido por cliente y profesional. Desde aquí se cambia de modo.
 class ProfilePage extends ConsumerWidget {
@@ -137,8 +138,16 @@ class ProfilePage extends ConsumerWidget {
                     onTap: () => context.push(Routes.professional(account.id)),
                   ),
                 _Tile(
+                  key: const Key('profile-notifications'),
                   icon: Icons.notifications_none_rounded,
                   title: 'Notificaciones',
+                  // Cómo están los avisos en este teléfono; ahí mismo se activan.
+                  subtitle: switch (ref.watch(pushControllerProvider).value) {
+                    PushState.on => 'Avisos activados en este teléfono',
+                    PushState.off => 'Toca para activar los avisos en este teléfono',
+                    PushState.denied => 'Avisos bloqueados: toca para activarlos',
+                    _ => null,
+                  },
                   onTap: () => context.push(Routes.notifications),
                 ),
                 _Tile(
