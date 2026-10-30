@@ -68,50 +68,38 @@ select test.eq((select count(*)::int from public.wallet_ledger where booking_id 
                 and entry_type in ('commission_capture')), 0, 'cancelar no cobra');
 
 -- ---------------------------------------------------------------------------
--- Completar con un precio final mayor: se cobra lo posible y falta el resto.
--- Precio final 400 → comisión 40; hay 20 reservados + 10 disponibles = 30.
+-- Completar con un precio final mayor que lo reservado (desde 0062): se cobra
+-- solo lo reservado y no queda deuda; las recargas no descuentan nada.
+-- Precio final 400 → comisión 40; hay 20 reservados y 10 disponibles.
 -- ---------------------------------------------------------------------------
 update public.bookings set final_amount = 400, status = 'completed', completed_at = now()
 where id = '00000000-0000-0000-0000-000009a3b001';
 select public._commission_capture('00000000-0000-0000-0000-000009a3b001');
 select test.eq((select commission_captured from public.bookings where id = '00000000-0000-0000-0000-000009a3b001'),
-               30.00::numeric, 'completar: se cobra lo que hay (Bs 30)');
+               20.00::numeric, 'completar: se cobra lo reservado (Bs 20)');
 select test.eq((select commission_shortfall from public.bookings where id = '00000000-0000-0000-0000-000009a3b001'),
-               10.00::numeric, 'completar: la falta (Bs 10) queda anotada, no se pierde');
-select test.eq((select available + reserved from public.wallets
-                where professional_id = '00000000-0000-0000-0000-000009a30004'), 0.00::numeric,
-               'el saldo nunca queda en negativo');
+               0.00::numeric, 'completar: no queda deuda');
+select test.eq((select available || '/' || reserved from public.wallets
+                where professional_id = '00000000-0000-0000-0000-000009a30004'), '10.00/0.00',
+               'el saldo disponible no se toca');
 
--- Con comisión pendiente no acepta trabajos nuevos.
 select public.wallet_post('00000000-0000-0000-0000-000009a30004', 'adjustment', 0.01, 0, 'test99l:a0', null, null, 'Centavo');
-select test.expect_error($$select public._commission_reserve(b) from public.bookings b
-                           where id = '00000000-0000-0000-0000-000009a3b003'$$, 'HMY_COMMISSION_DEBT');
-
--- La próxima recarga paga primero lo pendiente, con su propio movimiento.
-select public.wallet_post('00000000-0000-0000-0000-000009a30004', 'topup', 50, 0, 'test99l:t2', null, null, 'Recarga');
-select test.eq((select commission_shortfall from public.bookings where id = '00000000-0000-0000-0000-000009a3b001'),
-               0.00::numeric, 'la recarga paga la comisión pendiente');
-select test.eq((select commission_captured from public.bookings where id = '00000000-0000-0000-0000-000009a3b001'),
-               40.00::numeric, 'cobrado en total: Bs 40 (10 % de 400)');
-select test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
-               40.01::numeric, 'quedan Bs 40,01: el ajuste de 0,01 y luego 9,99 de la recarga pagaron lo pendiente');
-select test.eq((select count(*)::int from public.wallet_ledger
-                where booking_id = '00000000-0000-0000-0000-000009a3b001' and entry_type = 'commission_capture'),
-               3, 'cobro al completar + dos cobros de lo pendiente (ajuste y recarga), cada uno en el libro');
-select test.eq((select sum(-(available_delta + reserved_delta)) from public.wallet_ledger
-                where booking_id = '00000000-0000-0000-0000-000009a3b001' and entry_type = 'commission_capture'),
-               40.00::numeric, 'el libro suma exactamente la comisión');
--- Ya sin deuda, acepta de nuevo.
 select public._commission_reserve(b) from public.bookings b where id = '00000000-0000-0000-0000-000009a3b003';
 select test.eq((select commission_reserved from public.bookings where id = '00000000-0000-0000-0000-000009a3b003'),
-               10.00::numeric, 'sin deuda vuelve a aceptar (reserva Bs 10)');
+               10.00::numeric, 'sin deuda sigue aceptando (reserva Bs 10)');
+select public.wallet_post('00000000-0000-0000-0000-000009a30004', 'topup', 50, 0, 'test99l:t2', null, null, 'Recarga');
+select test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
+               50.01::numeric, 'la recarga entra entera: no se descuenta nada');
+select test.eq((select count(*)::int from public.wallet_ledger
+                where booking_id = '00000000-0000-0000-0000-000009a3b001' and entry_type = 'commission_capture'),
+               1, 'un solo cobro en el libro');
 
 -- Precio final menor: se devuelve la diferencia de la reserva.
 update public.bookings set final_amount = 60, status = 'completed', completed_at = now()
 where id = '00000000-0000-0000-0000-000009a3b003';
 select public._commission_capture('00000000-0000-0000-0000-000009a3b003');
 select test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
-               34.01::numeric, 'precio final 60: se cobran Bs 6 y vuelven Bs 4 de la reserva');
+               54.01::numeric, 'precio final 60: se cobran Bs 6 y vuelven Bs 4 de la reserva');
 
 -- ---------------------------------------------------------------------------
 -- Ya no se cobra al aceptar.

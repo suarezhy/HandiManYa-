@@ -20,10 +20,17 @@
 -- 6. "Terminé el trabajo" no pide monto: el monto final es el acordado más lo
 --    aceptado aparte. La comisión se calcula sobre ese monto.
 -- 7. Comisión: 10 % del precio acordado por defecto (el administrador la
---    cambia en Comisiones). Se reserva al aceptar, también la de cada monto
---    aparte aprobado; sin saldo, el profesional no puede proponer ni aceptar
---    ese monto y ve cuánto le falta. Nunca se calcula con una propuesta sin
---    aceptar ni deja saldo negativo.
+--    cambia en Comisiones). Se reserva al aceptar; sin saldo, el profesional
+--    no puede proponer ni aceptar ese precio y ve cuánto le falta. Nunca se
+--    calcula con una propuesta sin aceptar ni deja saldo negativo.
+-- 8. Un monto aparte aprobado por los dos reserva su comisión. Si al
+--    profesional no le alcanza el saldo, el monto queda "esperando recarga"
+--    (awaiting_funds): el precio acordado y el trabajo siguen igual, y el monto
+--    cuenta recién cuando el profesional recarga (se activa solo) o se anula
+--    si alguno lo cancela o el trabajo termina antes.
+-- 9. Ya no se descuentan comisiones pendientes de las recargas (0043): como
+--    toda comisión se reserva antes, al completar se cobra lo reservado y
+--    nunca queda deuda nueva.
 -- claim_ya_request y accept_booking (aceptar sin precio) ya no confirman nada.
 --
 -- Agrega una tabla, columnas, funciones y triggers. Pasa las cotizaciones que
@@ -49,7 +56,7 @@ create table public.price_offers (
   amount numeric(10,2) not null check (amount > 0 and amount <= 100000),
   note text check (note is null or char_length(note) <= 300),
   status text not null default 'open'
-    check (status in ('open', 'accepted', 'rejected', 'superseded', 'withdrawn', 'expired')),
+    check (status in ('open', 'awaiting_funds', 'accepted', 'rejected', 'superseded', 'withdrawn', 'expired')),
   responded_by uuid references public.profiles(id),
   responded_at timestamptz,
   created_at timestamptz not null default now(),
@@ -104,7 +111,7 @@ begin
   if new.status is distinct from old.status then
     if new.status in ('cancelled', 'work_finished', 'completed', 'disputed') then
       update public.price_offers set status = 'expired', responded_at = now()
-      where booking_id = new.id and status = 'open';
+      where booking_id = new.id and status in ('open', 'awaiting_funds');
     elsif new.status = 'confirmed' then
       update public.price_offers set status = 'expired', responded_at = now()
       where booking_id = new.id and status = 'open' and kind in ('service', 'inspection');
@@ -262,7 +269,8 @@ begin
     end if;
   end if;
 
-  if v_role = 'professional' then perform public._hmy_require_cover(v_me, b, v_amount, not v_pre); end if;
+  -- El precio del trabajo: hay que poder reservar su comisión para aceptarlo.
+  if v_role = 'professional' and v_pre then perform public._hmy_require_cover(v_me, b, v_amount, false); end if;
 
   if (select count(*) from public.price_offers where booking_id = b.id and author_id = v_me) >= 40 then
     raise exception 'HMY_TOO_MANY_OFFERS';
@@ -358,27 +366,96 @@ begin
 end $$;
 
 -- La comisión de un monto aparte se reserva al aprobarlo, con su propia clave
--- (un doble toque no la reserva dos veces). Sin saldo, no se aprueba.
-create function public._hmy_reserve_extra(b public.bookings, o public.price_offers, p_actor text) returns void
+-- (un doble toque no la reserva dos veces). False: no alcanza el saldo.
+create function public._hmy_reserve_extra(b public.bookings, o public.price_offers) returns boolean
 language plpgsql security definer set search_path = public as $$
 declare
   r public.commission_rules;
   v_add numeric(10,2);
 begin
-  if b.commission_rule_id is null then return; end if; -- el trabajo no tiene comisión
+  if b.commission_rule_id is null then return true; end if; -- el trabajo no tiene comisión
   select * into r from public.commission_rules where id = b.commission_rule_id;
-  if r.rate_percent is null then return; end if;
+  if r.rate_percent is null then return true; end if;
   v_add := round(o.amount * r.rate_percent / 100, 2);
-  if v_add <= 0 then return; end if;
-  begin
-    perform public.wallet_post(b.professional_id, 'commission_reserve', -v_add, v_add,
-                               'reserve:' || b.id || ':' || o.id, b.id, null,
-                               'Reserva de comisión ' || b.code || ' (monto aparte)');
-  exception when others then
-    if sqlerrm = 'HMY_INSUFFICIENT_BALANCE' and p_actor = 'customer' then raise exception 'HMY_PRO_NEEDS_BALANCE'; end if;
-    raise;
-  end;
+  if v_add <= 0 then return true; end if;
+  if coalesce((select available from public.wallets where professional_id = b.professional_id), 0) < v_add then
+    return false;
+  end if;
+  perform public.wallet_post(b.professional_id, 'commission_reserve', -v_add, v_add,
+                             'reserve:' || b.id || ':' || o.id, b.id, null,
+                             'Reserva de comisión ' || b.code || ' (monto aparte)');
   update public.bookings set commission_reserved = commission_reserved + v_add where id = b.id;
+  return true;
+end $$;
+
+-- Los dos aprobaron el monto aparte: cuenta si se reserva su comisión; si no,
+-- espera la recarga del profesional.
+create function public._hmy_extra_effective(p_offer bigint) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  o public.price_offers;
+  b public.bookings;
+  v_what text;
+begin
+  select * into o from public.price_offers where id = p_offer for update;
+  select * into b from public.bookings where id = o.booking_id for update;
+  v_what := case o.kind when 'repair' then 'Reparación' else 'Cobro extra' end || ': Bs ' || o.amount;
+  if not public._hmy_reserve_extra(b, o) then
+    update public.price_offers set status = 'awaiting_funds' where id = o.id;
+    perform public.notify(b.professional_id, 'price_offer', 'Recarga tu saldo para el monto aparte',
+      v_what || '. El cliente lo aprobó; cuenta cuando tengas saldo para su comisión.',
+      jsonb_build_object('booking_id', b.id, 'offer_id', o.id));
+    perform public.notify(b.customer_id, 'price_offer', 'Monto aparte en espera',
+      v_what || '. Todavía no cuenta: el precio acordado sigue igual.', jsonb_build_object('booking_id', b.id, 'offer_id', o.id));
+    return 'awaiting_funds';
+  end if;
+  update public.price_offers set status = 'accepted' where id = o.id;
+  update public.bookings set extras_amount = extras_amount + o.amount where id = b.id;
+  perform public.notify(b.customer_id, 'price_offer', 'Monto aparte aprobado', v_what,
+                        jsonb_build_object('booking_id', b.id, 'offer_id', o.id));
+  perform public.notify(b.professional_id, 'price_offer', 'Monto aparte aprobado', v_what,
+                        jsonb_build_object('booking_id', b.id, 'offer_id', o.id));
+  return 'accepted';
+end $$;
+
+-- Con saldo nuevo (recarga o ajuste a favor), los montos en espera de ese
+-- profesional se activan, el más viejo primero.
+create function public.hmy_ledger_activate_extras() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare r record;
+begin
+  for r in select o.id from public.price_offers o join public.bookings b on b.id = o.booking_id
+           where o.status = 'awaiting_funds' and b.professional_id = new.professional_id
+             and b.status in ('confirmed', 'on_the_way', 'in_progress')
+           order by o.id loop
+    exit when public._hmy_extra_effective(r.id) <> 'accepted';
+  end loop;
+  return null;
+end $$;
+
+create trigger wallet_ledger_activate_extras after insert on public.wallet_ledger
+  for each row when (new.entry_type in ('topup', 'adjustment') and new.available_delta > 0)
+  execute function public.hmy_ledger_activate_extras();
+
+-- Retirar la propia propuesta abierta, o anular un monto en espera de recarga
+-- (cualquiera de los dos).
+create function public.cancel_price_offer(p_offer bigint) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_me uuid := auth.uid();
+  o public.price_offers;
+  b public.bookings;
+begin
+  select * into o from public.price_offers where id = p_offer;
+  if not found then raise exception 'HMY_NOT_FOUND'; end if;
+  select * into b from public.bookings where id = o.booking_id for update;
+  select * into o from public.price_offers where id = p_offer for update;
+  if not ((o.status = 'open' and o.author_id = v_me)
+          or (o.status = 'awaiting_funds' and v_me in (b.customer_id, b.professional_id))) then
+    raise exception '%', case when v_me in (b.customer_id, b.professional_id) or o.author_id = v_me
+                         then 'HMY_OFFER_CHANGED' else 'HMY_FORBIDDEN' end;
+  end if;
+  update public.price_offers set status = 'withdrawn', responded_by = v_me, responded_at = now() where id = o.id;
 end $$;
 
 create function public.accept_price_offer(p_offer bigint) returns public.booking_status
@@ -423,13 +500,8 @@ begin
 
   if o.kind in ('repair', 'extra') then
     if b.status not in ('confirmed', 'on_the_way', 'in_progress') then raise exception 'HMY_NOT_NEGOTIABLE'; end if;
-    perform public._hmy_reserve_extra(b, o, v_role);
-    update public.price_offers set status = 'accepted', responded_by = v_me, responded_at = now() where id = o.id;
-    update public.bookings set extras_amount = extras_amount + o.amount where id = b.id;
-    perform public.notify(case when v_role = 'customer' then b.professional_id else b.customer_id end,
-      'price_offer', 'Monto aprobado',
-      case o.kind when 'repair' then 'Reparación' else 'Cobro extra' end || ': Bs ' || o.amount,
-      jsonb_build_object('booking_id', b.id, 'offer_id', o.id));
+    update public.price_offers set responded_by = v_me, responded_at = now() where id = o.id;
+    perform public._hmy_extra_effective(o.id);
     return b.status;
   end if;
 
@@ -480,6 +552,39 @@ begin
   perform public.notify(o.author_id, 'price_offer', 'No aceptaron tu propuesta',
     'Bs ' || o.amount || '. Puedes proponer otro monto.', jsonb_build_object('booking_id', b.id, 'offer_id', o.id));
 end $$;
+
+
+-- ---------------------------------------------------------------- Sin deuda nueva
+-- Al completar se cobra la comisión del monto final, hasta lo reservado: lo
+-- que no se reservó no se cobra ni queda como deuda.
+create or replace function public._commission_capture(p_booking uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  b public.bookings;
+  r public.commission_rules;
+  v_amount numeric(10,2);
+  v_take numeric(10,2);
+begin
+  select * into b from public.bookings where id = p_booking;
+  if b.commission_rule_id is null or b.commission_captured is not null then
+    return;
+  end if;
+  select * into r from public.commission_rules where id = b.commission_rule_id;
+  v_amount := coalesce(
+    case when r.rate_percent is not null and b.final_amount is not null
+         then round(b.final_amount * r.rate_percent / 100, 2) end,
+    r.fixed_fee,
+    b.commission_reserved,
+    0);
+  v_take := least(v_amount, b.commission_reserved);
+  perform public.wallet_post(b.professional_id, 'commission_capture',
+                             b.commission_reserved - v_take, -b.commission_reserved,
+                             'capture:' || b.id, b.id, null, 'Comisión ' || b.code);
+  update public.bookings set commission_captured = v_take, commission_reserved = 0 where id = b.id;
+end $$;
+
+-- Las recargas ya no pagan comisiones pendientes solas (pedido del dueño, 30-10-2026).
+drop trigger wallet_ledger_collect_debts on public.wallet_ledger;
 
 -- ---------------------------------------------------------------- Lo de antes
 -- Aceptar sin precio ya no confirma: las versiones viejas de la app reciben
@@ -697,7 +802,12 @@ revoke execute on function public.hmy_price_role(public.bookings, uuid) from pub
 revoke execute on function public._hmy_assign_pro(uuid, uuid, text) from public, anon, authenticated;
 revoke execute on function public.hmy_commission_need(uuid, int, smallint, numeric, boolean) from public, anon, authenticated;
 revoke execute on function public._hmy_require_cover(uuid, public.bookings, numeric, boolean) from public, anon, authenticated;
-revoke execute on function public._hmy_reserve_extra(public.bookings, public.price_offers, text) from public, anon, authenticated;
+revoke execute on function public._hmy_reserve_extra(public.bookings, public.price_offers) from public, anon, authenticated;
+revoke execute on function public._hmy_extra_effective(bigint) from public, anon, authenticated;
+revoke execute on function public.hmy_ledger_activate_extras() from public, anon, authenticated;
+revoke execute on function public._commission_capture(uuid) from public, anon, authenticated;
+revoke execute on function public.cancel_price_offer(bigint) from public, anon;
+grant execute on function public.cancel_price_offer(bigint) to authenticated;
 revoke execute on function public.commission_for_amount(uuid, numeric) from public, anon;
 grant execute on function public.commission_for_amount(uuid, numeric) to authenticated;
 revoke execute on function public._create_ya_request_unpriced(int, smallint, text, text, text, int,

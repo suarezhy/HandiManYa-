@@ -45,7 +45,7 @@ declare
     'hmy_pro_busy_now','_create_ya_request_extras','_claim_ya_request_scheduled',
     'hmy_test_fixture_guard','hmy_is_test_fixture','_search_professionals_base','_get_professional_public_base',
     '_booking_detail_destination','_trip_share_view_base',
-    'hmy_price_lock','hmy_price_offers_close','hmy_price_offers_close_for_pro','hmy_price_role','propose_price','_hmy_assign_pro','hmy_commission_need','commission_for_amount','_hmy_require_cover','_hmy_reserve_extra',
+    'hmy_price_lock','hmy_price_offers_close','hmy_price_offers_close_for_pro','hmy_price_role','propose_price','_hmy_assign_pro','hmy_commission_need','commission_for_amount','_hmy_require_cover','_hmy_reserve_extra','_hmy_extra_effective','hmy_ledger_activate_extras','cancel_price_offer',
     'accept_price_offer','reject_price_offer','_create_ya_request_unpriced','_create_scheduled_request_unpriced',
     '_create_booking_unpriced','_booking_detail_unpriced'];
   v_missing text;
@@ -158,9 +158,12 @@ begin
     (not has_function_privilege('authenticated', 'public.hmy_require_strong_confirmation(text, text)', 'EXECUTE'), 'finanzas: la confirmación fuerte solo la usan las funciones'),
     (not has_column_privilege('authenticated', 'public.topup_requests', 'bank_status', 'UPDATE'), 'finanzas: nadie cambia el estado bancario de una recarga directamente'),
     (not has_function_privilege('authenticated', 'public._commission_collect_debts(uuid)', 'EXECUTE')
-     and exists (select 1 from pg_trigger where tgname = 'wallet_ledger_collect_debts')
+     and not exists (select 1 from pg_trigger where tgname = 'wallet_ledger_collect_debts')
+     and exists (select 1 from pg_trigger where tgname = 'wallet_ledger_activate_extras')
+     and exists (select 1 from pg_trigger where tgname = 'bookings_price_lock')
+     and not has_table_privilege('authenticated', 'public.price_offers', 'SELECT')
      and (select count(*) from public.commission_rules where capture_at <> 'completed') = 0,
-     'comisión: se reserva al aceptar y se cobra al completar; lo pendiente se cobra de la próxima recarga'),
+     'comisión: se reserva al acordar y se cobra al completar; precio fijo; las recargas no descuentan nada'),
     (not has_function_privilege('authenticated', 'public.hmy_push_claim(integer)', 'EXECUTE')
      and not has_function_privilege('authenticated', 'public.hmy_push_report(jsonb)', 'EXECUTE')
      and not has_column_privilege('authenticated', 'public.push_devices', 'token', 'SELECT')
