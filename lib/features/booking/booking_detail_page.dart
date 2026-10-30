@@ -349,6 +349,8 @@ class _StatusHeader extends ConsumerWidget {
     final arrived =
         b.status == BookingStatus.onTheWay && (ref.watch(bookingArrivalProvider(b.id)).value?.verified ?? false);
     final searching = b.status == BookingStatus.awaitingResponse && b.viewerIsCustomer && b.mode == BookingMode.now;
+    // Con la llegada verificada sigue "en camino" en la base: el texto no.
+    final hint = arrived ? arrivedHint(customer: b.viewerIsCustomer) : this.hint;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(HySpacing.md),
@@ -847,15 +849,7 @@ class _ActionsState extends ConsumerState<_Actions> {
                       _CommissionLine(bookingId: b.id),
                     ...primary,
                     if (primary.isNotEmpty && secondary.isNotEmpty) const SizedBox(height: HySpacing.xs),
-                    if (secondary.isNotEmpty)
-                      Row(
-                        children: [
-                          for (var i = 0; i < secondary.length; i++) ...[
-                            if (i > 0) const SizedBox(width: HySpacing.xs),
-                            Expanded(child: secondary[i]),
-                          ],
-                        ],
-                      ),
+                    if (secondary.isNotEmpty) _ButtonGrid(children: secondary),
                   ],
                 ),
               ),
@@ -1034,5 +1028,34 @@ Future<(double?, String?)?> showAmountSheet(
         ),
       ),
     ),
+  );
+}
+
+/// Lo que se lee cuando el cliente ya verificó la llegada (antes de empezar).
+@visibleForTesting
+String arrivedHint({required bool customer}) => customer
+    ? 'Confirmaste que el profesional llegó. Empezará el trabajo en un momento.'
+    : 'El cliente confirmó tu llegada. Toca "Empecé el trabajo" para comenzar.';
+
+/// Botones secundarios: hasta dos por fila, y uno por fila si no entran sin
+/// partir las palabras (pantallas chicas o letra grande).
+class _ButtonGrid extends StatelessWidget {
+  const _ButtonGrid({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      const gap = HySpacing.xs;
+      final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+      final perRow = children.length == 1 || (c.maxWidth - gap) / 2 < 150 * scale ? 1 : 2;
+      final width = perRow == 1 ? c.maxWidth : (c.maxWidth - gap) / 2;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [for (final b in children) SizedBox(width: width, child: b)],
+      );
+    },
   );
 }

@@ -12,6 +12,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/demo_login.dart';
+import 'support/layout_checks.dart';
 
 Matcher _code(String code) => throwsA(isA<AppError>().having((e) => e.code, 'code', code));
 
@@ -138,13 +139,21 @@ void main() {
   });
 
   group('pantallas', () {
-    Future<void> pumpDetail(WidgetTester tester, DemoAppBackend app, String id) async {
+    Future<void> pumpDetail(
+      WidgetTester tester,
+      DemoAppBackend app,
+      String id, {
+      Size size = const Size(390, 844),
+      double textScale = 1,
+    }) async {
       await initializeDateFormatting('es');
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
-      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.physicalSize = size * 3;
       tester.view.devicePixelRatio = 3;
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
       addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await tester.pumpWidget(
         ProviderScope(
           key: UniqueKey(),
@@ -191,11 +200,40 @@ void main() {
       expect(find.text('Llegada verificada'), findsWidgets);
       expect(find.byKey(const Key('arrival-verified')), findsOneWidget);
 
+      // El texto ya no dice "va en camino".
+      await pumpDetail(tester, app, id);
+      expect(find.text(arrivedHint(customer: true)), findsOneWidget);
+      expect(find.textContaining('va en camino'), findsNothing);
+
       // Profesional: ahora sí puede empezar.
       await tester.runAsync(() => app.signInAs(DemoBackend.professionalPhone));
       await pumpDetail(tester, app, id);
       expect(find.byKey(const Key('start-work')), findsOneWidget);
+      expect(find.text(arrivedHint(customer: false)), findsOneWidget);
+      expect(find.textContaining('Vas en camino'), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    for (final (size, scale) in [
+      (const Size(320, 640), 1.0),
+      (const Size(360, 800), 1.3),
+      (const Size(360, 800), 2.0),
+    ]) {
+      testWidgets('botones del cliente en camino: sin palabras partidas a ${size.width.toInt()} px y letra x$scale', (
+        tester,
+      ) async {
+        await loadAppFonts(tester);
+        final app = DemoAppBackend(simulateDelays: false, codeCooldown: Duration.zero);
+        addTearDown(app.dispose);
+        final id = await tester.runAsync(() => _onTheWay(app));
+        await tester.runAsync(() => app.signInAs(DemoBackend.customerPhone));
+        await pumpDetail(tester, app, id!, size: size, textScale: scale);
+        expect(find.byKey(const Key('share-trip')), findsOneWidget);
+        expect(find.text('Chat'), findsOneWidget);
+        expect(find.text('Reportar problema'), findsOneWidget);
+        expect(textProblems(tester, size), isEmpty);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 }
