@@ -275,7 +275,16 @@ Future<void> showMapProfessionalPreview(BuildContext context, MapProfessional pr
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(pro.displayName, style: Theme.of(sheet).textTheme.titleMedium),
+                    Wrap(
+                      spacing: HySpacing.xs,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(pro.displayName, style: Theme.of(sheet).textTheme.titleMedium),
+                        if (pro.isVerified) const VerifiedBadge(compact: true),
+                        RankBadge(tier: pro.rankTier, compact: true),
+                      ],
+                    ),
                     if (pro.category != null)
                       Text(pro.category!, style: const TextStyle(color: HyColors.textSecondary)),
                     const SizedBox(height: 2),

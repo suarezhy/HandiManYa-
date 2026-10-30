@@ -302,6 +302,7 @@ class _OfferTile extends StatelessWidget {
           children: [
             Text(who, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             if (rating != null && rating!.isVerified) const VerifiedBadge(compact: true),
+            if (rating != null) RankBadge(tier: rating!.rankTier, compact: true),
             if (rating != null) RatingLabel(rating: rating!.ratingAvg, count: rating!.ratingCount),
           ],
         ),

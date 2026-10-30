@@ -1,7 +1,9 @@
 package bo.handimanya.handimanya
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -65,9 +67,46 @@ class MainActivity : FlutterFragmentActivity() {
                         startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         result.success(true)
                     }
+                    // Un aviso push que llega con la app abierta: Android no lo
+                    // muestra solo (Firebase se lo da a la app), así que la app
+                    // lo publica en el mismo canal, como si viniera de afuera.
+                    "show" -> result.success(
+                        showNotification(call.argument<String>("title") ?: "", call.argument<String>("body") ?: "")
+                    )
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun showNotification(title: String, body: String): Boolean {
+        val manager = getSystemService(NotificationManager::class.java) ?: return false
+        if (!manager.areNotificationsEnabled() || (title.isEmpty() && body.isEmpty())) return false
+        createNotificationChannel()
+        val open = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH).setDefaults(Notification.DEFAULT_ALL)
+        }
+        @Suppress("DEPRECATION")
+        val accent = resources.getColor(R.color.notification_accent)
+        val notification = builder
+            .setSmallIcon(R.drawable.ic_stat_notify)
+            .setColor(accent)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(Notification.BigTextStyle().bigText(body))
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        manager.notify((System.currentTimeMillis() and 0x7fffffff).toInt(), notification)
+        return true
     }
 
     private companion object {

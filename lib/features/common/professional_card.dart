@@ -39,6 +39,7 @@ class ProfessionalCard extends StatelessWidget {
                       children: [
                         Text(pro.displayName, style: text.titleMedium),
                         if (pro.isVerified) const VerifiedBadge(compact: true),
+                        RankBadge(tier: pro.rankTier, compact: true),
                       ],
                     ),
                     const SizedBox(height: 2),

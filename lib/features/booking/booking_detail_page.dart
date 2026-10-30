@@ -99,6 +99,7 @@ class _Content extends StatelessWidget {
                         children: [
                           Text(b.professional!.displayName, style: text.titleMedium),
                           if (b.professional!.isVerified) const VerifiedBadge(compact: true),
+                          RankBadge(tier: b.professional!.rankTier, compact: true),
                         ],
                       ),
                       RatingLabel(rating: b.professional!.ratingAvg, count: b.professional!.ratingCount),

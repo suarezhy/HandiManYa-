@@ -78,6 +78,7 @@ class _Body extends ConsumerWidget {
                       style: const TextStyle(color: HyColors.primaryDark, fontWeight: FontWeight.w800, fontSize: 17),
                     ),
                     if (s.isVerified) const VerifiedBadge(),
+                    RankBadge(tier: s.rankTier),
                   ],
                 ),
               ),

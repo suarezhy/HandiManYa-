@@ -83,10 +83,26 @@ class FirebasePushPlatform implements PushPlatform {
     );
     final m = FirebaseMessaging.instance;
     FirebaseMessaging.onMessageOpenedApp.listen((msg) => _opened.add(_data(msg)));
+    // Con la app abierta el teléfono no muestra el aviso por su cuenta.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      FirebaseMessaging.onMessage.listen(_showInForeground);
+    } else if (!kIsWeb) {
+      await m.setForegroundNotificationPresentationOptions(alert: true, badge: true, sound: true);
+    }
     final initial = await m.getInitialMessage();
     if (initial != null) _initial = _data(initial);
     return m;
   }();
+
+  static Future<void> _showInForeground(RemoteMessage msg) async {
+    final n = msg.notification;
+    if (n == null) return;
+    try {
+      await _settings.invokeMethod<bool>('show', {'title': n.title ?? '', 'body': n.body ?? ''});
+    } catch (_) {
+      // Sin el aviso del sistema igual queda en Avisos dentro de la app.
+    }
+  }
 
   static Map<String, String> _data(RemoteMessage msg) => {for (final e in msg.data.entries) e.key: '${e.value}'};
 

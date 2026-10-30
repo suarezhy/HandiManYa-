@@ -18,6 +18,7 @@ import '../../core/widgets/problem_icon.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/catalog.dart';
 import '../../data/models/geo.dart';
+import '../../data/models/professional.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/city_picker.dart';
@@ -339,6 +340,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
                   const SizedBox(height: HySpacing.sm),
                   Text('Paso ${_index + 1} de $total', style: const TextStyle(color: HyColors.textMuted)),
                   Semantics(header: true, child: Text(_title, style: Theme.of(context).textTheme.headlineSmall)),
+                  if (widget.professionalId != null) _ForProfessional(id: widget.professionalId!),
                 ],
               ),
             ),
@@ -413,6 +415,14 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
     ],
   );
 
+  /// Pedido a una persona: solo los servicios que ofrece.
+  bool _offered(ServiceCategory c) {
+    final id = widget.professionalId;
+    if (id == null) return true;
+    final services = ref.watch(professionalDetailProvider(id)).value?.services ?? const <ProService>[];
+    return services.isEmpty || services.any((s) => s.categoryId == c.id);
+  }
+
   Widget _categoryList() {
     final categories = ref.watch(categoriesProvider);
     return categories.when(
@@ -424,7 +434,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
           list,
           slug: (c) => c.slug,
           name: (c) => c.name,
-        ).where((c) => categoryMatchesQuery(_categoryQuery, [c.name, c.description, c.slug])).toList();
+        ).where((c) => categoryMatchesQuery(_categoryQuery, [c.name, c.description, c.slug])).where(_offered).toList();
         if (shown.isEmpty) {
           return EmptyState(
             icon: Icons.search_off_rounded,
@@ -1335,4 +1345,33 @@ double? parseBudget(String text) {
   final n = double.tryParse(normal);
   if (n == null || n <= 0 || n > 100000) return null;
   return (n * 100).round() / 100;
+}
+
+/// "Para: …" arriba del pedido directo: a quién le llega, con su identidad
+/// verificada y su categoría. El pedido es solo para esa persona.
+class _ForProfessional extends ConsumerWidget {
+  const _ForProfessional({required this.id});
+
+  final String id;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(professionalDetailProvider(id)).value?.summary;
+    if (s == null) return const SizedBox.shrink();
+    return Padding(
+      key: const Key('request-for-pro'),
+      padding: const EdgeInsets.only(top: HySpacing.xs),
+      child: Wrap(
+        spacing: HySpacing.xs,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('Para: ${s.displayName}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+          if (s.isVerified) const VerifiedBadge(compact: true),
+          RankBadge(tier: s.rankTier, compact: true),
+          RatingLabel(rating: s.ratingAvg, count: s.ratingCount),
+        ],
+      ),
+    );
+  }
 }

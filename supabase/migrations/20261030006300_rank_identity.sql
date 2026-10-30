@@ -274,8 +274,71 @@ begin
   return v;
 end $$;
 
+alter function public.home_map_professionals(smallint) rename to _home_map_professionals_base;
+create function public.home_map_professionals(p_city smallint) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v jsonb := public._home_map_professionals_base(p_city); -- valida la sesión y la ciudad
+begin
+  return jsonb_set(v, '{professionals}', coalesce((
+    select jsonb_agg(p || jsonb_build_object('is_verified', public.hmy_identity_verified((p ->> 'id')::uuid),
+                                             'rank_tier', public.hmy_rank_tier_of((p ->> 'id')::uuid)) order by ord)
+    from jsonb_array_elements(v -> 'professionals') with ordinality as t(p, ord)), '[]'::jsonb));
+end $$;
+
+-- ---------------------------------------------------------------- Programar
+-- Una programada directa tiene que caer dentro del horario que el profesional
+-- publicó (hora de Bolivia). Sin horario publicado se acepta como antes; los
+-- trabajos ya tomados siguen dando HMY_SLOT_TAKEN.
+create function public.hmy_within_availability(p_pro uuid, p_start timestamptz, p_minutes int) returns boolean
+language sql stable security definer set search_path = public as $$
+  select not exists (select 1 from public.professional_availability where professional_id = p_pro)
+      or exists (
+        select 1 from public.professional_availability a
+        where a.professional_id = p_pro
+          and a.weekday = extract(isodow from p_start at time zone 'America/La_Paz')
+          and (p_start at time zone 'America/La_Paz')::time >= a.start_time
+          and (p_start at time zone 'America/La_Paz')::date
+              = ((p_start + make_interval(mins => p_minutes)) at time zone 'America/La_Paz')::date
+          and ((p_start + make_interval(mins => p_minutes)) at time zone 'America/La_Paz')::time <= a.end_time)
+$$;
+
+create or replace function public.create_booking(
+  p_professional uuid,
+  p_category int,
+  p_mode public.booking_mode,
+  p_description text,
+  p_address text,
+  p_address_reference text default null,
+  p_zone_id int default null,
+  p_scheduled_start timestamptz default null,
+  p_duration_minutes int default 120,
+  p_payment_method public.payment_method default null,
+  p_latitude numeric default null,
+  p_longitude numeric default null,
+  p_problem_ids int[] default null,
+  p_other_text text default null,
+  p_destination text default null,
+  p_budget numeric default null
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  if p_budget is not null and (p_budget <= 0 or p_budget > 100000) then raise exception 'HMY_INVALID_AMOUNT'; end if;
+  if p_mode = 'scheduled' and p_scheduled_start is not null
+     and not public.hmy_within_availability(p_professional, p_scheduled_start, coalesce(p_duration_minutes, 120)) then
+    raise exception 'HMY_OUTSIDE_AVAILABILITY';
+  end if;
+  v_id := public._create_booking_unpriced(p_professional, p_category, p_mode, p_description, p_address,
+    p_address_reference, p_zone_id, p_scheduled_start, p_duration_minutes, p_payment_method, p_latitude, p_longitude,
+    p_problem_ids, p_other_text, p_destination);
+  if p_budget is not null then perform public.propose_price(v_id, p_budget); end if;
+  return v_id;
+end $$;
+
 -- ---------------------------------------------------------------- Permisos
 revoke execute on function public.hmy_identity_verified(uuid) from public, anon, authenticated;
+revoke execute on function public.hmy_within_availability(uuid, timestamptz, int) from public, anon, authenticated;
 revoke execute on function public.hmy_rank_metrics(uuid) from public, anon, authenticated;
 revoke execute on function public.hmy_rank_tier(jsonb) from public, anon, authenticated;
 revoke execute on function public.hmy_recompute_rank(uuid) from public, anon, authenticated;
@@ -289,9 +352,12 @@ revoke execute on function public.hmy_rank_on_suspension() from public, anon, au
 grant execute on function public.hmy_recompute_rank(uuid) to service_role;
 revoke execute on function public._booking_detail_unranked(uuid) from public, anon, authenticated;
 revoke execute on function public._trip_share_view_fixture(text) from public, anon, authenticated;
+revoke execute on function public._home_map_professionals_base(smallint) from public, anon, authenticated;
 
 -- search_professionals y get_professional_public quedan abiertas como antes.
 revoke execute on function public.booking_detail(uuid) from public, anon;
 grant execute on function public.booking_detail(uuid) to authenticated;
 revoke execute on function public.trip_share_view(text) from public;
 grant execute on function public.trip_share_view(text) to anon, authenticated;
+revoke execute on function public.home_map_professionals(smallint) from public, anon;
+grant execute on function public.home_map_professionals(smallint) to authenticated;

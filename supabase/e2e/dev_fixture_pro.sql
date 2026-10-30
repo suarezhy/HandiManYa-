@@ -2,6 +2,9 @@
 --   aprobar   deja a …02 aprobado como PERFIL DE PRUEBA (test_fixture), disponible
 --             para ¡Ya! con lo que ya cargó en la app (Plomería, su municipio y zonas)
 --   revertir  lo deja como estaba: borrador, sin la marca, sin los registros de prueba
+--   saldo     carga Bs 100 de SALDO DE PRUEBA a la billetera de …02 (una sola vez:
+--             la clave lo hace idempotente). No es dinero real ni una recarga; queda
+--             como ajuste "Saldo de prueba (no es dinero real)" en el historial.
 --   estado    solo lectura
 -- No es una verificación de identidad: no crea ninguna verificación (Didit) y los
 -- clientes no lo ven como "Verificado". La regla de aprobación no cambia: la base
@@ -12,10 +15,10 @@
 -- Uso: psql "$DB_URL" -X -At -v ON_ERROR_STOP=1 -v action=estado -f supabase/e2e/dev_fixture_pro.sql
 \set ON_ERROR_STOP 1
 begin;
-select :'action' in ('aprobar', 'revertir', 'estado') as action_ok \gset
+select :'action' in ('aprobar', 'revertir', 'saldo', 'estado') as action_ok \gset
 \if :action_ok
 \else
-  \echo 'Acción desconocida: usa aprobar, revertir o estado.'
+  \echo 'Acción desconocida: usa aprobar, revertir, saldo o estado.'
   \quit
 \endif
 -- Sin la cuenta …02, \gset no recibe fila y psql se detiene.
@@ -31,7 +34,7 @@ begin
   end if;
 end $$;
 
-select :'action' = 'aprobar' as do_approve, :'action' = 'revertir' as do_revert \gset
+select :'action' = 'aprobar' as do_approve, :'action' = 'revertir' as do_revert, :'action' = 'saldo' as do_balance \gset
 
 \if :do_approve
 do $$
@@ -106,6 +109,26 @@ begin
 end $$;
 \endif
 
+\if :do_balance
+do $$
+declare v_pro uuid := (select id from auth.users where phone = '59170000002');
+begin
+  if not exists (select 1 from public.professional_profiles where user_id = v_pro and test_fixture) then
+    raise exception 'Solo para …02 marcado como perfil de prueba: usa "aprobar" primero';
+  end if;
+  insert into public.wallets (professional_id) values (v_pro) on conflict do nothing;
+  if exists (select 1 from public.wallet_ledger where idempotency_key = 'adjust:dev-fixture-saldo-1') then
+    raise notice 'El saldo de prueba ya estaba cargado: no se carga otra vez';
+  else
+    perform public.wallet_post(v_pro, 'adjustment', 100, 0, 'adjust:dev-fixture-saldo-1', null, null,
+                               'Saldo de prueba (no es dinero real)');
+    insert into public.admin_audit_log (actor_id, action, target_table, target_id, details)
+    values (null, 'dev_fixture.test_balance', 'wallets', v_pro::text, jsonb_build_object('amount', 100));
+    raise notice 'Bs 100 de saldo de prueba cargados a …02';
+  end if;
+end $$;
+\endif
+
 \echo '== …02 =='
 select 'estado ' || pp.status || ' · perfil de prueba=' || pp.test_fixture || ' · disponible=' || pp.is_available
        || ' · rol profesional=' || exists (select 1 from public.user_roles r where r.user_id = pp.user_id and r.role = 'professional')
@@ -116,6 +139,9 @@ select 'estado ' || pp.status || ' · perfil de prueba=' || pp.test_fixture || '
                                       where d.professional_id = pp.user_id and d.storage_path like 'dev-fixture/%')
        || ' · verificación de identidad: ' || coalesce((select status::text from public.identity_checks i
                                                        where i.professional_id = pp.user_id order by created_at desc limit 1), 'ninguna')
+       || ' · saldo disponible Bs ' || coalesce((select available::text from public.wallets w where w.professional_id = pp.user_id), '-')
+       || ' (de prueba: Bs ' || coalesce((select sum(available_delta)::text from public.wallet_ledger l
+                                         where l.professional_id = pp.user_id and l.idempotency_key like 'adjust:dev-fixture-%'), '0') || ')'
        || ' · teléfonos con avisos: ' || (select count(*) from public.push_devices d where d.user_id = pp.user_id and d.disabled_at is null)
 from public.professional_profiles pp where pp.user_id = :'p_id';
 select '¡Ya! de Plomería de …01, todo el municipio: le llega a '

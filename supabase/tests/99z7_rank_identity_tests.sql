@@ -77,6 +77,15 @@ select test.eq((select rank_tier from public.search_professionals(
                   p_city_id => (select id from public.cities where slug = 'tupiza-pt'), p_limit => 50)
                 where id = '00000000-0000-0000-0000-000009a9c001'), 'plata', 'la búsqueda muestra Plata');
 
+select test.login('00000000-0000-0000-0000-000009a9c011');
+select test.eq((select p ->> 'rank_tier' from jsonb_array_elements(
+                  public.home_map_professionals((select id from public.cities where slug = 'tupiza-pt')) -> 'professionals') p
+                where p ->> 'id' = '00000000-0000-0000-0000-000009a9c001'), 'plata', 'el mapa muestra Plata');
+select test.eq((select (p ->> 'is_verified')::boolean from jsonb_array_elements(
+                  public.home_map_professionals((select id from public.cities where slug = 'tupiza-pt')) -> 'professionals') p
+                where p ->> 'id' = '00000000-0000-0000-0000-000009a9c001'), true, 'y su identidad verificada');
+select test.logout();
+
 -- Un reporte grave sin resolver la quita; descartado, vuelve.
 insert into public.user_reports (reporter_id, reported_id, reason, details)
 values ('00000000-0000-0000-0000-000009a9c012', '00000000-0000-0000-0000-000009a9c001', 'acoso', 'Prueba Z7');
@@ -136,6 +145,32 @@ select test.eq(public.hmy_rank_tier('{"jobs":0,"reviews":0,"rating":null,"comple
 -- El perfil de prueba nunca tiene categoría.
 select test.eq(public.hmy_rank_tier((public.hmy_rank_metrics('00000000-0000-0000-0000-000009a9c002'))), 'none',
                'perfil de prueba: sin categoría');
+
+-- Programar a una persona: dentro de su horario publicado (hora de Bolivia).
+create temp table z7_t (k text primary key, v text);
+grant all on z7_t to authenticated;
+insert into public.professional_availability (professional_id, weekday, start_time, end_time)
+values ('00000000-0000-0000-0000-000009a9c001', 1, '08:00', '18:00');
+-- El próximo lunes a las 10:00 y a las 20:00 de Bolivia (UTC-4).
+insert into z7_t select 'lunes', (date_trunc('week', now() at time zone 'America/La_Paz') + interval '7 days')::date::text;
+select test.login('00000000-0000-0000-0000-000009a9c014');
+insert into z7_t select 'ok', public.create_booking('00000000-0000-0000-0000-000009a9c001',
+  (select id from public.service_categories where slug = 'plomeria'), 'scheduled', 'Programada Z7', 'Calle Z7',
+  p_scheduled_start => ((select v from z7_t where k = 'lunes') || ' 10:00')::timestamp at time zone 'America/La_Paz',
+  p_duration_minutes => 120);
+select test.expect_error($$select public.create_booking('00000000-0000-0000-0000-000009a9c001',
+  (select id from public.service_categories where slug = 'plomeria'), 'scheduled', 'Programada Z7 tarde', 'Calle Z7',
+  p_scheduled_start => ((select v from z7_t where k = 'lunes') || ' 17:00')::timestamp at time zone 'America/La_Paz',
+  p_duration_minutes => 120)$$, 'HMY_OUTSIDE_AVAILABILITY');
+select test.expect_error($$select public.create_booking('00000000-0000-0000-0000-000009a9c001',
+  (select id from public.service_categories where slug = 'plomeria'), 'scheduled', 'Programada Z7 martes', 'Calle Z7',
+  p_scheduled_start => ((select v from z7_t where k = 'lunes') || ' 10:00')::timestamp at time zone 'America/La_Paz'
+                       + interval '1 day', p_duration_minutes => 60)$$, 'HMY_OUTSIDE_AVAILABILITY');
+select test.logout();
+select test.eq((select professional_id::text || '/' || mode from public.bookings where id = (select v::uuid from z7_t where k = 'ok')),
+               '00000000-0000-0000-0000-000009a9c001/scheduled', 'la programada es solo para esa persona');
+select test.eq((select count(*)::int from public.booking_offers where booking_id = (select v::uuid from z7_t where k = 'ok')), 0,
+               'y no se ofrece a nadie más');
 
 -- Nadie la lee ni la escribe directo.
 select test.login('00000000-0000-0000-0000-000009a9c001');

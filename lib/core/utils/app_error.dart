@@ -170,6 +170,7 @@ class AppError implements Exception {
     'HMY_CANNOT_BOOK_SELF': 'No puedes solicitarte un servicio a ti mismo.',
     'HMY_INVALID_SCHEDULE': 'Elige un día y una hora desde 30 minutos hasta 60 días desde ahora.',
     'HMY_SLOT_TAKEN': 'Ese horario ya está ocupado. Elige otro.',
+    'HMY_OUTSIDE_AVAILABILITY': 'A esa hora no atiende. Mira sus horarios en su perfil y elige otro.',
     'HMY_DUPLICATE_REQUEST': 'Ya tienes una solicitud de este servicio para ese horario. Revísala en Mis solicitudes.',
     'HMY_ADDRESS_REQUIRED': 'Escribe la dirección donde se hará el trabajo.',
     'HMY_INVALID_CATEGORY': 'Ese servicio no está disponible. Elige otro.',

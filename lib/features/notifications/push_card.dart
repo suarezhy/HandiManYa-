@@ -96,7 +96,8 @@ class _PushCardState extends ConsumerState<PushCard> {
                 ref.invalidate(pushStatusProvider);
               },
               success:
-                  'Aviso de prueba enviado. Si no llega en un minuto, revisa los avisos en los ajustes del teléfono.',
+                  'Aviso de prueba enviado: aparece arriba de la pantalla en unos segundos. Si no lo ves, '
+                  'revisa los avisos de HandiMan ¡Ya! en los ajustes del teléfono.',
             ),
             child: const Text('Enviar aviso de prueba'),
           ),

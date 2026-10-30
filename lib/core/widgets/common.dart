@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../data/models/booking.dart';
+import '../../data/models/professional.dart';
 import 'buttons.dart';
 import 'word_safe_text.dart';
 import '../theme/tokens.dart';
@@ -113,6 +114,8 @@ class StatusChip extends StatelessWidget {
   );
 }
 
+/// "Identidad verificada": solo si el servidor confirmó una verificación de
+/// identidad real (0063). Ser aprobado o tener categoría no alcanza.
 class VerifiedBadge extends StatelessWidget {
   const VerifiedBadge({super.key, this.compact = false});
 
@@ -120,20 +123,23 @@ class VerifiedBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: 'Profesional verificado',
+    label: 'Identidad verificada',
     excludeSemantics: true,
     child: Container(
+      key: const Key('identity-badge'),
       padding: EdgeInsets.symmetric(horizontal: compact ? 6 : HySpacing.xs, vertical: 3),
       decoration: BoxDecoration(color: HyColors.greenSoft, borderRadius: BorderRadius.circular(HyRadii.pill)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.verified, size: 16, color: HyColors.greenDark),
+          const Icon(Icons.verified_user, size: 16, color: HyColors.greenDark),
           if (!compact) ...[
             const SizedBox(width: 4),
-            const Text(
-              'Verificado',
-              style: TextStyle(color: HyColors.greenDark, fontWeight: FontWeight.w700, fontSize: 13),
+            const Flexible(
+              child: Text(
+                'Identidad verificada',
+                style: TextStyle(color: HyColors.greenDark, fontWeight: FontWeight.w700, fontSize: 13),
+              ),
             ),
           ],
         ],
@@ -141,6 +147,107 @@ class VerifiedBadge extends StatelessWidget {
     ),
   );
 }
+
+/// Plata, Oro o Diamante junto al nombre. Al tocarla explica qué significa.
+/// Sin categoría no muestra nada (las reseñas ya dicen "Sin reseñas todavía").
+class RankBadge extends StatelessWidget {
+  const RankBadge({super.key, required this.tier, this.compact = false});
+
+  final RankTier tier;
+  final bool compact;
+
+  static (Color, Color) colors(RankTier t) => switch (t) {
+    RankTier.plata => (const Color(0xFFEEF0F3), const Color(0xFF4F5866)),
+    RankTier.oro => (const Color(0xFFFFF4D6), const Color(0xFF7A5200)),
+    RankTier.diamante => (const Color(0xFFE6F3FB), const Color(0xFF125A86)),
+    RankTier.none => (HyColors.surfaceMuted, HyColors.textMuted),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    if (tier == RankTier.none) return const SizedBox.shrink();
+    final (bg, fg) = colors(tier);
+    return Semantics(
+      button: true,
+      label: 'Categoría ${tier.label}. Toca para ver qué significa',
+      excludeSemantics: true,
+      child: InkWell(
+        key: Key('rank-badge-${tier.name}'),
+        borderRadius: BorderRadius.circular(HyRadii.pill),
+        onTap: () => showRankInfo(context, tier),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 28),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 6 : HySpacing.xs, vertical: 3),
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(HyRadii.pill)),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(tier == RankTier.diamante ? Icons.diamond_outlined : Icons.workspace_premium, size: 16, color: fg),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  tier.label,
+                  style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Qué significa cada categoría y qué no significa.
+Future<void> showRankInfo(BuildContext context, RankTier tier) => showModalBottomSheet<void>(
+  context: context,
+  showDragHandle: true,
+  isScrollControlled: true,
+  builder: (sheet) => SafeArea(
+    child: SingleChildScrollView(
+      key: const Key('rank-info'),
+      padding: const EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, HySpacing.md),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Categoría ${tier.label}', style: Theme.of(sheet).textTheme.titleLarge),
+          const SizedBox(height: HySpacing.xs),
+          const Text(
+            'La calcula HandiMan ¡Ya! con trabajos confirmados por clientes y reseñas reales. '
+            'Sube o baja sola y no se puede comprar.',
+          ),
+          const SizedBox(height: HySpacing.sm),
+          for (final t in [RankTier.plata, RankTier.oro, RankTier.diamante])
+            Padding(
+              padding: const EdgeInsets.only(bottom: HySpacing.xs),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '${t.label}: ',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    TextSpan(text: t.requirement),
+                  ],
+                ),
+              ),
+            ),
+          const Text(
+            'Además: cumplir los trabajos aceptados, cuenta en regla y sin reclamos ni reportes de seguridad '
+            'sin resolver.',
+            style: TextStyle(color: HyColors.textSecondary),
+          ),
+          const SizedBox(height: HySpacing.sm),
+          const Text(
+            'La categoría no es una verificación de identidad. Eso lo indica solo "Identidad verificada".',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    ),
+  ),
+);
 
 class RatingLabel extends StatelessWidget {
   const RatingLabel({super.key, required this.rating, required this.count});
@@ -151,7 +258,7 @@ class RatingLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (count == 0) {
-      return const Text('Nuevo · sin reseñas aún', style: TextStyle(color: HyColors.textMuted, fontSize: 14));
+      return const Text('Nuevo · Sin reseñas todavía', style: TextStyle(color: HyColors.textMuted, fontSize: 14));
     }
     return Semantics(
       label: 'Calificación ${Fmt.rating(rating)} de 5, $count reseñas',

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/tokens.dart';
+import 'professional.dart';
 
 double? _dn(Object? v) => v == null ? null : (v as num).toDouble();
 DateTime? _dt(Object? v) => v == null ? null : DateTime.parse(v as String);
@@ -267,6 +268,7 @@ class BookingProfessional {
     this.ratingAvg = 0,
     this.ratingCount = 0,
     this.isVerified = false,
+    this.rankTier = RankTier.none,
   });
 
   final String id;
@@ -275,6 +277,7 @@ class BookingProfessional {
   final double ratingAvg;
   final int ratingCount;
   final bool isVerified;
+  final RankTier rankTier;
 }
 
 class BookingDetail {
@@ -402,6 +405,7 @@ class BookingDetail {
               ratingAvg: _dn(pro['rating_avg']) ?? 0,
               ratingCount: (pro['rating_count'] as num?)?.toInt() ?? 0,
               isVerified: pro['is_verified'] as bool? ?? false,
+              rankTier: RankTier.parse(pro['rank_tier']),
             ),
       address: addr == null
           ? null
@@ -512,6 +516,7 @@ class PriceOffer {
               ratingAvg: _dn(pro['rating_avg']) ?? 0,
               ratingCount: (pro['rating_count'] as num?)?.toInt() ?? 0,
               isVerified: pro['is_verified'] as bool? ?? false,
+              rankTier: RankTier.parse(pro['rank_tier']),
             ),
     );
   }

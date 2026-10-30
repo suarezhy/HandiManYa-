@@ -694,7 +694,19 @@ class DemoBackend
     isAvailable: p.available,
     priceFrom: p.priceFrom,
     isVerified: p.status == VerificationStatus.approved,
+    rankTier: _rankOf(p),
   );
+
+  /// Las mismas reglas que el servidor (0063), con los datos de ejemplo.
+  static RankTier _rankOf(_Pro p) {
+    if (p.status != VerificationStatus.approved) return RankTier.none;
+    bool meets(int jobs, int reviews, double rating) =>
+        p.completedJobs >= jobs && p.ratingCount >= reviews && p.ratingAvg >= rating;
+    if (meets(150, 100, 4.8)) return RankTier.diamante;
+    if (meets(50, 30, 4.6)) return RankTier.oro;
+    if (meets(10, 8, 4.3)) return RankTier.plata;
+    return RankTier.none;
+  }
 
   @override
   Future<List<ProfessionalSummary>> search(SearchFilters f, {int limit = 20, int offset = 0}) async {

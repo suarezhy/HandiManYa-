@@ -12,9 +12,12 @@ import '../../data/providers.dart';
 import '../../router.dart';
 
 class _Slide {
-  const _Slide(this.image, this.aspectRatio, this.title, this.body);
+  const _Slide(this.image, this.aspectRatio, this.title, this.body, {this.focus = Alignment.center});
 
   final String image;
+
+  /// Qué parte de la foto se conserva al llenar el marco cuadrado: las caras.
+  final Alignment focus;
 
   /// Ancho / alto del archivo (test/onboarding_layout_test.dart lo compara
   /// con el archivo).
@@ -28,25 +31,27 @@ const _slides = [
     'assets/images/onboarding_1.jpg',
     570 / 568,
     'Profesionales de confianza cerca de ti',
-    'Plomeros, electricistas, albañiles, limpieza y mucho más en toda Bolivia. Todos verificados.',
+    'Plomeros, electricistas, limpieza y más en toda Bolivia. Revisamos sus documentos antes de aprobarlos.',
   ),
   _Slide(
     'assets/images/onboarding_2.jpg',
     518 / 570,
     '¿Lo necesitas ahora? Pídelo ¡Ya!',
     'Toca "Lo necesito ahora", cuéntanos qué pasó y avisamos al instante a los profesionales disponibles más cerca de ti.',
+    focus: Alignment.topCenter,
   ),
   _Slide(
     'assets/images/onboarding_3.jpg',
     720 / 689,
     'Conversa y coordina desde la app',
-    'Chatea con el profesional, recibe su cotización y sigue el estado de tu solicitud en todo momento.',
+    'Chatea con el profesional, acuerden el precio antes de empezar y sigue tu solicitud en todo momento.',
   ),
   _Slide(
     'assets/images/onboarding_4.jpg',
     700 / 815,
     'Trabajo bien hecho, con tranquilidad',
     'Pagas directo al profesional en efectivo o QR cuando termina, y calificas su trabajo para ayudar a otros.',
+    focus: Alignment.topCenter,
   ),
 ];
 
@@ -168,9 +173,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
 ///
 /// Las cuatro fotos van en el mismo marco cuadrado, del mismo tamaño en los
 /// cuatro pasos: el alto se calcula con el texto más largo de los cuatro
-/// (medido con el tamaño y la negrita del teléfono). Dentro del marco la foto
-/// se ve entera (BoxFit.contain): no se recorta ni se estira, y lo que sobra a
-/// los lados queda de un gris suave. Si con letra muy grande no cabe todo, la
+/// (medido con el tamaño y la negrita del teléfono). Las cuatro llenan el
+/// marco igual (BoxFit.cover, sin franjas grises): como son casi cuadradas,
+/// solo se pierde un poco de abajo en las más altas, nunca las caras. Si con letra muy grande no cabe todo, la
 /// foto queda en un mínimo y la pantalla se desplaza; "Continuar" y los
 /// puntos siempre se ven.
 class _SlideView extends StatelessWidget {
@@ -256,7 +261,7 @@ class _SlideView extends StatelessWidget {
   }
 }
 
-/// La foto completa en un marco cuadrado y redondeado: sin recorte, sin
+/// La foto en un marco cuadrado y redondeado, igual en los cuatro pasos: sin
 /// estirar y sin nada encima que tape caras.
 class _Picture extends StatelessWidget {
   const _Picture({required this.slide});
@@ -280,7 +285,8 @@ class _Picture extends StatelessWidget {
           color: HyColors.surfaceMuted,
           child: Image.asset(
             slide.image,
-            fit: BoxFit.contain,
+            fit: BoxFit.cover,
+            alignment: slide.focus,
             width: double.infinity,
             height: double.infinity,
             semanticLabel: 'Ilustración: ${slide.title}',

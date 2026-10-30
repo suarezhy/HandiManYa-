@@ -66,6 +66,38 @@ class SearchFilters {
   int get hashCode => Object.hash(cityId, categoryId, zoneId, query, availableNow, minRating, sort);
 }
 
+/// Categoría del profesional (0063). La calcula el servidor con trabajos
+/// confirmados y reseñas reales; sube y baja sola. No dice nada de su
+/// identidad: eso es "Identidad verificada".
+enum RankTier {
+  none,
+  plata,
+  oro,
+  diamante;
+
+  static RankTier parse(Object? v) => switch (v) {
+    'plata' => plata,
+    'oro' => oro,
+    'diamante' => diamante,
+    _ => none,
+  };
+
+  String get label => switch (this) {
+    none => 'Sin categoría',
+    plata => 'Plata',
+    oro => 'Oro',
+    diamante => 'Diamante',
+  };
+
+  /// Lo mínimo para cada categoría, como lo calcula el servidor.
+  String get requirement => switch (this) {
+    none => 'Todavía no reúne lo necesario para Plata.',
+    plata => '10 trabajos confirmados, 8 reseñas y 4,3 estrellas o más.',
+    oro => '50 trabajos confirmados, 30 reseñas y 4,6 estrellas o más.',
+    diamante => '150 trabajos confirmados, 100 reseñas y 4,8 estrellas o más.',
+  };
+}
+
 /// Datos públicos de un profesional aprobado. Nunca incluye dirección,
 /// coordenadas ni documentos.
 class ProfessionalSummary {
@@ -84,6 +116,7 @@ class ProfessionalSummary {
     this.isAvailable = false,
     this.priceFrom,
     this.isVerified = false,
+    this.rankTier = RankTier.none,
   });
 
   final String id;
@@ -99,7 +132,10 @@ class ProfessionalSummary {
   final int completedJobs;
   final bool isAvailable;
   final double? priceFrom;
+
+  /// Identidad verificada de verdad (0063), no solo aprobado.
   final bool isVerified;
+  final RankTier rankTier;
 
   String get areaLabel {
     if (zones.isEmpty) return city ?? '';
@@ -123,6 +159,7 @@ class ProfessionalSummary {
         isAvailable: m['is_available'] as bool? ?? false,
         priceFrom: m['price_from'] == null ? null : _d(m['price_from']),
         isVerified: m['is_verified'] as bool? ?? false,
+        rankTier: RankTier.parse(m['rank_tier']),
       );
 }
 
@@ -216,6 +253,8 @@ class MapProfessional {
     this.category,
     this.ratingAvg = 0,
     this.ratingCount = 0,
+    this.isVerified = false,
+    this.rankTier = RankTier.none,
   });
 
   factory MapProfessional.fromMap(Map<String, dynamic> m, {String? Function(String?)? photo}) => MapProfessional(
@@ -227,6 +266,8 @@ class MapProfessional {
     ratingCount: (m['rating_count'] as num?)?.toInt() ?? 0,
     latitude: (m['latitude'] as num).toDouble(),
     longitude: (m['longitude'] as num).toDouble(),
+    isVerified: m['is_verified'] as bool? ?? false,
+    rankTier: RankTier.parse(m['rank_tier']),
   );
 
   final String id;
@@ -237,6 +278,8 @@ class MapProfessional {
   final int ratingCount;
   final double latitude;
   final double longitude;
+  final bool isVerified;
+  final RankTier rankTier;
 }
 
 /// Lo que muestra el mapa del inicio: la ciudad (para centrarlo) y quiénes

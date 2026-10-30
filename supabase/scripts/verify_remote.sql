@@ -48,8 +48,8 @@ declare
     'hmy_price_lock','hmy_price_offers_close','hmy_price_offers_close_for_pro','hmy_price_role','propose_price','_hmy_assign_pro','hmy_commission_need','commission_for_amount','_hmy_require_cover','_hmy_reserve_extra','_hmy_extra_effective','hmy_ledger_activate_extras','cancel_price_offer','my_wallet_summary',
     'accept_price_offer','reject_price_offer','_create_ya_request_unpriced','_create_scheduled_request_unpriced',
     '_create_booking_unpriced','_booking_detail_unpriced',
-    'hmy_identity_verified','hmy_rank_metrics','hmy_rank_tier','hmy_recompute_rank','hmy_rank_tier_of','_booking_detail_unranked',
-    '_trip_share_view_fixture','search_professionals','get_professional_public','trip_share_view'];
+    'hmy_identity_verified','hmy_within_availability','hmy_rank_metrics','hmy_rank_tier','hmy_recompute_rank','hmy_rank_tier_of','_booking_detail_unranked',
+    '_trip_share_view_fixture','_home_map_professionals_base','home_map_professionals','search_professionals','get_professional_public','trip_share_view'];
   v_missing text;
   v_count int;
   v_failed int := 0;

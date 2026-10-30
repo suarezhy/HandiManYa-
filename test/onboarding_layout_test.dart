@@ -28,7 +28,7 @@ const slides = [
   (
     image: 'assets/images/onboarding_1.jpg',
     title: 'Profesionales de confianza cerca de ti',
-    body: 'Plomeros, electricistas, albañiles, limpieza y mucho más en toda Bolivia. Todos verificados.',
+    body: 'Plomeros, electricistas, limpieza y más en toda Bolivia. Revisamos sus documentos antes de aprobarlos.',
   ),
   (
     image: 'assets/images/onboarding_2.jpg',
@@ -40,7 +40,7 @@ const slides = [
   (
     image: 'assets/images/onboarding_3.jpg',
     title: 'Conversa y coordina desde la app',
-    body: 'Chatea con el profesional, recibe su cotización y sigue el estado de tu solicitud en todo momento.',
+    body: 'Chatea con el profesional, acuerden el precio antes de empezar y sigue tu solicitud en todo momento.',
   ),
   (
     image: 'assets/images/onboarding_4.jpg',
@@ -125,6 +125,8 @@ void main() {
       final s = jpegSize(path);
       expect(s.width / s.height, closeTo(ratio, 0.001), reason: path);
       expect(File(path).lengthSync(), lessThan(300 * 1024), reason: '$path pesa demasiado');
+      // Casi cuadradas: al llenar el marco cuadrado se pierde poco y nunca las caras.
+      expect(ratio, inInclusiveRange(0.85, 1.1), reason: '$path se recortaría demasiado');
     }
   });
 
@@ -177,8 +179,8 @@ void main() {
           expect(inside(screen, tester.getRect(next)), isTrue, reason: 'botón, paso ${i + 1}');
           expect(tester.getRect(next).height, greaterThanOrEqualTo(48));
 
-          // Mismo marco cuadrado en los cuatro pasos, y la foto entera
-          // adentro (contain: sin recortar ni estirar).
+          // Mismo marco cuadrado en los cuatro pasos; las cuatro fotos lo
+          // llenan igual (cover, sin franjas) y sin estirar.
           final img = tester.getRect(image);
           expect(img.width, closeTo(img.height, 0.5), reason: 'marco cuadrado, paso ${i + 1}');
           firstFrame ??= img;
@@ -188,7 +190,7 @@ void main() {
             reason: 'mismo tamaño que el paso 1, paso ${i + 1}',
           );
           final picture = tester.widget<Image>(find.descendant(of: image, matching: find.byType(Image)));
-          expect(picture.fit, BoxFit.contain, reason: s.image);
+          expect(picture.fit, BoxFit.cover, reason: s.image);
 
           if (mustFit) {
             for (final (name, f) in [('foto', image), ('título', title), ('texto', body)]) {
