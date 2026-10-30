@@ -8,7 +8,7 @@ select set_config('hmy.versions', :'versions', false);
 
 do $$
 declare
-  v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','arrival_pin_attempts','booking_addresses','booking_arrivals','booking_events','booking_offers','booking_photos','price_offers',
+  v_tables text[] := array['admin_audit_log','ai_agent_runs','ai_agents','ai_items','app_settings','arrival_pin_attempts','booking_addresses','booking_arrivals','booking_events','booking_offers','booking_photos','price_offers','professional_ranks','professional_rank_events',
     'booking_transitions','bookings','cities','commission_rules','daily_reports','consent_records','conversation_reads','conversations','cost_usage','cost_vendors',
     'departments','disputes','identity_checks','messages','notifications','otp_channel_choices','otp_sends','professional_availability','professional_documents',
     'professional_locations','professional_portfolio','professional_profiles','professional_services',
@@ -47,7 +47,9 @@ declare
     '_booking_detail_destination','_trip_share_view_base',
     'hmy_price_lock','hmy_price_offers_close','hmy_price_offers_close_for_pro','hmy_price_role','propose_price','_hmy_assign_pro','hmy_commission_need','commission_for_amount','_hmy_require_cover','_hmy_reserve_extra','_hmy_extra_effective','hmy_ledger_activate_extras','cancel_price_offer','my_wallet_summary',
     'accept_price_offer','reject_price_offer','_create_ya_request_unpriced','_create_scheduled_request_unpriced',
-    '_create_booking_unpriced','_booking_detail_unpriced'];
+    '_create_booking_unpriced','_booking_detail_unpriced',
+    'hmy_identity_verified','hmy_rank_metrics','hmy_rank_tier','hmy_recompute_rank','hmy_rank_tier_of','_booking_detail_unranked',
+    '_trip_share_view_fixture','search_professionals','get_professional_public','trip_share_view'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -164,6 +166,13 @@ begin
      and not has_table_privilege('authenticated', 'public.price_offers', 'SELECT')
      and (select count(*) from public.commission_rules where capture_at <> 'completed') = 0,
      'comisión: se reserva al acordar y se cobra al completar; precio fijo; las recargas no descuentan nada'),
+    (not has_table_privilege('authenticated', 'public.professional_ranks', 'SELECT')
+     and not has_table_privilege('authenticated', 'public.professional_ranks', 'UPDATE')
+     and not has_table_privilege('anon', 'public.professional_ranks', 'SELECT')
+     and not has_function_privilege('authenticated', 'public.hmy_recompute_rank(uuid)', 'EXECUTE')
+     and exists (select 1 from pg_trigger where tgname = 'reviews_rank')
+     and exists (select 1 from pg_trigger where tgname = 'bookings_rank'),
+     'categoría: la calcula la base; nadie la escribe ni la compra'),
     (not has_function_privilege('authenticated', 'public.hmy_push_claim(integer)', 'EXECUTE')
      and not has_function_privilege('authenticated', 'public.hmy_push_report(jsonb)', 'EXECUTE')
      and not has_column_privilege('authenticated', 'public.push_devices', 'token', 'SELECT')

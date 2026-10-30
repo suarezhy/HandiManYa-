@@ -163,7 +163,9 @@ class _WalletLine extends StatelessWidget {
       children: [
         Icon(icon, color: HyColors.primary, size: 20),
         const SizedBox(width: 6),
-        Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15))),
+        Expanded(
+          child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15)),
+        ),
       ],
     ),
   );

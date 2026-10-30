@@ -61,5 +61,6 @@ end $$;
 \ir 99z4_dev_test_fixture_tests.sql
 \ir 99z5_price_agreement_tests.sql
 \ir 99z6_agreed_commission_tests.sql
+\ir 99z7_rank_identity_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'

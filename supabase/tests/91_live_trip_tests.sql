@@ -59,7 +59,8 @@ do $$
 declare v jsonb := public.trip_share_view((select v from t_tr where k = 'tok'));
 begin
   perform test.eq(v ->> 'professional_name', 'Luis Llegada', 'compartir: el contacto ve quién va');
-  perform test.eq((v ->> 'professional_verified')::boolean, true, 'compartir: y si está verificado');
+  -- Aprobado sin verificación de identidad real (0063): no dice "verificado".
+  perform test.eq((v ->> 'professional_verified')::boolean, false, 'compartir: aprobado no es identidad verificada');
   perform test.eq((v -> 'trip' ->> 'latitude')::numeric, -17.800000::numeric, 'compartir: ve la ubicación en vivo');
   perform test.eq(v::text ~* 'Calle Viaje|address|phone|telefono|celular', false,
                   'compartir: nunca la dirección ni los teléfonos');

@@ -62,6 +62,14 @@ Matcher _code(String code) => throwsA(predicate((e) => AppError.from(e!).code ==
 Matcher _codeIn(Set<String> codes) =>
     throwsA(predicate((e) => codes.contains(AppError.from(e!).code), 'error con código ${codes.join(' o ')}'));
 
+/// 0062: nadie confirma sin precio. El cliente le propone un precio al
+/// profesional de prueba y él lo acepta: es lo que antes era "aceptar".
+Future<int> _agree(SupabaseBackend customer, SupabaseBackend pro, String id, {double amount = 150}) async {
+  final offer = await customer.proposePrice(id, amount, professionalId: _proId);
+  await pro.acceptPriceOffer(offer);
+  return offer;
+}
+
 Future<T> _step<T>(String name, Future<T> Function() run) async {
   try {
     final r = await run();
@@ -278,17 +286,25 @@ void main() {
         await expectLater(admin.myBookings(asProfessional: false), completion(isEmpty));
       });
       final walletBefore = await _step('saldo del profesional antes de aceptar', pro.wallet);
-      await _step('el profesional acepta y ve la dirección', () async {
-        await pro.accept(bookingId, isOffer: false);
+      final quote = await _step(
+        'antes de aceptar ve la comisión del precio',
+        () => pro.commissionForAmount(bookingId, 150),
+      );
+      await _step('sin precio acordado no se puede confirmar', () async {
+        final d = await pro.detail(bookingId);
+        expect(d.price.agreedAmount, isNull);
+      });
+      await _step('el cliente propone Bs 150, el profesional acepta y ve la dirección', () async {
+        await _agree(customer, pro, bookingId);
         final d = await pro.detail(bookingId);
         expect(d.status, BookingStatus.confirmed);
         expect(d.address?.line, 'Calle Prueba 123, casa verde');
       });
       if (methods.isNotEmpty) {
-        await _step('al aceptar se reserva el mínimo de Bs 5 (todavía no hay precio)', () async {
+        await _step('al acordar se reserva la comisión del precio acordado', () async {
           final w = await pro.wallet();
-          expect(w.reserved, closeTo(5, 0.005));
-          expect(w.available, closeTo(walletBefore.available - 5, 0.005));
+          expect(w.reserved, closeTo(quote.commission, 0.005));
+          expect(w.available, closeTo(walletBefore.available - quote.commission, 0.005));
         });
       }
       await _step('aviso dentro de la app: al cliente le llega que lo aceptaron', () async {
@@ -396,7 +412,8 @@ void main() {
       });
       await _step('en progreso y trabajo terminado', () async {
         await pro.updateProgress(bookingId, BookingStatus.inProgress);
-        await pro.updateProgress(bookingId, BookingStatus.workFinished, finalAmount: 150);
+        await pro.updateProgress(bookingId, BookingStatus.workFinished);
+        expect((await customer.detail(bookingId)).price.total, closeTo(150, 0.005));
       });
       final preview = await _step('comisión esperada sobre el precio final', () => pro.commissionPreview(bookingId));
       await _step('el cliente confirma, paga con QR y califica', () async {
@@ -533,14 +550,15 @@ void main() {
         expect(offer.distanceKm!, lessThan(3));
         expect((await pro.detail(yaId)).address, isNull);
       });
-      await _step('el profesional toma el ¡Ya! y recién ve la dirección', () async {
-        await pro.accept(yaId, isOffer: true);
+      late int yaOffer;
+      await _step('el profesional toma el ¡Ya! con precio acordado y recién ve la dirección', () async {
+        yaOffer = await _agree(customer, pro, yaId);
         final d = await pro.detail(yaId);
         expect(d.status, BookingStatus.confirmed);
         expect(d.address?.line, 'Calle Prueba 456');
       });
       await _step('el ¡Ya! tomado no se puede tomar otra vez', () async {
-        await expectLater(pro.accept(yaId, isOffer: true), _code('HMY_ALREADY_TAKEN'));
+        await expectLater(pro.acceptPriceOffer(yaOffer), _code('HMY_ALREADY_TAKEN'));
       });
 
       // Reportes: el cliente reporta y solo el equipo los ve y resuelve.
@@ -939,7 +957,7 @@ void main() {
       });
       await _step('su pedido sin empezar se cancela y nunca ve la dirección', () async {
         expect((await customer.detail(pending)).status, BookingStatus.cancelled);
-        await expectLater(pro.accept(pending, isOffer: false), throwsA(anything));
+        await expectLater(_agree(customer, pro, pending), throwsA(anything));
         final d = await pro.detail(pending).then<BookingDetail?>((d) => d, onError: (_) => null);
         expect(d?.address, isNull);
       });
@@ -975,7 +993,7 @@ void main() {
       await _step('su pedido se cancela y el profesional no va a esa casa', () async {
         expect((await pro.detail(open)).status, BookingStatus.cancelled);
         expect((await pro.detail(open)).address, isNull);
-        await expectLater(pro.accept(open, isOffer: false), throwsA(anything));
+        await expectLater(_agree(customer, pro, open), throwsA(anything));
       });
       await _step('un cliente suspendido no puede pedir', () async {
         await expectLater(customer.create(direct('pedido de un suspendido')), _code('HMY_ACCOUNT_SUSPENDED'));
@@ -1042,7 +1060,7 @@ void main() {
         final offer = (await pro.myBookings(asProfessional: true)).firstWhere((b) => b.id == mecId);
         expect(offer.isOffer, isTrue);
         expect((await pro.detail(mecId)).address, isNull);
-        await pro.accept(mecId, isOffer: true);
+        await _agree(customer, pro, mecId);
         final d = await pro.detail(mecId);
         expect(d.status, BookingStatus.confirmed);
         expect(d.address?.line, 'Av. Prueba km 9');
@@ -1074,7 +1092,7 @@ void main() {
         expect((await pro.detail(towId)).address, isNull);
       });
       await _step('al aceptar, la grúa ve la recogida, el destino y el vehículo', () async {
-        await pro.accept(towId, isOffer: true);
+        await _agree(customer, pro, towId);
         final d = await pro.detail(towId);
         expect(d.status, BookingStatus.confirmed);
         expect(d.address?.line, 'Av. Prueba km 9');
@@ -1110,7 +1128,7 @@ void main() {
       });
       await _step('la grúa acepta y sale en camino', () async {
         expect((await pro.detail(jobId)).address, isNull, reason: 'antes de aceptar no ve la recogida');
-        await pro.accept(jobId, isOffer: false);
+        await _agree(customer, pro, jobId, amount: 180);
         expect((await pro.detail(jobId)).address?.destination, 'Taller Central, 3er anillo');
         await pro.updateProgress(jobId, BookingStatus.onTheWay);
         expect(await pro.shareTripLocation(jobId, const GeoPoint(-17.789, -63.181), accuracyM: 20), isTrue);
@@ -1126,7 +1144,7 @@ void main() {
       });
       await _step('remolque en curso y terminado', () async {
         await pro.updateProgress(jobId, BookingStatus.inProgress);
-        await pro.updateProgress(jobId, BookingStatus.workFinished, finalAmount: 180);
+        await pro.updateProgress(jobId, BookingStatus.workFinished);
       });
       await _step('el cliente confirma, paga en efectivo y califica a la grúa', () async {
         await customer.confirmCompletion(jobId);
@@ -1183,7 +1201,7 @@ void main() {
         expect((await pro.myBookings(asProfessional: true)).where((b) => b.id == yaId && b.isOffer), isEmpty);
       });
       await _step('después de rechazar no puede aceptarlo ni rechazarlo otra vez', () async {
-        await expectLater(pro.accept(yaId, isOffer: true), _code('HMY_FORBIDDEN'));
+        await expectLater(pro.proposePrice(yaId, 150), _code('HMY_FORBIDDEN'));
         await expectLater(pro.decline(yaId, isOffer: true), _code('HMY_NOT_FOUND'));
       });
       await _step('el pedido del cliente sigue buscando profesional y lo cancela', () async {
@@ -1210,8 +1228,9 @@ void main() {
         expect((await pro.detail(schedId)).address, isNull);
         expect((await pro.list()).where((n) => n.kind == 'booking_new' && n.bookingId == schedId), isNotEmpty);
       });
-      await _step('el profesional la acepta y el cliente recibe el aviso', () async {
-        await pro.accept(schedId, isOffer: true);
+      late int schedOffer;
+      await _step('acuerdan el precio y el cliente recibe el aviso', () async {
+        schedOffer = await _agree(customer, pro, schedId);
         final d = await pro.detail(schedId);
         expect(d.status, BookingStatus.confirmed);
         expect(d.address?.line, 'Calle Prueba 789');
@@ -1219,7 +1238,7 @@ void main() {
         expect(notes, isNotEmpty);
       });
       await _step('aceptarla otra vez dice que ya está tomada', () async {
-        await expectLater(pro.accept(schedId, isOffer: true), _code('HMY_ALREADY_TAKEN'));
+        await expectLater(pro.acceptPriceOffer(schedOffer), _code('HMY_ALREADY_TAKEN'));
       });
       await _step('el cliente cancela la programada y no queda reserva', () async {
         await customer.cancel(schedId, 'Prueba E2E: cambio de planes');
@@ -1227,24 +1246,26 @@ void main() {
         expect((await pro.wallet()).reserved, 0);
       });
 
-      // Cotización: el profesional cotiza; el cliente acepta una y rechaza otra.
-      final quotedId = await _step('el cliente pide directo y el profesional cotiza', () async {
-        final id = await customer.create(near('Prueba E2E: cotización aceptada', professionalId: _proId));
-        await expectLater(customer.sendQuote(id, 1, null), _code('HMY_INVALID_TRANSITION'));
-        await expectLater(pro.sendQuote(id, 0, null), _code('HMY_INVALID_AMOUNT'));
-        await pro.sendQuote(id, 150, 'Prueba E2E');
+      // Precio: el profesional propone; el cliente acepta una y rechaza otra.
+      late int proposal;
+      final quotedId = await _step('el cliente pide directo y el profesional propone un precio', () async {
+        final id = await customer.create(near('Prueba E2E: precio aceptado', professionalId: _proId));
+        await expectLater(pro.proposePrice(id, 0), _code('HMY_INVALID_AMOUNT'));
+        proposal = await pro.proposePrice(id, 150, note: 'Prueba E2E');
         final d = await customer.detail(id);
         expect(d.status, BookingStatus.quoteSent);
-        expect(d.quoteAmount, closeTo(150, 0.005));
+        expect(d.price.agreedAmount, isNull);
         return id;
       });
-      await _step('el profesional no puede responder su propia cotización', () async {
-        await expectLater(pro.respondQuote(quotedId, accept: true), throwsA(anything));
+      await _step('el profesional no puede aceptar su propia propuesta', () async {
+        await expectLater(pro.acceptPriceOffer(proposal), _code('HMY_FORBIDDEN'));
         expect((await customer.detail(quotedId)).status, BookingStatus.quoteSent);
       });
-      await _step('el cliente acepta la cotización: queda confirmado', () async {
-        await customer.respondQuote(quotedId, accept: true);
-        expect((await pro.detail(quotedId)).status, BookingStatus.confirmed);
+      await _step('el cliente acepta el precio: queda confirmado', () async {
+        await customer.acceptPriceOffer(proposal);
+        final d = await pro.detail(quotedId);
+        expect(d.status, BookingStatus.confirmed);
+        expect(d.price.agreedAmount, closeTo(150, 0.005));
       });
       // Tiempo real (Supabase Realtime): lo que ve la app sin recargar.
       await _step('tiempo real: el mensaje del profesional le llega al cliente al momento', () async {
@@ -1270,12 +1291,13 @@ void main() {
         await customer.cancel(quotedId, 'Prueba E2E: fin de la prueba');
         await changed;
       });
-      await _step('otra cotización rechazada cancela el pedido', () async {
-        final id = await customer.create(near('Prueba E2E: cotización rechazada', professionalId: _proId));
-        await pro.sendQuote(id, 300, null);
-        await customer.respondQuote(id, accept: false);
-        expect((await pro.detail(id)).status, BookingStatus.cancelled);
+      await _step('un precio rechazado no confirma nada ni reserva saldo', () async {
+        final id = await customer.create(near('Prueba E2E: precio rechazado', professionalId: _proId));
+        final offer = await pro.proposePrice(id, 300);
+        await customer.rejectPriceOffer(offer);
+        expect((await pro.detail(id)).price.agreedAmount, isNull);
         expect((await pro.wallet()).reserved, 0);
+        await customer.cancel(id, 'Prueba E2E: fin de la prueba');
       });
 
       // Reseñas: la de la grúa aparece en el perfil y no se puede repetir.

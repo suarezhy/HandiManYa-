@@ -23,6 +23,9 @@ insert into public.trip_shares (booking_id, customer_id, token_hash, expires_at)
   ('00000000-0000-0000-0000-000009a90b01', '00000000-0000-0000-0000-000009a90e01',
    encode(extensions.digest('z4-enlace-de-prueba-0000000000', 'sha256'), 'hex'), now() + interval '1 hour');
 set session_replication_role = origin;
+-- Con una verificación de identidad real (0063 exige una para "verificado").
+insert into public.identity_checks (professional_id, sandbox, status)
+values ('00000000-0000-0000-0000-000009a90e02', false, 'approved');
 
 -- Sin la marca: igual que antes.
 select test.login('00000000-0000-0000-0000-000009a90e01');
