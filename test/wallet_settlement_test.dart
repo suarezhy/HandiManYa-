@@ -61,7 +61,7 @@ void main() {
 
   testWidgets('acordado, antes de confirmar: total Bs 100, reservado Bs 12, cobrado ${Fmt.bs(0)}', (tester) async {
     await _pump(tester, const Wallet(available: 88, reserved: 12));
-    expect(find.text('${Fmt.bs(88)}'), findsOneWidget);
+    expect(find.text(Fmt.bs(88)), findsOneWidget);
     expect(_text(tester, 'wallet-total'), 'Saldo total: ${Fmt.bs(100)}');
     expect(_text(tester, 'wallet-reserved'), 'Saldo reservado: ${Fmt.bs(12)}');
     expect(_text(tester, 'wallet-collected'), 'Comisiones cobradas: ${Fmt.bs(0)}');
