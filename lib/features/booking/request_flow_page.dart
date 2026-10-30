@@ -997,12 +997,23 @@ class ScheduleFields extends StatelessWidget {
           ),
           OutlinedButton.icon(
             icon: const Icon(Icons.schedule),
-            label: Text(time == null ? 'Elegir hora' : time!.format(context)),
+            label: Text(
+              time == null
+                  ? 'Elegir hora'
+                  : MaterialLocalizations.of(context).formatTimeOfDay(time!, alwaysUse24HourFormat: true),
+            ),
             onPressed: () async {
+              // Se abre para escribir la hora con el teclado numérico (24 h); el
+              // ícono del reloj del mismo diálogo cambia al reloj circular.
               final t = await showTimePicker(
                 context: context,
                 initialTime: time ?? const TimeOfDay(hour: 9, minute: 0),
+                initialEntryMode: TimePickerEntryMode.input,
                 helpText: 'Elige la hora',
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                  child: _FocusHourField(child: child!),
+                ),
               );
               if (t != null) onTime(t);
             },
@@ -1246,3 +1257,39 @@ String availabilityMessage(int n, {required bool wholeCity}) => switch (n) {
   1 => '1 profesional disponible cerca de ti recibirá tu pedido.',
   _ => '$n profesionales disponibles cerca de ti recibirán tu pedido. El primero que acepte irá.',
 };
+
+/// El diálogo de la hora en modo para escribir no pone el cursor solo: se pone
+/// en el campo de la hora para que el teclado numérico aparezca al abrirlo.
+class _FocusHourField extends StatefulWidget {
+  const _FocusHourField({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_FocusHourField> createState() => _FocusHourFieldState();
+}
+
+class _FocusHourFieldState extends State<_FocusHourField> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      EditableText? first;
+      void visit(Element e) {
+        if (first != null) return;
+        if (e.widget is EditableText) {
+          first = e.widget as EditableText;
+          return;
+        }
+        e.visitChildElements(visit);
+      }
+
+      context.visitChildElements(visit);
+      first?.focusNode.requestFocus();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
