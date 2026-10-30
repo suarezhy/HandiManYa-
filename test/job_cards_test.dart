@@ -11,7 +11,6 @@ import 'package:handimanya/features/pro_mode/pro_jobs_page.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'support/demo_login.dart';
 
 BookingSummary _b({
   String id = 'b1',
