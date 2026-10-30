@@ -233,6 +233,18 @@ abstract interface class ProRepository {
     required String clientKey,
   });
 
+  /// Recarga por QR bancario (0065). HMY_QR_UNAVAILABLE si todavía no hay un
+  /// proveedor de QR: queda la transferencia bancaria.
+  Future<QrRecharge> createQrRecharge(double amount);
+  Future<QrRecharge?> qrRecharge(String id);
+  Future<List<QrRecharge>> qrRecharges();
+
+  /// Solo desarrollo: simula el aviso del banco para un QR simulado propio.
+  Future<String> simulateQrPayment(String id);
+
+  /// Cuentas oficiales (verificadas) para la transferencia bancaria.
+  Future<List<RechargeBankAccount>> rechargeBankAccounts();
+
   /// Si la cuenta permite confirmar operaciones con huella o rostro.
   Future<bool> biometricEnabled();
 
@@ -413,6 +425,15 @@ abstract interface class FinanceRepository {
 
   /// [bankStatus]: sin_verificar, conciliada, no_encontrada, pendiente o todas.
   Future<List<ReconcileTopup>> topupsForReconciliation(String bankStatus);
+
+  /// Recargas por QR (0065). [status]: una de QrRechargeStatus, o null = todas.
+  Future<QrRechargeReport> ownerQrRecharges({QrRechargeStatus? status});
+
+  /// Una recarga en verificación: aprobar acredita lo que se pagó; con motivo y código nuevo.
+  Future<void> reviewQrRecharge(String id, {required bool approve, required String note, required String authMethod});
+
+  /// Revierte una recarga acreditada; no deja saldo negativo.
+  Future<void> reverseQrRecharge(String id, {required String reason, required String authMethod});
 
   /// Lo que hay detrás de cada tarjeta de Finanzas (0042), con las mismas
   /// definiciones del resumen. [kind]: tipo de movimiento; [month]: cualquier

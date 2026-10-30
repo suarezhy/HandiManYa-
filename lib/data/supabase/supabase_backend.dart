@@ -950,6 +950,32 @@ class SupabaseBackend
   }
 
   @override
+  Future<QrRecharge> createQrRecharge(double amount) async =>
+      QrRecharge.fromMap(await _db.rpc('create_qr_recharge', params: {'p_amount': amount}) as Map<String, dynamic>);
+
+  @override
+  Future<QrRecharge?> qrRecharge(String id) async {
+    final m = await _db.rpc('qr_recharge_status', params: {'p_id': id});
+    return m == null ? null : QrRecharge.fromMap(m as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<QrRecharge>> qrRecharges() async => [
+    for (final m in (await _db.rpc('my_qr_recharges') as List? ?? const []))
+      QrRecharge.fromMap(m as Map<String, dynamic>),
+  ];
+
+  @override
+  Future<String> simulateQrPayment(String id) async =>
+      await _db.rpc('dev_simulate_qr_payment', params: {'p_id': id}) as String;
+
+  @override
+  Future<List<RechargeBankAccount>> rechargeBankAccounts() async => [
+    for (final m in (await _db.rpc('recharge_bank_accounts') as List? ?? const []))
+      RechargeBankAccount.fromMap(m as Map<String, dynamic>),
+  ];
+
+  @override
   Future<bool> biometricEnabled() async {
     final m = await _db.from('security_settings').select('biometric_enabled').eq('user_id', _uid).maybeSingle();
     return m?['biometric_enabled'] as bool? ?? false;
@@ -1729,6 +1755,22 @@ class SupabaseBackend
       'p_auth_method': authMethod,
     },
   );
+
+  @override
+  Future<QrRechargeReport> ownerQrRecharges({QrRechargeStatus? status}) async => QrRechargeReport.fromMap(
+    await _db.rpc('owner_qr_recharges', params: {'p_status': status?.key}) as Map<String, dynamic>,
+  );
+
+  @override
+  Future<void> reviewQrRecharge(String id, {required bool approve, required String note, required String authMethod}) =>
+      _db.rpc(
+        'owner_review_qr_recharge',
+        params: {'p_id': id, 'p_approve': approve, 'p_note': note, 'p_auth_method': authMethod},
+      );
+
+  @override
+  Future<void> reverseQrRecharge(String id, {required String reason, required String authMethod}) =>
+      _db.rpc('owner_reverse_qr_recharge', params: {'p_id': id, 'p_reason': reason, 'p_auth_method': authMethod});
 
   @override
   Future<List<ReceivingAccount>> receivingAccounts() async => [

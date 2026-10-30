@@ -128,7 +128,7 @@ select test.eq((public.qr_recharge_status(pg_temp.qr('vieja')) ->> 'qr_payload')
 insert into tqr select 'p1', public.create_qr_recharge(10) ->> 'id';
 insert into tqr select 'p2', public.create_qr_recharge(10) ->> 'id';
 insert into tqr select 'p3', public.create_qr_recharge(10) ->> 'id';
-select test.expect_error($$select public.create_qr_recharge(10)$$, 'HMY_TOO_MANY_PENDING');
+select test.expect_error($$select public.create_qr_recharge(10)$$, 'HMY_TOO_MANY_QR');
 select test.eq(public.dev_simulate_qr_payment(pg_temp.qr('vieja')), 'verifying_paid_after_expiry', 'pago después de vencer');
 select test.logout();
 select test.eq((select status from public.qr_recharges where id = pg_temp.qr('vieja')), 'verifying', 'la vencida pagada se revisa');

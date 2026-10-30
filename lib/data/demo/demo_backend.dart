@@ -2353,6 +2353,139 @@ class DemoBackend
     return id;
   }
 
+  // Recargas por QR: en la demostración el QR siempre es simulado.
+  final _qr = <String, QrRecharge>{};
+  final _qrOwner = <String, String>{};
+
+  QrRecharge _qrNow(QrRecharge r) => r.status == QrRechargeStatus.pendingPayment && !r.expiresAt.isAfter(DateTime.now())
+      ? _qrWith(r, QrRechargeStatus.expired)
+      : r;
+
+  QrRecharge _qrWith(QrRecharge r, QrRechargeStatus s, {double? credited, String? reason}) => QrRecharge(
+    id: r.id,
+    reference: r.reference,
+    amount: r.amount,
+    status: s,
+    simulated: r.simulated,
+    qrPayload: s == QrRechargeStatus.pendingPayment ? r.qrPayload : null,
+    createdAt: r.createdAt,
+    expiresAt: r.expiresAt,
+    paidAmount: credited ?? r.paidAmount,
+    creditedAmount: credited ?? r.creditedAmount,
+    reviewReason: reason ?? r.reviewReason,
+    professionalName: r.professionalName,
+  );
+
+  @override
+  Future<QrRecharge> createQrRecharge(double amount) async {
+    await _latency(200);
+    final me = _me.id;
+    if (!_wallets.containsKey(me)) throw AppError.from('HMY_WALLET_NOT_FOUND');
+    if (amount < 10 || amount > 5000) throw AppError.from('HMY_INVALID_AMOUNT');
+    final pending = _qr.values.where(
+      (r) => _qrOwner[r.id] == me && _qrNow(r).status == QrRechargeStatus.pendingPayment,
+    );
+    if (pending.length >= 3) throw AppError.from('HMY_TOO_MANY_QR');
+    final n = _qr.length + 1;
+    final ref = 'HMY${(0xA1B2C3D400 + n).toRadixString(16).toUpperCase()}';
+    final now = DateTime.now();
+    final r = QrRecharge(
+      id: 'qr$n',
+      reference: ref,
+      amount: amount,
+      status: QrRechargeStatus.pendingPayment,
+      simulated: true,
+      qrPayload: 'HANDIMANYA-DEV|SIMULADO-NO-PAGAR|$ref|BOB|${amount.toStringAsFixed(2)}',
+      createdAt: now,
+      expiresAt: now.add(const Duration(minutes: 15)),
+      professionalName: _pros[me]?.displayName,
+    );
+    _qr[r.id] = r;
+    _qrOwner[r.id] = me;
+    return r;
+  }
+
+  @override
+  Future<QrRecharge?> qrRecharge(String id) async {
+    final r = _qr[id];
+    return r == null || _qrOwner[id] != _me.id ? null : _qrNow(r);
+  }
+
+  @override
+  Future<List<QrRecharge>> qrRecharges() async =>
+      [for (final r in _qr.values.where((r) => _qrOwner[r.id] == _me.id)) _qrNow(r)]
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+  @override
+  Future<String> simulateQrPayment(String id) async {
+    final r = _qr[id];
+    if (r == null || _qrOwner[id] != _me.id || !r.simulated) throw AppError.from('HMY_FORBIDDEN');
+    final now = _qrNow(r);
+    if (now.status == QrRechargeStatus.credited) return 'already_credited';
+    if (now.status == QrRechargeStatus.expired) {
+      _qr[id] = _qrWith(r, QrRechargeStatus.verifying, reason: 'paid_after_expiry');
+      return 'verifying_paid_after_expiry';
+    }
+    if (now.status != QrRechargeStatus.pendingPayment) return 'already_${now.status.key}';
+    _qr[id] = _qrWith(r, QrRechargeStatus.credited, credited: r.amount);
+    _post(_me.id, LedgerType.topup, r.amount, 0, 'Recarga simulada (no es dinero real) ${r.reference}');
+    _notify(_me.id, 'wallet_credited', 'Recarga acreditada', 'Se acreditaron ${Fmt.bs(r.amount)} a tu billetera.');
+    _changes.add(null);
+    return 'credited';
+  }
+
+  @override
+  Future<List<RechargeBankAccount>> rechargeBankAccounts() async => const [];
+
+  @override
+  Future<QrRechargeReport> ownerQrRecharges({QrRechargeStatus? status}) async {
+    final all = [for (final r in _qr.values) _qrNow(r)]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final counts = <QrRechargeStatus, int>{};
+    for (final r in all) {
+      counts[r.status] = (counts[r.status] ?? 0) + 1;
+    }
+    return QrRechargeReport(
+      items: status == null ? all : all.where((r) => r.status == status).toList(),
+      counts: counts,
+      unmatchedEvents: 0,
+    );
+  }
+
+  @override
+  Future<void> reviewQrRecharge(
+    String id, {
+    required bool approve,
+    required String note,
+    required String authMethod,
+  }) async {
+    final r = _qr[id];
+    if (r == null) throw AppError.from('HMY_NOT_FOUND');
+    if (note.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    if (r.status != QrRechargeStatus.verifying) throw AppError.from('HMY_ALREADY_REVIEWED');
+    final paid = r.paidAmount ?? r.amount;
+    _qr[id] = _qrWith(
+      r,
+      approve ? QrRechargeStatus.credited : QrRechargeStatus.rejected,
+      credited: approve ? paid : null,
+    );
+    if (approve) _post(_qrOwner[id]!, LedgerType.topup, paid, 0, 'Recarga simulada (no es dinero real) ${r.reference}');
+    _changes.add(null);
+  }
+
+  @override
+  Future<void> reverseQrRecharge(String id, {required String reason, required String authMethod}) async {
+    final r = _qr[id];
+    if (r == null) throw AppError.from('HMY_NOT_FOUND');
+    if (reason.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    if (r.status != QrRechargeStatus.credited) throw AppError.from('HMY_INVALID_STATUS');
+    final pro = _qrOwner[id]!;
+    final amount = r.creditedAmount ?? r.amount;
+    if ((_wallets[pro]?[0] ?? 0) < amount) throw AppError.from('HMY_INSUFFICIENT_BALANCE');
+    _post(pro, LedgerType.adjustment, -amount, 0, 'Reversión de la recarga ${r.reference}: $reason');
+    _qr[id] = _qrWith(r, QrRechargeStatus.reversed);
+    _changes.add(null);
+  }
+
   @override
   Future<bool> biometricEnabled() async => _biometric.contains(_me.id);
 

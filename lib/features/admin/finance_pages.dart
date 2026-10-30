@@ -12,6 +12,8 @@ import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/booking.dart';
 import '../../data/models/finance.dart';
+import '../../data/models/wallet.dart';
+import '../pro_mode/recharge_page.dart' show QrStatusChip;
 import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/photo_picker.dart';
@@ -340,6 +342,14 @@ class _FinanceSummaryView extends StatelessWidget {
               ? 'Pendiente de configuración'
               : '${s.receivingAccountsActive} activa(s) · ${s.receivingAccountsVerified} verificada(s)',
           onTap: () => go(Routes.adminFinanceAccounts),
+        ),
+        PanelTile(
+          key: const Key('fin-qr-recharges'),
+          icon: Icons.qr_code_2_rounded,
+          title: 'Recargas por QR',
+          subtitle: 'Pagos en verificación, acreditadas y reversiones',
+          onTap: () =>
+              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const OwnerQrRechargesPage())),
         ),
         PanelTile(
           icon: Icons.fact_check_outlined,
@@ -1464,4 +1474,172 @@ class _MonthsTable extends StatelessWidget {
       );
     },
   );
+}
+
+// ============================================================ Recargas por QR
+/// null = todas.
+final ownerQrRechargesProvider = FutureProvider.autoDispose.family<QrRechargeReport, QrRechargeStatus?>(
+  (ref, status) => ref.watch(backendProvider).ownerQrRecharges(status: status),
+);
+
+/// Recargas por QR (0065). Se acreditan solas con el aviso verificado del
+/// banco; aquí el Propietario revisa las que no coincidieron y revierte con
+/// motivo y código nuevo. No hay edición libre de saldos.
+class OwnerQrRechargesPage extends ConsumerStatefulWidget {
+  const OwnerQrRechargesPage({super.key});
+
+  @override
+  ConsumerState<OwnerQrRechargesPage> createState() => _OwnerQrRechargesPageState();
+}
+
+class _OwnerQrRechargesPageState extends ConsumerState<OwnerQrRechargesPage> {
+  QrRechargeStatus? _status = QrRechargeStatus.verifying;
+
+  Future<void> _review(QrRecharge r, {required bool approve}) async {
+    final note = await promptText(
+      context,
+      title: approve ? 'Aprobar y acreditar ${Fmt.bs(r.paidAmount ?? r.amount)}' : 'Rechazar la recarga',
+      label: approve ? 'Qué confirmaste con el banco' : 'Motivo del rechazo',
+      confirm: approve ? 'Continuar' : 'Rechazar',
+    );
+    if (note == null || !mounted) return;
+    final method = await _confirm(
+      context,
+      approve ? 'Acreditar una recarga revisada' : 'Rechazar una recarga',
+      details: [('Referencia', r.reference), ('Pagado', Fmt.bs(r.paidAmount ?? 0))],
+    );
+    if (method == null || !mounted) return;
+    await _run(
+      () => ref.read(backendProvider).reviewQrRecharge(r.id, approve: approve, note: note, authMethod: method),
+    );
+  }
+
+  Future<void> _reverse(QrRecharge r) async {
+    final reason = await promptText(
+      context,
+      title: 'Revertir ${Fmt.bs(r.creditedAmount ?? r.amount)}',
+      label: 'Motivo (por ejemplo, el banco anuló el pago)',
+      confirm: 'Continuar',
+    );
+    if (reason == null || !mounted) return;
+    final method = await _confirm(context, 'Revertir una recarga', details: [('Referencia', r.reference)]);
+    if (method == null || !mounted) return;
+    await _run(() => ref.read(backendProvider).reverseQrRecharge(r.id, reason: reason, authMethod: method));
+  }
+
+  Future<void> _run(Future<void> Function() f) async {
+    try {
+      await f();
+      ref.invalidate(ownerQrRechargesProvider);
+      _refreshFinance(ref);
+      if (mounted) showMessage(context, 'Listo. Quedó en el historial de cambios.');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = ref.watch(ownerQrRechargesProvider(_status));
+    final report = value.value;
+    return Scaffold(
+      appBar: AppBar(title: const OneLineText('Recargas por QR')),
+      body: AdminList<QrRecharge>(
+        value: value.whenData((r) => r.items),
+        onRefresh: () => ref.refresh(ownerQrRechargesProvider(_status).future),
+        emptyIcon: Icons.check_circle_outline,
+        emptyTitle: _status == QrRechargeStatus.verifying ? 'No hay pagos por revisar.' : 'No hay recargas.',
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Wrap(
+              spacing: HySpacing.xs,
+              runSpacing: HySpacing.xs,
+              children: [
+                for (final s in [null, ...QrRechargeStatus.values])
+                  ChoiceChip(
+                    key: Key('qr-filter-${s?.key ?? 'all'}'),
+                    label: Text('${s?.label ?? 'Todas'}${s == null ? '' : ' (${report?.counts[s] ?? 0})'}'),
+                    selected: _status == s,
+                    onSelected: (_) => setState(() => _status = s),
+                  ),
+              ],
+            ),
+            if ((report?.unmatchedEvents ?? 0) > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: HySpacing.sm),
+                child: InfoBanner(
+                  tone: StatusTone.warning,
+                  text:
+                      '${report!.unmatchedEvents} aviso(s) del banco no coinciden con ninguna recarga. Revísalos '
+                      'en el extracto antes de acreditar nada a mano.',
+                ),
+              ),
+            const SizedBox(height: HySpacing.sm),
+          ],
+        ),
+        itemBuilder: (context, r) => AppCard(
+          key: Key('owner-qr-${r.id}'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: HySpacing.sm,
+                runSpacing: HySpacing.xs,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(
+                    '${r.professionalName ?? 'Profesional'} · ${Fmt.bs(r.amount)}',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                  QrStatusChip(r.status),
+                ],
+              ),
+              Text(
+                '${r.reference} · ${Fmt.dateTime(r.createdAt)}${r.simulated ? ' · simulado (desarrollo)' : ''}',
+                style: const TextStyle(color: HyColors.textSecondary),
+              ),
+              if (r.paidAmount != null) Text('Pagado según el banco: ${Fmt.bs(r.paidAmount!)}'),
+              if (r.reviewReasonLabel != null)
+                Text(
+                  r.reviewReasonLabel!,
+                  style: const TextStyle(color: HyColors.warning, fontWeight: FontWeight.w700),
+                ),
+              if (r.reviewNote != null) Text('Nota: ${r.reviewNote}'),
+              if (r.reversalReason != null) Text('Reversión: ${r.reversalReason}'),
+              if (r.status == QrRechargeStatus.verifying) ...[
+                const SizedBox(height: HySpacing.sm),
+                Wrap(
+                  spacing: HySpacing.sm,
+                  runSpacing: HySpacing.xs,
+                  children: [
+                    FilledButton(
+                      key: Key('owner-qr-approve-${r.id}'),
+                      onPressed: () => _review(r, approve: true),
+                      child: const Text('Aprobar'),
+                    ),
+                    OutlinedButton(
+                      key: Key('owner-qr-reject-${r.id}'),
+                      onPressed: () => _review(r, approve: false),
+                      child: const Text('Rechazar'),
+                    ),
+                  ],
+                ),
+              ],
+              if (r.status == QrRechargeStatus.credited)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: Key('owner-qr-reverse-${r.id}'),
+                    onPressed: () => _reverse(r),
+                    icon: const Icon(Icons.undo_rounded),
+                    label: const Text('Revertir'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

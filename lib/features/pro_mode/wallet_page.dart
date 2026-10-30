@@ -13,6 +13,7 @@ import '../../data/models/wallet.dart';
 import '../../data/providers.dart';
 import '../common/photo_picker.dart';
 import '../security/confirm_identity.dart';
+import 'recharge_page.dart';
 import '../../core/widgets/trailing_row.dart';
 import '../../core/widgets/word_safe_text.dart';
 
@@ -52,9 +53,11 @@ class WalletPage extends ConsumerWidget {
                   ),
                   const SizedBox(height: HySpacing.md),
                   PrimaryButton(
+                    key: const Key('wallet-recharge'),
                     label: 'Recargar saldo',
                     icon: Icons.add_card,
-                    onPressed: () => _showTopupSheet(context, ref),
+                    onPressed: () =>
+                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const RechargePage())),
                   ),
                   const SizedBox(height: HySpacing.sm),
                   const InfoBanner(
@@ -273,7 +276,9 @@ class _TopupTile extends StatelessWidget {
   }
 }
 
-Future<void> _showTopupSheet(BuildContext context, WidgetRef ref) async {
+/// Transferencia bancaria: el profesional registra el pago con su comprobante
+/// y el equipo lo verifica antes de acreditar.
+Future<void> showTransferTopupSheet(BuildContext context, WidgetRef ref) async {
   final receipt = await showModalBottomSheet<TopupReceipt>(
     context: context,
     isScrollControlled: true,
@@ -408,13 +413,15 @@ class _TopupSheetState extends ConsumerState<_TopupSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Recargar saldo', style: Theme.of(context).textTheme.titleLarge),
+              Text('Transferencia bancaria', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: HySpacing.xs),
               const Text(
-                'Haz la transferencia o el pago por QR y luego registra aquí el monto. El equipo lo verifica y acredita tu saldo.',
+                'Transfiere a la cuenta oficial y registra aquí el monto, el número de transacción y el comprobante. '
+                'El equipo verifica el pago con el banco antes de acreditar tu saldo; no es al instante.',
                 style: TextStyle(color: HyColors.textSecondary, fontSize: 15),
               ),
               const SizedBox(height: HySpacing.md),
+              const _OfficialAccounts(),
               RadioGroup<int>(
                 groupValue: _methodId,
                 onChanged: (v) => setState(() => _methodId = v),
@@ -591,6 +598,52 @@ class TopupReceiptPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Cuentas oficiales que el Propietario cargó y verificó. Sin ninguna, se avisa
+/// que no se transfiera a cuentas que lleguen por mensaje.
+class _OfficialAccounts extends ConsumerWidget {
+  const _OfficialAccounts();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final accounts = ref.watch(rechargeBankAccountsProvider).value;
+    if (accounts == null) return const SizedBox.shrink();
+    if (accounts.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: HySpacing.md),
+        child: InfoBanner(
+          key: Key('official-accounts-none'),
+          tone: StatusTone.warning,
+          text:
+              'Todavía no hay una cuenta oficial verificada en la app. Usa solo los datos de abajo y nunca '
+              'transfieras a cuentas que te pasen por mensaje.',
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: HySpacing.md),
+      child: AppCard(
+        key: const Key('official-accounts'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Cuenta oficial de HandiMan ¡Ya!', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            for (final a in accounts) ...[
+              const SizedBox(height: HySpacing.xs),
+              Text('${a.bankName} · ${a.accountTypeLabel}', style: const TextStyle(fontSize: 15)),
+              Text('Titular: ${a.holderName}', style: const TextStyle(fontSize: 15)),
+              if (a.accountNumber != null)
+                SelectableText(
+                  'Cuenta: ${a.accountNumber}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+            ],
+          ],
+        ),
       ),
     );
   }

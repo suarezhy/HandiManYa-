@@ -129,7 +129,7 @@ begin
   update public.qr_recharges set status = 'expired'
   where professional_id = v_me and status = 'pending_payment' and expires_at <= now();
   if (select count(*) from public.qr_recharges where professional_id = v_me and status = 'pending_payment') >= 3 then
-    raise exception 'HMY_TOO_MANY_PENDING';
+    raise exception 'HMY_TOO_MANY_QR';
   end if;
 
   insert into public.qr_recharges (professional_id, amount, provider, simulated, provider_ref, expires_at)

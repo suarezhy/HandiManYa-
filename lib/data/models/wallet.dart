@@ -213,3 +213,143 @@ class CommissionPreview {
     );
   }
 }
+
+/// Estado de una recarga por QR (0065), como lo devuelve el servidor.
+enum QrRechargeStatus {
+  pendingPayment('pending_payment', 'Pendiente de pago'),
+  verifying('verifying', 'Pago en verificación'),
+  credited('credited', 'Acreditada'),
+  rejected('rejected', 'Rechazada'),
+  expired('expired', 'Vencida'),
+  reversed('reversed', 'Revertida');
+
+  const QrRechargeStatus(this.key, this.label);
+  final String key;
+  final String label;
+
+  bool get isFinal => this != pendingPayment && this != verifying;
+
+  static QrRechargeStatus parse(String? v) =>
+      QrRechargeStatus.values.firstWhere((s) => s.key == v, orElse: () => pendingPayment);
+}
+
+/// Una recarga por QR. El saldo se acredita solo con el aviso del proveedor
+/// verificado en el servidor; la app solo muestra el estado.
+class QrRecharge {
+  const QrRecharge({
+    required this.id,
+    required this.reference,
+    required this.amount,
+    required this.status,
+    required this.simulated,
+    this.qrPayload,
+    required this.createdAt,
+    required this.expiresAt,
+    this.paidAmount,
+    this.creditedAmount,
+    this.reviewReason,
+    this.professionalName,
+    this.reviewNote,
+    this.reversalReason,
+  });
+
+  final String id;
+  final String reference;
+  final double amount;
+  final QrRechargeStatus status;
+
+  /// QR de desarrollo: no se puede pagar en ningún banco.
+  final bool simulated;
+
+  /// Contenido del QR mientras está pendiente de pago.
+  final String? qrPayload;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final double? paidAmount;
+  final double? creditedAmount;
+
+  /// Por qué quedó en verificación: wrong_amount, wrong_currency o paid_after_expiry.
+  final String? reviewReason;
+
+  // Solo en la lista del Propietario.
+  final String? professionalName;
+  final String? reviewNote;
+  final String? reversalReason;
+
+  String? get reviewReasonLabel => switch (reviewReason) {
+    'wrong_amount' => 'El monto pagado no coincide',
+    'wrong_currency' => 'Se pagó en otra moneda',
+    'paid_after_expiry' => 'Se pagó después de vencer',
+    _ => null,
+  };
+
+  factory QrRecharge.fromMap(Map<String, dynamic> m) => QrRecharge(
+    id: m['id'] as String,
+    reference: m['reference'] as String,
+    amount: _d(m['amount']),
+    status: QrRechargeStatus.parse(m['status'] as String?),
+    simulated: m['simulated'] as bool? ?? false,
+    qrPayload: m['qr_payload'] as String?,
+    createdAt: DateTime.parse(m['created_at'] as String),
+    expiresAt: DateTime.parse(m['expires_at'] as String),
+    paidAmount: m['paid_amount'] == null ? null : _d(m['paid_amount']),
+    creditedAmount: m['credited_amount'] == null ? null : _d(m['credited_amount']),
+    reviewReason: m['review_reason'] as String?,
+    professionalName: m['professional'] as String?,
+    reviewNote: m['review_note'] as String?,
+    reversalReason: m['reversal_reason'] as String?,
+  );
+}
+
+/// Cuenta oficial para la transferencia bancaria: solo las que el Propietario
+/// cargó y verificó con su banco.
+class RechargeBankAccount {
+  const RechargeBankAccount({
+    required this.id,
+    required this.label,
+    required this.bankName,
+    required this.holderName,
+    required this.accountType,
+    this.accountNumber,
+  });
+
+  final int id;
+  final String label;
+  final String bankName;
+  final String holderName;
+  final String accountType;
+  final String? accountNumber;
+
+  String get accountTypeLabel => switch (accountType) {
+    'caja_ahorro' => 'Caja de ahorro',
+    'cuenta_corriente' => 'Cuenta corriente',
+    _ => 'QR',
+  };
+
+  factory RechargeBankAccount.fromMap(Map<String, dynamic> m) => RechargeBankAccount(
+    id: (m['id'] as num).toInt(),
+    label: m['label'] as String,
+    bankName: m['bank_name'] as String,
+    holderName: m['holder_name'] as String,
+    accountType: m['account_type'] as String,
+    accountNumber: m['account_number'] as String?,
+  );
+}
+
+/// Lista del Propietario: recargas por QR y cuántos avisos no encontraron recarga.
+class QrRechargeReport {
+  const QrRechargeReport({required this.items, required this.counts, required this.unmatchedEvents});
+
+  final List<QrRecharge> items;
+  final Map<QrRechargeStatus, int> counts;
+  final int unmatchedEvents;
+
+  factory QrRechargeReport.fromMap(Map<String, dynamic> m) => QrRechargeReport(
+    items: [for (final i in (m['items'] as List? ?? const [])) QrRecharge.fromMap(i as Map<String, dynamic>)],
+    counts: {
+      for (final e in ((m['summary'] as Map<String, dynamic>?) ?? const {}).entries)
+        QrRechargeStatus.parse(e.key): ((e.value as Map)['count'] as num).toInt(),
+    },
+    unmatchedEvents: (m['unmatched_events'] as num?)?.toInt() ?? 0,
+  );
+}
