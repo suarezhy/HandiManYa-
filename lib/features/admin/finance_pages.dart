@@ -1143,7 +1143,7 @@ class _DebtsStat extends ConsumerWidget {
       tone: (l?.total ?? 0) > 0 ? StatusTone.danger : StatusTone.neutral,
       detail: switch (d) {
         AsyncData(value: null) => 'Se activa con el nuevo cobro de comisiones',
-        AsyncData(value: final l?) => '${Fmt.bs(l.sumBs)} · se cobran de la próxima recarga',
+        AsyncData(value: final l?) => '${Fmt.bs(l.sumBs)} · de antes del cobro al confirmar',
         AsyncError() => 'No se pudo cargar',
         _ => null,
       },
@@ -1175,8 +1175,9 @@ class CommissionDebtsPage extends ConsumerWidget {
               padding: EdgeInsets.only(bottom: HySpacing.sm),
               child: InfoBanner(
                 text:
-                    'Faltó saldo al completar estos trabajos. El profesional no acepta trabajos nuevos hasta pagar, '
-                    'y se descuenta solo de su próxima recarga; cada cobro queda en Movimientos.',
+                    'Son de antes del cobro al confirmar: faltó saldo al completar estos trabajos. Ya no se '
+                    'descuentan de las recargas. El profesional no acepta trabajos nuevos hasta que el equipo '
+                    'lo resuelva con un movimiento registrado.',
               ),
             ),
           ],

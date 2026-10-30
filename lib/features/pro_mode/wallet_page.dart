@@ -59,9 +59,9 @@ class WalletPage extends ConsumerWidget {
                   const SizedBox(height: HySpacing.sm),
                   const InfoBanner(
                     text:
-                        'Antes de aceptar ves la comisión. Al aceptar reservamos la comisión completa de tu saldo; '
-                        'se cobra cuando el trabajo se completa y se devuelve si se cancela. Si falta saldo al '
-                        'completar, queda pendiente y se descuenta de tu próxima recarga.',
+                        'Antes de acordar un precio ves la comisión. Al acordarlo se reserva de tu saldo y no se '
+                        'puede usar en otro trabajo. Se cobra solo cuando el cliente confirma que el trabajo terminó, '
+                        'y si se cancela vuelve entera a tu saldo disponible. Tu saldo nunca queda negativo.',
                   ),
                   if (pending.isNotEmpty) ...[
                     const SectionHeader(title: 'Recargas en revisión'),
@@ -128,14 +128,26 @@ class _BalanceCard extends StatelessWidget {
           style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: HySpacing.sm),
-        _WalletLine(icon: Icons.lock_clock_outlined, text: 'Saldo reservado en trabajos: ${Fmt.bs(wallet.reserved)}'),
+        _WalletLine(
+          key: const Key('wallet-total'),
+          icon: Icons.account_balance_wallet_outlined,
+          text: 'Saldo total: ${Fmt.bs(wallet.total)}',
+        ),
+        _WalletLine(
+          key: const Key('wallet-reserved'),
+          icon: Icons.lock_clock_outlined,
+          text: 'Saldo reservado: ${Fmt.bs(wallet.reserved)}',
+        ),
         _WalletLine(
           key: const Key('wallet-collected'),
           icon: Icons.receipt_long_outlined,
           text: 'Comisiones cobradas: ${Fmt.bs(wallet.commissionsCollected)}',
         ),
         if (wallet.commissionPending > 0)
-          _WalletLine(icon: Icons.error_outline, text: 'Comisión pendiente: ${Fmt.bs(wallet.commissionPending)}'),
+          _WalletLine(
+            icon: Icons.error_outline,
+            text: 'Comisión anterior sin cobrar: ${Fmt.bs(wallet.commissionPending)}',
+          ),
         if (wallet.extrasAwaitingFunds > 0)
           _WalletLine(
             key: const Key('wallet-awaiting'),

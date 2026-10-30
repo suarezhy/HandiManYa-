@@ -403,8 +403,9 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
               const InfoBanner(
                 icon: Icons.info_outline,
                 text:
-                    'Al aceptar se reserva la comisión completa (o esta reserva, si es mayor). Se cobra al completar '
-                    'y vuelve al saldo si se cancela. Si falta saldo, queda pendiente y se cobra de la próxima recarga.',
+                    'Al acordar el precio se reserva la comisión completa (o esta reserva, si es mayor). Se cobra '
+                    'cuando el cliente confirma que el trabajo terminó y vuelve al saldo si se cancela. Sin saldo '
+                    'suficiente el profesional no puede acordar el precio; nunca queda saldo negativo.',
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

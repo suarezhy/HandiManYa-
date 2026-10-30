@@ -178,7 +178,7 @@ class AppError implements Exception {
     'HMY_TOO_MANY_OPEN_REQUESTS': 'Tienes varias solicitudes abiertas. Espera respuesta o cancela alguna.',
     'HMY_INVALID_TRANSITION': 'Esta acción ya no está disponible. Actualiza la pantalla.',
     'HMY_INSUFFICIENT_BALANCE': 'Tu saldo no alcanza para aceptar trabajos. Recarga tu billetera.',
-    'HMY_COMMISSION_DEBT': 'Tienes una comisión pendiente de un trabajo anterior. Recarga tu billetera: se paga sola y vuelves a aceptar trabajos.',
+    'HMY_COMMISSION_DEBT': 'Tienes una comisión sin cobrar de un trabajo anterior. Escribe a soporte para resolverla y vuelves a aceptar trabajos.',
     'HMY_NO_PUSH_DEVICE': 'Primero activa los avisos en este teléfono.',
     'HMY_REASON_REQUIRED': 'Escribe el motivo.',
     'HMY_INVALID_AMOUNT': 'Revisa el monto.',

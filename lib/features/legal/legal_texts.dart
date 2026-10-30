@@ -6,7 +6,7 @@ import '../../data/models/booking.dart';
 
 /// Versión de los textos. Si cambia, se vuelve a pedir la aceptación y queda
 /// registrada en `consent_records`.
-const legalVersion = '2026-10-borrador-2';
+const legalVersion = '2026-10-borrador-3';
 
 const _draftNotice =
     'BORRADOR para revisión legal. No es un texto final ni está aprobado por un abogado. '
@@ -152,10 +152,10 @@ Mi billetera
 
 Comisión
 • La comisión, la reserva y el saldo mínimo los define la administración por servicio y ciudad, y se muestran antes de que aceptes un trabajo.
-• Al aceptar un trabajo se reserva de tu saldo la comisión completa (si todavía no hay precio, la reserva mínima del servicio).
-• La comisión se cobra cuando el trabajo se completa, según el precio final. Si es menor que lo reservado, la diferencia vuelve a tu saldo.
+• Al acordar el precio de un trabajo se reserva de tu saldo la comisión completa. Lo reservado no se puede usar en otro trabajo.
+• La comisión se cobra una sola vez, cuando el cliente confirma que el trabajo terminó, y nunca es más que lo reservado.
 • Si el trabajo se cancela, la reserva vuelve entera a tu saldo disponible.
-• Si al completar no alcanza tu saldo, lo que falta queda como comisión pendiente: no puedes aceptar trabajos nuevos hasta pagarla, y se descuenta de tu próxima recarga.
+• Si no te alcanza el saldo, no puedes acordar ese precio. Tu saldo nunca queda negativo y las recargas no se usan para pagar comisiones viejas.
 • El pago del cliente por el servicio es todo tuyo: lo recibes directamente en efectivo o por QR.
 
 Historial de movimientos

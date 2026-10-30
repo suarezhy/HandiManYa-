@@ -12,6 +12,9 @@ class Wallet {
   final double available;
   final double reserved;
 
+  /// Saldo total: lo disponible más lo reservado en trabajos acordados.
+  double get total => available + reserved;
+
   /// Comisiones cobradas, según el libro de movimientos.
   final double commissionsCollected;
 

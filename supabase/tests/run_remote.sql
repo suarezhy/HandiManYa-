@@ -70,5 +70,6 @@ set session_replication_role = origin;
 \ir 99z5_price_agreement_tests.sql
 \ir 99z6_agreed_commission_tests.sql
 \ir 99z7_rank_identity_tests.sql
+\ir 99z8_commission_settlement_tests.sql
 rollback;
 \echo 'Pruebas terminadas; todo se deshizo (ROLLBACK).'

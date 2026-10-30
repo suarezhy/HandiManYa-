@@ -442,8 +442,8 @@ enum TopupFilter {
   };
 }
 
-/// Comisión que faltó cobrar al completar un trabajo (0043). Se cobra sola de
-/// la próxima recarga del profesional; mientras tanto no acepta trabajos.
+/// Comisión que faltó cobrar al completar un trabajo (0043, antes de 0062).
+/// Ya no se descuenta de las recargas; mientras tanto no acepta trabajos.
 class CommissionDebt {
   const CommissionDebt({
     required this.bookingId,
