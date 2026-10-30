@@ -12,6 +12,14 @@ do $$ begin
     raise exception 'HMY: ya existen usuarios de prueba (@test.bo o +59160000 80x); no se corrió nada.';
   end if;
 end $$;
+-- Los profesionales que ya están en la base (en dev, la cuenta de prueba …02
+-- aprobada) no deben aparecer en las búsquedas ni recibir pedidos de las
+-- pruebas: dentro de esta transacción, que se deshace, quedan en borrador y
+-- no disponibles. Sin disparadores, para no crear avisos ni historial.
+set session_replication_role = replica;
+update public.professional_profiles set status = 'draft', is_available = false
+where user_id::text not like '00000000-%';
+set session_replication_role = origin;
 \ir 10_schema_tests.sql
 \ir 20_ya_dispatch_tests.sql
 \ir 30_location_photos_tests.sql

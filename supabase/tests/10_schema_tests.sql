@@ -152,7 +152,7 @@ select test.logout();
 
 -- Un cliente no ve a profesionales no aprobados
 select test.login(null);
-select test.eq((select count(*)::int from public.search_professionals()), 0, 'búsqueda no muestra postulaciones pendientes');
+select test.eq((select count(*)::int from public.search_professionals() s where s.id::text like '00000000-%'), 0, 'búsqueda no muestra postulaciones pendientes');
 select test.eq((select count(*)::int from public.professional_profiles), 0, 'la tabla de profesionales no es pública');
 select test.logout();
 
@@ -173,11 +173,11 @@ end $$;
 
 select test.login(null);
 do $$ begin
-  perform test.eq((select count(*)::int from public.search_professionals()), 1, 'búsqueda anónima muestra profesionales aprobados');
-  perform test.eq((select count(*)::int from public.search_professionals(p_query => 'plomeria')), 1, 'búsqueda sin tildes encuentra Plomería');
-  perform test.eq((select count(*)::int from public.search_professionals(p_query => 'pintor')), 0, 'búsqueda sin coincidencias');
-  perform test.eq((select count(*)::int from public.search_professionals(p_available_now => true)), 0, 'filtro disponible ahora');
-  perform test.eq((select zones[1] from public.search_professionals()), 'Centro', 'muestra solo la zona general');
+  perform test.eq((select count(*)::int from public.search_professionals() s where s.id::text like '00000000-%'), 1, 'búsqueda anónima muestra profesionales aprobados');
+  perform test.eq((select count(*)::int from public.search_professionals(p_query => 'plomeria') s where s.id::text like '00000000-%'), 1, 'búsqueda sin tildes encuentra Plomería');
+  perform test.eq((select count(*)::int from public.search_professionals(p_query => 'pintor') s where s.id::text like '00000000-%'), 0, 'búsqueda sin coincidencias');
+  perform test.eq((select count(*)::int from public.search_professionals(p_available_now => true) s where s.id::text like '00000000-%'), 0, 'filtro disponible ahora');
+  perform test.eq((select zones[1] from public.search_professionals() s where s.id::text like '00000000-%'), 'Centro', 'muestra solo la zona general');
   perform test.eq((select count(*)::int from public.professional_documents), 0, 'documentos de identidad no son públicos');
 end $$;
 select test.logout();
@@ -385,7 +385,7 @@ select public.review_professional_application('00000000-0000-0000-0000-000000000
 select test.logout();
 do $$ begin
   perform test.eq((select active_role::text from public.profiles where id = '00000000-0000-0000-0000-0000000000b1'), 'customer', 'suspender devuelve al modo cliente');
-  perform test.eq((select count(*)::int from public.search_professionals()), 1, 'suspendido sale de la búsqueda');
+  perform test.eq((select count(*)::int from public.search_professionals() s where s.id::text like '00000000-%'), 1, 'suspendido sale de la búsqueda');
 end $$;
 select test.login('00000000-0000-0000-0000-0000000000b1');
 select test.expect_error($$select public.set_active_role('professional')$$, 'HMY_PROFESSIONAL_NOT_APPROVED');
