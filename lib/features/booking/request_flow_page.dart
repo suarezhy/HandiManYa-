@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/config/country.dart';
 import '../../core/services/location_service.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/bolivia_geo.dart';
@@ -79,6 +81,9 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
   TimeOfDay? _time;
   int _duration = 120;
   PaymentMethod _payment = PaymentMethod.cash;
+
+  /// Lo que el cliente ofrece pagar (opcional).
+  final _budget = TextEditingController();
   bool _sending = false;
   String? _scheduleError;
   GeoPoint? _point;
@@ -103,7 +108,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
 
   @override
   void dispose() {
-    for (final c in [_otherText, _description, _address, _reference, _destination, _categorySearch]) {
+    for (final c in [_otherText, _description, _address, _reference, _destination, _categorySearch, _budget]) {
       c.dispose();
     }
     super.dispose();
@@ -201,6 +206,7 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
       ],
       otherText: _otherSelected ? _otherText.text.trim() : null,
       destination: _isTow ? _destination.text.trim() : null,
+      budget: parseBudget(_budget.text),
     );
   }
 
@@ -696,6 +702,29 @@ class _RequestFlowPageState extends ConsumerState<RequestFlowPage> {
             key: Key('address-privacy'),
             icon: Icons.lock_outline,
             text: 'Tu dirección exacta solo la verá el profesional que acepte tu solicitud.',
+          ),
+          const SizedBox(height: HySpacing.lg),
+          Text('¿Cuánto quieres pagar?', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: HySpacing.xs),
+          TextFormField(
+            key: const Key('request-budget'),
+            controller: _budget,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+            decoration: InputDecoration(
+              labelText: 'Tu precio (opcional)',
+              prefixText: kCountry.moneyPrefix,
+              prefixIcon: const Icon(Icons.sell_outlined),
+            ),
+            validator: (v) =>
+                (v ?? '').trim().isEmpty || parseBudget(v!) != null ? null : 'Escribe un monto entre 1 y 100.000',
+          ),
+          const SizedBox(height: HySpacing.xs),
+          Text(
+            widget.professionalId == null
+                ? 'Los profesionales aceptan tu precio o te proponen otro. Nadie empieza hasta que los dos acepten el mismo.'
+                : 'El profesional acepta tu precio o te propone otro. Nadie empieza hasta que los dos acepten el mismo.',
+            style: const TextStyle(color: HyColors.textMuted, fontSize: 14),
           ),
           const SizedBox(height: HySpacing.lg),
           Text('¿Cómo vas a pagar?', style: Theme.of(context).textTheme.titleMedium),
@@ -1292,4 +1321,18 @@ class _FocusHourFieldState extends State<_FocusHourField> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// El precio que escribe el cliente: null si está vacío o no vale.
+@visibleForTesting
+double? parseBudget(String text) {
+  final t = text.trim();
+  if (t.isEmpty) return null;
+  // "1.200" y "1.200,50" como en Bolivia; "150.5" también.
+  final normal = t.contains(',')
+      ? t.replaceAll('.', '').replaceAll(',', '.')
+      : (RegExp(r'^\d{1,3}(\.\d{3})+$').hasMatch(t) ? t.replaceAll('.', '') : t);
+  final n = double.tryParse(normal);
+  if (n == null || n <= 0 || n > 100000) return null;
+  return (n * 100).round() / 100;
 }

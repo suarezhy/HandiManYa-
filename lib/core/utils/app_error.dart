@@ -95,6 +95,15 @@ class AppError implements Exception {
     'HMY_REQUEST_EXPIRED': 'Esta solicitud ya venció: pasó el tiempo para responder.',
     'HMY_REQUEST_CANCELLED': 'El cliente canceló este pedido.',
     'HMY_PRO_BUSY': 'Ya tienes un trabajo en curso. Termínalo antes de aceptar otro pedido ¡Ya!',
+    'HMY_PRICE_REQUIRED':
+        'Primero tienen que acordar el precio. Si ves este mensaje, actualiza la app a la última versión.',
+    'HMY_PRICE_LOCKED': 'El precio acordado no se puede cambiar. Para un monto aparte, pide la aprobación del otro.',
+    'HMY_OFFER_CHANGED': 'Esta propuesta cambió. Revisa el precio actual.',
+    'HMY_TOO_MANY_OFFERS': 'Ya hiciste muchas propuestas en este pedido. Usa el chat o cancela la solicitud.',
+    'HMY_PRO_UNAVAILABLE': 'Este profesional ya no puede tomar el trabajo. Elige otra propuesta.',
+    'HMY_NOT_NEGOTIABLE': 'En este momento el precio no se puede cambiar.',
+    'HMY_INVALID_PRICE_KIND': 'Ese tipo de monto no corresponde en este momento.',
+    'HMY_TOO_EARLY': 'Todavía es temprano: podrás avisar "Voy en camino" desde dos horas antes del horario.',
     'HMY_IDENTITY_PAUSED':
         'La verificación de identidad está en pausa por ahora. Tu postulación sigue en revisión; te avisaremos.',
     'HMY_IDENTITY_OFF': 'La verificación de identidad todavía no está disponible. Tu postulación sigue en revisión.',

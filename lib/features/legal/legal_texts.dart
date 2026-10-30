@@ -38,7 +38,7 @@ HandiMan ¡Ya! es una plataforma digital operada por [PENDIENTE: razón social, 
 • Debes dar datos reales y cuidar el acceso a tu celular. Una misma cuenta sirve como cliente y, si es aprobada, como profesional.
 
 3. Cómo funciona un pedido
-• ¡Ya!: avisamos a los profesionales verificados disponibles cerca de ti y el primero que acepta toma el trabajo.
+• ¡Ya!: avisamos a los profesionales verificados disponibles cerca de ti; el trabajo se confirma cuando tú y un profesional aceptan el mismo precio.
 • Programar: eliges un profesional, día y hora; el profesional acepta, rechaza o envía una cotización.
 • El precio lo acuerdan el cliente y el profesional antes de empezar.
 • Cuando el profesional llega, el cliente le da un código de llegada para confirmar que es la persona correcta.

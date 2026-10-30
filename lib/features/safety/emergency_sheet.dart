@@ -16,8 +16,16 @@ class EmergencyLink extends StatelessWidget {
   final BookingDetail b;
 
   /// Con profesional asignado y el trabajo sin terminar (igual que el servidor
-  /// para compartir el viaje).
-  static bool showsFor(BookingDetail b) => b.status.isActive;
+  /// para compartir el viaje). Un trabajo programado para más adelante no la
+  /// muestra hasta dos horas antes: todavía nadie va en camino.
+  static bool showsFor(BookingDetail b, {DateTime? now}) {
+    if (!b.status.isActive) return false;
+    final start = b.scheduledStart;
+    if (b.mode == BookingMode.scheduled && b.status == BookingStatus.confirmed && start != null) {
+      return !(now ?? DateTime.now()).isBefore(start.subtract(const Duration(hours: 2)));
+    }
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {

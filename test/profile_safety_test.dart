@@ -26,6 +26,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/demo_login.dart';
+import 'support/price_helpers.dart';
 
 class _FakeLocation implements LocationService {
   const _FakeLocation();
@@ -144,12 +145,13 @@ Future<String> _confirmedBooking(DemoBackend backend) async {
       mode: BookingMode.now,
       description: 'Se cortó la luz en la cocina',
       address: 'Calle Los Pinos 123',
+      budget: 150,
       latitude: -17.7833,
       longitude: -63.1821,
     ),
   );
   await backend.signInAs(DemoBackend.professionalPhone);
-  await backend.accept(id, isOffer: true);
+  await agreeAsPro(backend, id);
   return id;
 }
 

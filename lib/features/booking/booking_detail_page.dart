@@ -4,14 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/config/country.dart';
 import '../../core/utils/app_error.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/common.dart';
 import '../../data/models/booking.dart';
-import '../../data/models/wallet.dart';
 import '../../data/providers.dart';
 import '../../router.dart';
 import '../common/photo_picker.dart';
@@ -19,6 +17,7 @@ import '../common/safety_menu.dart';
 import '../safety/emergency_sheet.dart';
 import 'arrival_pin.dart';
 import 'live_trip.dart';
+import 'price_panel.dart';
 import '../../core/widgets/word_safe_text.dart';
 
 /// Detalle de una solicitud. Muestra el estado en tiempo real y solo las
@@ -133,23 +132,7 @@ class _Content extends StatelessWidget {
           const SizedBox(height: HySpacing.sm),
         ],
 
-        if (b.quoteAmount != null) ...[
-          AppCard(
-            color: b.status == BookingStatus.quoteSent ? HyColors.warningSoft : null,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Cotización',
-                  style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
-                ),
-                Text(Fmt.bs(b.quoteAmount!), style: text.headlineSmall),
-                if ((b.quoteNote ?? '').isNotEmpty) Text(b.quoteNote!, style: const TextStyle(fontSize: 16)),
-              ],
-            ),
-          ),
-          const SizedBox(height: HySpacing.sm),
-        ],
+        PricePanel(b: b),
 
         AppCard(
           child: Column(
@@ -176,7 +159,7 @@ class _Content extends StatelessWidget {
                   label: 'Pago',
                   value: '${b.paymentMethod!.label}, directo al profesional',
                 ),
-              if (b.finalAmount != null)
+              if (b.finalAmount != null && !b.price.agreed)
                 _Line(icon: Icons.payments_outlined, label: 'Monto final', value: Fmt.bs(b.finalAmount!)),
               const Divider(height: HySpacing.lg),
               if (b.problems.isNotEmpty) ...[
@@ -479,47 +462,6 @@ class _Ack extends StatelessWidget {
 }
 
 /// Barra inferior con las acciones posibles según rol y estado.
-final _commissionPreviewProvider = FutureProvider.autoDispose.family<CommissionPreview?, String>(
-  (ref, id) => ref.watch(backendProvider).commissionPreview(id),
-);
-
-/// Antes de aceptar: cuánto es la comisión y cuánto se reserva de la billetera.
-class _CommissionLine extends ConsumerWidget {
-  const _CommissionLine({required this.bookingId});
-
-  final String bookingId;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final p = ref.watch(_commissionPreviewProvider(bookingId)).value;
-    if (p == null) return const SizedBox.shrink();
-    String text;
-    Color color = HyColors.textSecondary;
-    if (!p.hasRule) {
-      text = 'Este servicio no tiene comisión.';
-    } else if (p.pendingDebt > 0) {
-      text = 'Tienes una comisión pendiente de ${Fmt.bs(p.pendingDebt)}. Recarga tu saldo para aceptar trabajos.';
-      color = HyColors.danger;
-    } else {
-      final how = p.ratePercent != null && p.expected > 0
-          ? 'Comisión: ${Fmt.bs(p.expected)} (${p.ratePercent!.toStringAsFixed(p.ratePercent! % 1 == 0 ? 0 : 1)} % del precio)'
-          : 'Comisión: ${Fmt.bs(p.expected > 0 ? p.expected : p.reserve)}';
-      text =
-          '$how. Al aceptar se reservan ${Fmt.bs(p.reserve)} de tu saldo y se cobra al completar; '
-          'si se cancela, vuelve a tu saldo.';
-      if (!p.canAccept) {
-        text = '$text Necesitas ${Fmt.bs(p.needed)} disponibles para aceptar.';
-        color = HyColors.danger;
-      }
-    }
-    return Padding(
-      key: const Key('commission-preview'),
-      padding: const EdgeInsets.only(bottom: HySpacing.xs),
-      child: Text(text, style: TextStyle(color: color, fontSize: 13)),
-    );
-  }
-}
-
 class _Actions extends ConsumerStatefulWidget {
   const _Actions({required this.b});
 
@@ -550,6 +492,8 @@ class _ActionsState extends ConsumerState<_Actions> {
     final arrival = s == BookingStatus.onTheWay ? ref.watch(bookingArrivalProvider(b.id)).value : null;
     final primary = <Widget>[];
     final secondary = <Widget>[];
+    // El precio que el profesional está por aceptar: se muestra su comisión.
+    double? commissionFor;
 
     void addChat() {
       if (b.conversationId != null && s.chatOpen) {
@@ -613,6 +557,110 @@ class _ActionsState extends ConsumerState<_Actions> {
       if (method != null) await _run(() => api.acknowledgePayment(b.id, method), success: 'Pago registrado');
     }
 
+    final me = ref.watch(authUserProvider).value?.id;
+    final price = b.price;
+    final negotiating =
+        !price.agreed && {BookingStatus.requested, BookingStatus.awaitingResponse, BookingStatus.quoteSent}.contains(s);
+
+    // El cliente pone o cambia su precio: para todos los avisados, o para el
+    // profesional elegido.
+    void addCustomerPrice() {
+      final mine = price.openIn(b.professional?.id, byCustomer: true);
+      secondary.add(
+        SecondaryButton(
+          key: const Key('price-budget'),
+          label: mine == null ? 'Poner mi precio' : 'Cambiar mi precio',
+          onPressed: () async {
+            final r = await showPriceSheet(context, title: '¿Cuánto quieres pagar?', initial: mine?.amount);
+            if (r != null) await _run(() => api.proposePrice(b.id, r.amount, note: r.note), success: 'Precio enviado');
+          },
+        ),
+      );
+    }
+
+    // El profesional acepta el precio del cliente o propone el suyo.
+    void addProPrice({required Widget decline}) {
+      final theirs = me == null ? null : price.customerOfferFor(me);
+      final mine = me == null ? null : price.openIn(me, byCustomer: false);
+      Future<void> propose() async {
+        final r = await showPriceSheet(
+          context,
+          title: theirs == null ? 'Tu precio' : 'Tu contraoferta',
+          initial: mine?.amount ?? theirs?.amount,
+          kinds: const [PriceKind.service, PriceKind.inspection],
+          commission: (amount) => api.commissionForAmount(b.id, amount),
+        );
+        if (r != null) {
+          await _run(
+            () => api.proposePrice(b.id, r.amount, kind: r.kind, note: r.note),
+            success: 'Propuesta enviada',
+          );
+        }
+      }
+
+      if (theirs != null) {
+        commissionFor = theirs.amount;
+        primary.add(
+          PrimaryButton(
+            key: const Key('price-accept'),
+            label: 'Aceptar ${Fmt.bsShort(theirs.amount)}',
+            icon: b.mode == BookingMode.scheduled ? Icons.event_available_outlined : Icons.check_rounded,
+            onPressed: () => _run(
+              () => api.acceptPriceOffer(theirs.id),
+              success: '¡Trabajo tuyo! Precio acordado: ${Fmt.bsShort(theirs.amount)}',
+            ),
+          ),
+        );
+        secondary.add(
+          SecondaryButton(
+            key: const Key('price-propose'),
+            label: mine == null ? 'Proponer otro precio' : 'Cambiar mi propuesta',
+            onPressed: propose,
+          ),
+        );
+      } else {
+        primary.add(
+          PrimaryButton(
+            key: const Key('price-propose'),
+            label: mine == null ? 'Proponer precio' : 'Cambiar mi propuesta',
+            icon: Icons.sell_outlined,
+            onPressed: propose,
+          ),
+        );
+      }
+      secondary.add(decline);
+    }
+
+    // Durante el trabajo: un monto aparte (o la reparación, si se acordó solo
+    // la visita) que el cliente tiene que aprobar antes de hacerlo.
+    void addProChange() {
+      if (!price.agreed || price.openChange != null) return;
+      final kinds = [
+        if (price.agreedKind == PriceKind.inspection && !price.repairAccepted) PriceKind.repair,
+        PriceKind.extra,
+      ];
+      secondary.add(
+        SecondaryButton(
+          key: const Key('price-extra'),
+          label: kinds.first == PriceKind.repair ? 'Cotizar reparación' : 'Pedir monto aparte',
+          onPressed: () async {
+            final r = await showPriceSheet(
+              context,
+              title: kinds.first == PriceKind.repair ? 'Cotizar la reparación' : 'Monto aparte',
+              kinds: kinds,
+              commission: (amount) => api.commissionForAmount(b.id, amount),
+            );
+            if (r != null) {
+              await _run(
+                () => api.proposePrice(b.id, r.amount, kind: r.kind, note: r.note),
+                success: 'Enviado. El cliente tiene que aprobarlo antes de que lo hagas.',
+              );
+            }
+          },
+        ),
+      );
+    }
+
     if (b.viewerIsCustomer && {BookingStatus.confirmed, BookingStatus.onTheWay, BookingStatus.inProgress}.contains(s)) {
       secondary.add(
         SecondaryButton(
@@ -625,23 +673,14 @@ class _ActionsState extends ConsumerState<_Actions> {
     }
     if (b.viewerIsCustomer) {
       switch (s) {
-        case BookingStatus.requested || BookingStatus.awaitingResponse:
+        case BookingStatus.requested || BookingStatus.awaitingResponse || BookingStatus.quoteSent:
+          if (negotiating) addCustomerPrice();
           secondary.add(
             SecondaryButton(
               key: const Key('customer-cancel'),
               label: 'Cancelar solicitud',
               onPressed: _busy ? null : customerCancel,
             ),
-          );
-        case BookingStatus.quoteSent:
-          primary.add(
-            PrimaryButton(
-              label: 'Aceptar cotización',
-              onPressed: () => _run(() => api.respondQuote(b.id, accept: true), success: '¡Listo! Trabajo confirmado'),
-            ),
-          );
-          secondary.add(
-            SecondaryButton(label: 'Rechazar', onPressed: () => _run(() => api.respondQuote(b.id, accept: false))),
           );
         case BookingStatus.confirmed:
           addChat();
@@ -681,7 +720,9 @@ class _ActionsState extends ConsumerState<_Actions> {
                 final ok = await confirmDialog(
                   context,
                   title: '¿El trabajo quedó bien?',
-                  message: 'Al confirmar, la solicitud se marca como completada.',
+                  message: price.total == null
+                      ? 'Al confirmar, la solicitud se marca como completada.'
+                      : 'Total acordado: ${Fmt.bsShort(price.total!)}. Al confirmar, la solicitud se marca como completada.',
                   confirm: 'Sí, confirmar',
                 );
                 if (ok) await _run(() => api.confirmCompletion(b.id), success: '¡Gracias! Trabajo completado');
@@ -715,16 +756,9 @@ class _ActionsState extends ConsumerState<_Actions> {
     } else {
       switch (s) {
         case BookingStatus.awaitingResponse when b.isOffer:
-          primary.add(
-            PrimaryButton(
-              label: b.mode == BookingMode.scheduled ? 'Aceptar solicitud' : 'Aceptar pedido ¡Ya!',
-              icon: b.mode == BookingMode.scheduled ? Icons.event_available_outlined : Icons.bolt_rounded,
-              onPressed: () =>
-                  _run(() => api.accept(b.id, isOffer: true), success: '¡Trabajo tuyo! Ya puedes ver la dirección'),
-            ),
-          );
-          secondary.add(
-            SecondaryButton(
+          addProPrice(
+            decline: SecondaryButton(
+              key: const Key('pro-decline'),
               label: 'No puedo',
               onPressed: () async {
                 await _run(() => api.decline(b.id, isOffer: true));
@@ -732,34 +766,36 @@ class _ActionsState extends ConsumerState<_Actions> {
               },
             ),
           );
-        case BookingStatus.requested:
-          primary.add(
-            PrimaryButton(
-              label: 'Aceptar',
-              onPressed: () => _run(() => api.accept(b.id, isOffer: false), success: 'Trabajo aceptado'),
+        case BookingStatus.requested || BookingStatus.quoteSent when negotiating:
+          addProPrice(
+            decline: SecondaryButton(
+              key: const Key('pro-decline'),
+              label: 'Rechazar',
+              onPressed: () => _run(() => api.decline(b.id, isOffer: false)),
             ),
-          );
-          secondary.add(
-            SecondaryButton(
-              label: 'Cotizar',
-              onPressed: () async {
-                final q = await showQuoteSheet(context);
-                if (q != null) await _run(() => api.sendQuote(b.id, q.$1, q.$2), success: 'Cotización enviada');
-              },
-            ),
-          );
-          secondary.add(
-            SecondaryButton(label: 'Rechazar', onPressed: () => _run(() => api.decline(b.id, isOffer: false))),
           );
         case BookingStatus.confirmed:
-          primary.add(
-            PrimaryButton(
-              label: 'Voy en camino',
-              icon: Icons.directions_walk,
-              onPressed: () => _run(() => api.updateProgress(b.id, BookingStatus.onTheWay)),
-            ),
-          );
+          final opens = onTheWayOpensAt(b);
+          if (opens != null && DateTime.now().isBefore(opens)) {
+            primary.add(
+              InfoBanner(
+                key: const Key('on-the-way-later'),
+                icon: Icons.schedule_rounded,
+                text: 'Podrás avisar "Voy en camino" desde el ${Fmt.date(opens)}, ${Fmt.time(opens)}.',
+              ),
+            );
+          } else {
+            primary.add(
+              PrimaryButton(
+                key: const Key('on-the-way'),
+                label: 'Voy en camino',
+                icon: Icons.directions_walk,
+                onPressed: () => _run(() => api.updateProgress(b.id, BookingStatus.onTheWay)),
+              ),
+            );
+          }
           addChat();
+          addProChange();
           secondary.add(SecondaryButton(label: 'Cancelar', onPressed: cancel));
         case BookingStatus.onTheWay when arrival?.verified ?? false:
           primary.add(
@@ -771,6 +807,7 @@ class _ActionsState extends ConsumerState<_Actions> {
             ),
           );
           addChat();
+          addProChange();
         case BookingStatus.onTheWay:
           final again = arrival != null && arrival.stage != ArrivalStage.none;
           primary.add(
@@ -796,21 +833,25 @@ class _ActionsState extends ConsumerState<_Actions> {
               label: 'Terminé el trabajo',
               icon: Icons.task_alt,
               onPressed: () async {
-                final amount = await showAmountSheet(
+                final ok = await confirmDialog(
                   context,
-                  title: '¿Cuánto cobraste?',
-                  hint: 'Monto acordado con el cliente (opcional)',
-                  initial: b.quoteAmount,
+                  title: '¿Terminaste el trabajo?',
+                  message: price.total == null
+                      ? 'Le avisamos al cliente para que lo confirme.'
+                      : 'Total acordado: ${Fmt.bsShort(price.total!)}. Le avisamos al cliente para que lo confirme.',
+                  confirm: 'Sí, terminé',
                 );
-                if (amount == null) return;
-                await _run(
-                  () => api.updateProgress(b.id, BookingStatus.workFinished, finalAmount: amount.$1),
-                  success: 'Avisamos al cliente',
-                );
+                if (ok) {
+                  await _run(
+                    () => api.updateProgress(b.id, BookingStatus.workFinished),
+                    success: 'Avisamos al cliente',
+                  );
+                }
               },
             ),
           );
           addChat();
+          addProChange();
         case BookingStatus.workFinished || BookingStatus.completed:
           if (!b.professionalPaidAck) {
             primary.add(PrimaryButton(label: 'Recibí el pago', icon: Icons.payments_outlined, onPressed: ackPayment));
@@ -844,9 +885,8 @@ class _ActionsState extends ConsumerState<_Actions> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (!b.viewerIsCustomer &&
-                        (s == BookingStatus.requested || (s == BookingStatus.awaitingResponse && b.isOffer)))
-                      _CommissionLine(bookingId: b.id),
+                    if (!b.viewerIsCustomer && commissionFor != null)
+                      CommissionForAmount(bookingId: b.id, amount: commissionFor!),
                     ...primary,
                     if (primary.isNotEmpty && secondary.isNotEmpty) const SizedBox(height: HySpacing.xs),
                     if (secondary.isNotEmpty) _ButtonGrid(children: secondary),
@@ -951,85 +991,13 @@ Future<(int, String?)?> showReviewSheet(BuildContext context) {
   );
 }
 
-/// Devuelve (monto, nota).
-Future<(double, String?)?> showQuoteSheet(BuildContext context) async {
-  final r = await showAmountSheet(
-    context,
-    title: 'Enviar cotización',
-    hint: 'Precio total en ${kCountry.currencySymbol}',
-    withNote: true,
-    required: true,
-  );
-  if (r == null || r.$1 == null) return null;
-  return (r.$1!, r.$2);
-}
+/// Un trabajo programado: "Voy en camino" se puede avisar desde dos horas
+/// antes (la base revisa lo mismo). Null: se puede siempre.
+@visibleForTesting
+DateTime? onTheWayOpensAt(BookingDetail b) =>
+    b.mode == BookingMode.scheduled && b.scheduledStart != null ? b.scheduledStart!.subtract(onTheWayWindow) : null;
 
-/// Devuelve (monto o null, nota). Null si se cancela.
-Future<(double?, String?)?> showAmountSheet(
-  BuildContext context, {
-  required String title,
-  required String hint,
-  double? initial,
-  bool withNote = false,
-  bool required = false,
-}) {
-  final amount = TextEditingController(text: initial?.toStringAsFixed(0) ?? '');
-  final note = TextEditingController();
-  final form = GlobalKey<FormState>();
-  return showModalBottomSheet<(double?, String?)>(
-    context: context,
-    isScrollControlled: true,
-    builder: (c) => Padding(
-      padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(c) + HySpacing.lg),
-      child: Form(
-        key: form,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(c).textTheme.headlineSmall),
-            const SizedBox(height: HySpacing.md),
-            TextFormField(
-              controller: amount,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
-              decoration: InputDecoration(labelText: hint, prefixText: kCountry.moneyPrefix),
-              validator: (v) {
-                final t = (v ?? '').replaceAll(',', '.').trim();
-                if (t.isEmpty) return required ? 'Escribe el monto' : null;
-                final n = double.tryParse(t);
-                if (n == null || n <= 0 || n > 100000) return 'Revisa el monto';
-                return null;
-              },
-            ),
-            if (withNote) ...[
-              const SizedBox(height: HySpacing.md),
-              TextFormField(
-                controller: note,
-                maxLines: 2,
-                maxLength: 500,
-                decoration: const InputDecoration(labelText: 'Detalle (opcional)', hintText: 'Ej.: incluye materiales'),
-              ),
-            ],
-            const SizedBox(height: HySpacing.sm),
-            PrimaryButton(
-              label: 'Confirmar',
-              onPressed: () {
-                if (!form.currentState!.validate()) return;
-                final t = amount.text.replaceAll(',', '.').trim();
-                Navigator.pop(c, (
-                  t.isEmpty ? null : double.parse(t),
-                  note.text.trim().isEmpty ? null : note.text.trim(),
-                ));
-              },
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
+const onTheWayWindow = Duration(hours: 2);
 
 /// Lo que se lee cuando el cliente ya verificó la llegada (antes de empezar).
 @visibleForTesting

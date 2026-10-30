@@ -155,8 +155,11 @@ class DemoBackend
   final _biometric = <String>{};
   final _consents = <String>{};
 
-  static const _reserveAmount = 5.0;
-  static const _commissionFee = 10.0;
+  // Como 0062: 10 % del precio acordado, sin reserva mínima.
+  static const _ratePercent = 10.0;
+  static const _reserveAmount = 0.0;
+
+  static double _commissionOf(double amount) => (amount * _ratePercent).round() / 100;
 
   void dispose() {
     for (final t in _timers) {
@@ -359,15 +362,7 @@ class DemoBackend
     );
     _bookings[disputed.id] = disputed;
 
-    _rules.add(
-      CommissionRule(
-        id: _seq++,
-        name: 'Regla de demostración (ejemplo, no es una tarifa real)',
-        fixedFee: _commissionFee,
-        reserveAmount: _reserveAmount,
-        minBalance: _reserveAmount,
-      ),
-    );
+    _rules.add(CommissionRule(id: _seq++, name: 'Comisión general (10 %)', ratePercent: _ratePercent));
     _promos.addAll([for (final p in DemoData.promotions) (promo: p, active: true)]);
   }
 
@@ -932,27 +927,22 @@ class DemoBackend
         );
   }
 
-  /// Como 0043: se reserva la comisión completa (la regla de la demostración
-  /// es un cargo fijo), nunca menos que la reserva mínima.
-  static double get _reserveFull => _commissionFee > _reserveAmount ? _commissionFee : _reserveAmount;
-
+  /// Como 0062: al acordar se reserva el 10 % del precio acordado.
   void _reserve(_Booking b) {
     final pro = b.professionalId!;
     if (!_wallets.containsKey(pro)) return; // profesionales de ejemplo sin billetera simulada
-    if (_wallets[pro]![0] < _reserveFull) throw AppError.from('HMY_INSUFFICIENT_BALANCE');
-    _post(pro, LedgerType.commissionReserve, -_reserveFull, _reserveFull, 'Reserva de comisión ${b.code}');
-    b.reserved = _reserveFull;
+    final fee = _commissionOf(b.agreedAmount ?? 0);
+    if (fee <= 0) return;
+    if (_wallets[pro]![0] < fee) throw AppError.from('HMY_INSUFFICIENT_BALANCE');
+    _post(pro, LedgerType.commissionReserve, -fee, fee, 'Reserva de comisión ${b.code}');
+    b.reserved = fee;
   }
 
+  /// Al completar se cobra el 10 % del monto final, hasta lo reservado.
   void _capture(_Booking b) {
     if (b.reserved == 0 || b.captured) return;
-    _post(
-      b.professionalId!,
-      LedgerType.commissionCapture,
-      b.reserved - _commissionFee,
-      -b.reserved,
-      'Comisión ${b.code}',
-    );
+    final fee = min(_commissionOf(b.finalAmount ?? b.agreedAmount ?? 0), b.reserved);
+    _post(b.professionalId!, LedgerType.commissionCapture, b.reserved - fee, -b.reserved, 'Comisión ${b.code}');
     b
       ..reserved = 0
       ..captured = true;
@@ -1010,6 +1000,7 @@ class DemoBackend
             problemIds: input.problemIds,
             otherText: input.otherText,
             destination: input.destination,
+            budget: input.budget,
           );
     if (me.suspendedAt != null) throw AppError.from('HMY_ACCOUNT_SUSPENDED');
     if (d.professionalId == me.id) throw AppError.from('HMY_CANNOT_BOOK_SELF');
@@ -1046,15 +1037,20 @@ class DemoBackend
       for (final p in eligible) {
         _notify(p.id, 'ya_offer', '¡Pedido ¡Ya! cerca de ti!', d.description, bookingId: b.id);
       }
-      // Simula que el primer profesional disponible acepta en unos segundos.
+      // Simula que el primer profesional disponible responde en unos segundos:
+      // acepta el precio del cliente o, si no puso, propone el suyo.
       final winner = eligible.firstWhere((p) => p.id != 'demo-pro', orElse: () => eligible.first);
       if (winner.id != 'demo-pro') {
         _later(const Duration(seconds: 5), () {
           if (b.status != BookingStatus.awaitingResponse) return;
-          b
-            ..professionalId = winner.id
-            ..offers = {};
-          _move(b, BookingStatus.confirmed, note: 'Aceptado por ${winner.displayName}', actorId: winner.id);
+          final budget = _openOffer(b, null, byCustomer: true);
+          if (budget == null) {
+            _addOffer(b, winner.id, byCustomer: false, kind: PriceKind.service, amount: 150, authorId: winner.id);
+            _changes.add(null);
+            return;
+          }
+          _agree(b, budget, winner.id);
+          _assign(b, winner.id, 'Precio acordado: ${Fmt.bs(budget.amount)}', actorId: winner.id);
           _later(const Duration(seconds: 2), () {
             _sendAs(
               b.conversationId!,
@@ -1142,9 +1138,20 @@ class DemoBackend
       if (pro.id != 'demo-pro') {
         _later(const Duration(seconds: 6), () {
           if (b.status != BookingStatus.requested) return;
-          _move(b, BookingStatus.confirmed, note: 'Aceptado por ${pro.displayName}', actorId: pro.id);
+          final budget = _openOffer(b, pro.id, byCustomer: true);
+          if (budget == null) {
+            _addOffer(b, pro.id, byCustomer: false, kind: PriceKind.service, amount: 150, authorId: pro.id);
+            _move(b, BookingStatus.quoteSent, note: 'Propuesta de precio: ${Fmt.bs(150)}', actorId: pro.id);
+            return;
+          }
+          _agree(b, budget, pro.id);
+          _move(b, BookingStatus.confirmed, note: 'Precio acordado: ${Fmt.bs(budget.amount)}', actorId: pro.id);
         });
       }
+    }
+    if (d.budget != null) {
+      if (d.budget! <= 0 || d.budget! > 100000) throw AppError.from('HMY_INVALID_AMOUNT');
+      _addOffer(b, b.professionalId, byCustomer: true, kind: PriceKind.service, amount: d.budget!, authorId: me.id);
     }
     _changes.add(null);
     return b.id;
@@ -1261,40 +1268,39 @@ class DemoBackend
       photos: List.of(b.photos),
       problems: b.problems,
       safetyNote: _cat(b.draft.categoryId).safetyNote,
+      price: BookingPrice(
+        agreedAmount: b.agreedAmount,
+        agreedKind: b.agreedKind,
+        extrasAmount: b.extras,
+        offers: [
+          for (final o in b.priceOffers)
+            if (isCustomer || o.professionalId == null || o.professionalId == me)
+              PriceOffer(
+                id: o.id,
+                professionalId: o.professionalId,
+                byCustomer: o.byCustomer,
+                kind: o.kind,
+                amount: o.amount,
+                note: o.note,
+                status: o.status,
+                createdAt: o.createdAt,
+                professional: isCustomer && o.professionalId != null && _pros[o.professionalId] != null
+                    ? BookingProfessional(
+                        id: o.professionalId!,
+                        displayName: _pros[o.professionalId]!.displayName,
+                        ratingAvg: _pros[o.professionalId]!.ratingAvg,
+                        ratingCount: _pros[o.professionalId]!.ratingCount,
+                        isVerified: true,
+                      )
+                    : null,
+              ),
+        ],
+      ),
     );
   }
 
   @override
   Stream<void> changes() => _changes.stream;
-
-  @override
-  Future<void> accept(String bookingId, {required bool isOffer}) async {
-    await _latency();
-    final me = _me.id;
-    final b = _get(bookingId);
-    if (isOffer) {
-      if (b.status == BookingStatus.cancelled) throw AppError.from('HMY_REQUEST_CANCELLED');
-      if (b.status != BookingStatus.awaitingResponse || b.professionalId != null) {
-        throw const AppError('Otro profesional ya tomó este pedido.', code: 'HMY_ALREADY_TAKEN');
-      }
-      if (!b.offers.contains(me)) throw AppError.from('HMY_FORBIDDEN');
-      b
-        ..professionalId = me
-        ..offers = {};
-      try {
-        _move(b, BookingStatus.confirmed, note: 'Aceptado por el profesional', actorId: me);
-      } catch (_) {
-        b.professionalId = null;
-        b.status = BookingStatus.awaitingResponse;
-        b.events.removeLast();
-        rethrow;
-      }
-    } else {
-      if (b.professionalId != me) throw AppError.from('HMY_FORBIDDEN');
-      _requireStatus(b, {BookingStatus.requested});
-      _move(b, BookingStatus.confirmed, actorId: me);
-    }
-  }
 
   @override
   Future<void> decline(String bookingId, {required bool isOffer, String? reason}) async {
@@ -1311,21 +1317,266 @@ class DemoBackend
     _move(b, BookingStatus.cancelled, note: reason ?? 'El profesional no puede atender esta solicitud', actorId: me);
   }
 
-  @override
-  Future<void> sendQuote(String bookingId, double amount, String? note) async {
-    await _latency();
-    final b = _get(bookingId);
-    if (b.professionalId != _me.id) throw AppError.from('HMY_FORBIDDEN');
-    _requireStatus(b, {BookingStatus.requested});
-    if (amount <= 0) throw AppError.from('HMY_INVALID_AMOUNT');
+  // ---------------------------------------------------------------- Precio
+  // Como 0062: propuestas y contraofertas hasta que uno acepta la del otro.
+  _DemoOffer _addOffer(
+    _Booking b,
+    String? professionalId, {
+    required bool byCustomer,
+    required PriceKind kind,
+    required double amount,
+    required String authorId,
+    String? note,
+  }) {
+    for (final o in b.priceOffers) {
+      if (o.status == OfferStatus.open && o.professionalId == professionalId && o.kind.beforeJob == kind.beforeJob) {
+        o.status = OfferStatus.superseded;
+      }
+    }
+    final o = _DemoOffer(
+      id: _seq++,
+      professionalId: professionalId,
+      byCustomer: byCustomer,
+      authorId: authorId,
+      kind: kind,
+      amount: (amount * 100).round() / 100,
+      note: note,
+    );
+    b.priceOffers.add(o);
+    return o;
+  }
+
+  _DemoOffer? _openOffer(_Booking b, String? professionalId, {required bool byCustomer}) => b.priceOffers.reversed
+      .where(
+        (o) =>
+            o.status == OfferStatus.open &&
+            o.professionalId == professionalId &&
+            o.byCustomer == byCustomer &&
+            o.kind.beforeJob,
+      )
+      .firstOrNull;
+
+  String? _priceRole(_Booking b, String me) {
+    if (b.customerId == me) return 'customer';
+    if (b.professionalId == me) return 'professional';
+    if (b.professionalId == null && b.status == BookingStatus.awaitingResponse && b.offers.contains(me)) {
+      return 'professional';
+    }
+    return null;
+  }
+
+  bool _beforeJob(_Booking b) =>
+      b.agreedAmount == null &&
+      {BookingStatus.requested, BookingStatus.awaitingResponse, BookingStatus.quoteSent}.contains(b.status);
+
+  void _agree(_Booking b, _DemoOffer o, String by) {
+    o.status = OfferStatus.accepted;
+    for (final x in b.priceOffers) {
+      if (x != o && x.status == OfferStatus.open && x.kind.beforeJob) x.status = OfferStatus.expired;
+    }
     b
-      ..quoteAmount = amount
-      ..quoteNote = note;
-    _move(b, BookingStatus.quoteSent, note: 'Cotización: Bs ${amount.toStringAsFixed(2)}', actorId: _me.id);
+      ..agreedAmount = o.amount
+      ..agreedKind = o.kind
+      ..quoteAmount = o.amount
+      ..quoteNote = o.note;
+  }
+
+  void _assign(_Booking b, String pro, String note, {required String actorId}) {
+    b
+      ..professionalId = pro
+      ..offers = {};
+    _move(b, BookingStatus.confirmed, note: note, actorId: actorId);
   }
 
   @override
-  Future<void> updateProgress(String bookingId, BookingStatus to, {double? finalAmount}) async {
+  Future<int> proposePrice(
+    String bookingId,
+    double amount, {
+    PriceKind kind = PriceKind.service,
+    String? note,
+    String? professionalId,
+  }) async {
+    await _latency();
+    final me = _me.id;
+    final b = _get(bookingId);
+    final role = _priceRole(b, me);
+    if (role == null) throw AppError.from('HMY_FORBIDDEN');
+    if (amount <= 0 || amount > 100000) throw AppError.from('HMY_INVALID_AMOUNT');
+    final before = _beforeJob(b);
+    if (before) {
+      if (!kind.beforeJob) throw AppError.from('HMY_INVALID_PRICE_KIND');
+    } else if (b.agreedAmount != null &&
+        {BookingStatus.confirmed, BookingStatus.onTheWay, BookingStatus.inProgress}.contains(b.status)) {
+      if (kind.beforeJob) throw AppError.from('HMY_INVALID_PRICE_KIND');
+      if (kind == PriceKind.repair &&
+          (b.agreedKind != PriceKind.inspection ||
+              b.priceOffers.any((o) => o.kind == PriceKind.repair && o.status == OfferStatus.accepted))) {
+        throw AppError.from('HMY_INVALID_PRICE_KIND');
+      }
+    } else {
+      throw AppError.from('HMY_NOT_NEGOTIABLE');
+    }
+    final thread = role == 'professional' ? me : (b.professionalId ?? professionalId);
+    if (role == 'professional' && before && _wallets.containsKey(me) && _wallets[me]![0] < _commissionOf(amount)) {
+      throw AppError.from('HMY_INSUFFICIENT_BALANCE');
+    }
+    final o = _addOffer(
+      b,
+      thread,
+      byCustomer: role == 'customer',
+      kind: kind,
+      amount: amount,
+      authorId: me,
+      note: (note ?? '').trim().isEmpty ? null : note!.trim(),
+    );
+    if (before && role == 'professional' && b.status == BookingStatus.requested) {
+      _move(b, BookingStatus.quoteSent, note: 'Propuesta de precio: ${Fmt.bs(o.amount)}', actorId: me);
+    } else {
+      final to = role == 'professional' ? b.customerId : thread;
+      if (to != null) {
+        _notify(to, 'price_offer', 'Te propusieron un precio', '${kind.label}: ${Fmt.bs(o.amount)}', bookingId: b.id);
+      }
+      _changes.add(null);
+    }
+    return o.id;
+  }
+
+  _DemoOffer _offer(int offerId) {
+    for (final b in _bookings.values) {
+      for (final o in b.priceOffers) {
+        if (o.id == offerId) return o;
+      }
+    }
+    throw AppError.from('HMY_NOT_FOUND');
+  }
+
+  _Booking _bookingOf(_DemoOffer o) => _bookings.values.firstWhere((b) => b.priceOffers.contains(o));
+
+  @override
+  Future<void> acceptPriceOffer(int offerId) async {
+    await _latency();
+    final me = _me.id;
+    final o = _offer(offerId);
+    final b = _bookingOf(o);
+    if (b.status == BookingStatus.cancelled) throw AppError.from('HMY_REQUEST_CANCELLED');
+    final role = _priceRole(b, me);
+    if (role == null) {
+      throw AppError.from(b.professionalId != null ? 'HMY_ALREADY_TAKEN' : 'HMY_FORBIDDEN');
+    }
+    if (o.kind.beforeJob && !_beforeJob(b)) throw AppError.from('HMY_ALREADY_TAKEN');
+    if ((role == 'customer') == o.byCustomer ||
+        (role == 'professional' && o.professionalId != null && o.professionalId != me)) {
+      throw AppError.from('HMY_FORBIDDEN');
+    }
+    if (o.status != OfferStatus.open) throw AppError.from('HMY_OFFER_CHANGED');
+    if (!o.kind.beforeJob) {
+      final pro = b.professionalId!;
+      final fee = _wallets.containsKey(pro) ? _commissionOf(o.amount) : 0.0;
+      if (fee > 0 && _wallets[pro]![0] < fee) {
+        o.status = OfferStatus.awaitingFunds;
+        _notify(
+          pro,
+          'price_offer',
+          'Recarga tu saldo para el monto aparte',
+          '${o.kind.label}: ${Fmt.bs(o.amount)}',
+          bookingId: b.id,
+        );
+      } else {
+        if (fee > 0) {
+          _post(pro, LedgerType.commissionReserve, -fee, fee, 'Reserva de comisión ${b.code} (monto aparte)');
+          b.reserved += fee;
+        }
+        o.status = OfferStatus.accepted;
+        b.extras += o.amount;
+      }
+      _changes.add(null);
+      return;
+    }
+    if (o.forEveryone && role == 'professional' && _openOffer(b, me, byCustomer: true) != null) {
+      throw AppError.from('HMY_OFFER_CHANGED');
+    }
+    final pro = b.professionalId ?? (role == 'professional' ? me : o.professionalId!);
+    final before = (status: b.status, pro: b.professionalId, offers: b.offers, events: b.events.length);
+    final reopen = [
+      for (final x in b.priceOffers)
+        if (x.status == OfferStatus.open) x,
+    ];
+    _agree(b, o, me);
+    final note = 'Precio acordado: ${Fmt.bs(o.amount)}';
+    try {
+      if (b.professionalId == null) {
+        _assign(b, pro, note, actorId: me);
+      } else {
+        _move(b, BookingStatus.confirmed, note: note, actorId: me);
+      }
+    } on AppError catch (e) {
+      // Como la base: si no se pudo confirmar, no cambia nada.
+      for (final x in reopen) {
+        x.status = OfferStatus.open;
+      }
+      b
+        ..status = before.status
+        ..professionalId = before.pro
+        ..offers = before.offers
+        ..agreedAmount = null
+        ..agreedKind = null
+        ..quoteAmount = null;
+      b.events.removeRange(before.events, b.events.length);
+      if (role == 'customer' && e.code == 'HMY_INSUFFICIENT_BALANCE') throw AppError.from('HMY_PRO_UNAVAILABLE');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> rejectPriceOffer(int offerId) async {
+    await _latency();
+    final o = _offer(offerId);
+    final b = _bookingOf(o);
+    final role = _priceRole(b, _me.id);
+    if (role == null || (role == 'customer') == o.byCustomer || o.forEveryone) throw AppError.from('HMY_FORBIDDEN');
+    if (o.status != OfferStatus.open) throw AppError.from('HMY_OFFER_CHANGED');
+    o.status = OfferStatus.rejected;
+    _changes.add(null);
+  }
+
+  @override
+  Future<void> cancelPriceOffer(int offerId) async {
+    await _latency();
+    final me = _me.id;
+    final o = _offer(offerId);
+    final b = _bookingOf(o);
+    final ok =
+        (o.status == OfferStatus.open && o.authorId == me) ||
+        (o.status == OfferStatus.awaitingFunds && (b.customerId == me || b.professionalId == me));
+    if (!ok) throw AppError.from('HMY_OFFER_CHANGED');
+    o.status = OfferStatus.withdrawn;
+    _changes.add(null);
+  }
+
+  @override
+  Future<CommissionQuote> commissionForAmount(String bookingId, double amount) async {
+    await _latency(80);
+    final b = _get(bookingId);
+    final me = _me.id;
+    if (_priceRole(b, me) != 'professional') throw AppError.from('HMY_FORBIDDEN');
+    final fee = _commissionOf(amount);
+    final available = _wallets[me]?[0] ?? 0;
+    final simulated = !_wallets.containsKey(me);
+    return CommissionQuote(
+      hasRule: true,
+      ratePercent: _ratePercent,
+      amount: amount,
+      commission: fee,
+      net: amount - fee,
+      available: available,
+      pendingDebt: 0,
+      canCover: simulated || available >= fee,
+      missing: simulated ? 0 : max(fee - available, 0),
+    );
+  }
+
+  @override
+  Future<void> updateProgress(String bookingId, BookingStatus to) async {
     await _latency();
     final b = _get(bookingId);
     if (b.professionalId != _me.id) throw AppError.from('HMY_FORBIDDEN');
@@ -1337,7 +1588,13 @@ class DemoBackend
     };
     _requireStatus(b, allowed);
     if (to == BookingStatus.inProgress && b.arrivalVerifiedAt == null) throw AppError.from('HMY_ARRIVAL_NOT_VERIFIED');
-    if (to == BookingStatus.workFinished && finalAmount != null) b.finalAmount = finalAmount;
+    if (to == BookingStatus.workFinished) {
+      // El monto final es el acordado más lo aprobado aparte; lo demás vence.
+      if (b.agreedAmount != null) b.finalAmount = b.agreedAmount! + b.extras;
+      for (final o in b.priceOffers) {
+        if (o.status == OfferStatus.open || o.status == OfferStatus.awaitingFunds) o.status = OfferStatus.expired;
+      }
+    }
     _move(b, to, actorId: _me.id);
   }
 
@@ -1596,20 +1853,6 @@ class DemoBackend
       verifiedAt: b.arrivalVerifiedAt,
       byTeam: b.arrivalMethod == 'admin',
       delayMinutes: b.delayMinutes,
-    );
-  }
-
-  @override
-  Future<void> respondQuote(String bookingId, {required bool accept}) async {
-    await _latency();
-    final b = _get(bookingId);
-    if (b.customerId != _me.id) throw AppError.from('HMY_FORBIDDEN');
-    _requireStatus(b, {BookingStatus.quoteSent});
-    _move(
-      b,
-      accept ? BookingStatus.confirmed : BookingStatus.cancelled,
-      note: accept ? 'Cotización aceptada' : 'Cotización rechazada',
-      actorId: _me.id,
     );
   }
 
@@ -2006,7 +2249,19 @@ class DemoBackend
   Future<Wallet> wallet() async {
     await _latency(150);
     final w = _wallets[_me.id] ?? [0, 0];
-    return Wallet(available: w[0], reserved: w[1]);
+    final ledger = _ledger[_me.id] ?? const <LedgerEntry>[];
+    return Wallet(
+      available: w[0],
+      reserved: w[1],
+      commissionsCollected: ledger
+          .where((e) => e.type == LedgerType.commissionCapture)
+          .fold(0.0, (sum, e) => sum - e.availableDelta - e.reservedDelta),
+      extrasAwaitingFunds: _bookings.values
+          .where((b) => b.professionalId == _me.id)
+          .expand((b) => b.priceOffers)
+          .where((o) => o.status == OfferStatus.awaitingFunds)
+          .length,
+    );
   }
 
   @override
@@ -4536,11 +4791,12 @@ class DemoBackend
     if (b.professionalId != me && !b.offers.contains(me)) {
       throw AppError.from('HMY_FORBIDDEN');
     }
+    final fee = _commissionOf(b.agreedAmount ?? 0);
     return CommissionPreview(
       hasRule: true,
-      fixedFee: _commissionFee,
-      expected: _commissionFee,
-      reserve: _reserveFull,
+      ratePercent: _ratePercent,
+      expected: fee,
+      reserve: fee,
       minBalance: _reserveAmount,
       available: _wallets[me]?[0],
     );
@@ -5110,6 +5366,10 @@ class _Booking {
   double? quoteAmount;
   String? quoteNote;
   double? finalAmount;
+  final List<_DemoOffer> priceOffers = [];
+  double? agreedAmount;
+  PriceKind? agreedKind;
+  double extras = 0;
   bool customerPaid = false;
   bool professionalPaid = false;
   PaymentMethod? paidWith;
@@ -5199,4 +5459,28 @@ class _ActorLog {
   }
 
   String? of(int id) => _actors[id];
+}
+
+class _DemoOffer {
+  _DemoOffer({
+    required this.id,
+    this.professionalId,
+    required this.byCustomer,
+    required this.authorId,
+    required this.kind,
+    required this.amount,
+    this.note,
+  }) : createdAt = DateTime.now();
+
+  final int id;
+  final String? professionalId;
+  final bool byCustomer;
+  final String authorId;
+  final PriceKind kind;
+  final double amount;
+  final String? note;
+  final DateTime createdAt;
+  OfferStatus status = OfferStatus.open;
+
+  bool get forEveryone => professionalId == null;
 }

@@ -5,6 +5,7 @@ import 'package:handimanya/data/models/booking.dart';
 import 'package:handimanya/data/models/user.dart';
 
 import 'support/demo_login.dart';
+import 'support/price_helpers.dart';
 
 const _ya = BookingDraft(
   categoryId: 2, // Electricidad
@@ -14,6 +15,7 @@ const _ya = BookingDraft(
   description: 'Se cortó la luz en la cocina',
   address: 'Calle Los Pinos 123',
   paymentMethod: PaymentMethod.cash,
+  budget: 150,
 );
 
 void main() {
@@ -42,17 +44,18 @@ void main() {
     // Antes de aceptar, el profesional no ve la dirección exacta.
     expect((await backend.detail(id)).address, isNull);
 
-    // Y sí ve la comisión y lo que se reservará (0043): la comisión completa.
-    final preview = (await backend.commissionPreview(id))!;
-    expect(preview.hasRule, isTrue);
-    expect(preview.reserve, preview.expected, reason: 'se reserva la comisión completa');
-    expect(preview.canAccept, isTrue);
+    // Y la comisión del precio antes de proponerlo (0062): 10 % del monto.
+    final quote = await backend.commissionForAmount(id, 150);
+    expect(quote.hasRule, isTrue);
+    expect(quote.commission, 15);
+    expect(quote.net, 135);
+    expect(quote.canCover, isTrue);
     await asCustomer();
-    await expectLater(backend.commissionPreview(id), throwsA(isA<AppError>()));
+    await expectLater(backend.commissionForAmount(id, 150), throwsA(isA<AppError>()));
     await asPro();
 
-    await backend.accept(id, isOffer: true);
-    expect((await backend.wallet()).reserved, preview.reserve);
+    await agreeAsPro(backend, id);
+    expect((await backend.wallet()).reserved, 15, reason: 'se reserva la comisión del precio acordado');
     final confirmed = await backend.detail(id);
     expect(confirmed.status, BookingStatus.confirmed);
     expect(confirmed.address, isNotNull);
@@ -66,7 +69,8 @@ void main() {
     expect((await backend.verifyArrivalPin(id, pin.pin)).result, ArrivalCheckResult.verified);
     await asPro();
     await backend.updateProgress(id, BookingStatus.inProgress);
-    await backend.updateProgress(id, BookingStatus.workFinished, finalAmount: 150);
+    await backend.updateProgress(id, BookingStatus.workFinished);
+    expect((await backend.detail(id)).finalAmount, 150, reason: 'el monto final es el acordado');
 
     await asCustomer();
     // El cliente pagó directo al profesional y dice cómo: por QR, aunque pidió efectivo.
@@ -110,7 +114,7 @@ void main() {
     await asCustomer();
     final id = await backend.create(_ya);
     await asPro();
-    await backend.accept(id, isOffer: true);
+    await agreeAsPro(backend, id);
     await asCustomer();
     await backend.cancel(id, 'Ya lo solucioné');
 

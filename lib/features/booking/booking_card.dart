@@ -69,8 +69,8 @@ class BookingCard extends StatelessWidget {
               icon: b.mode == BookingMode.scheduled ? Icons.event_outlined : Icons.bolt_rounded,
               tone: StatusTone.brand,
               text: b.mode == BookingMode.scheduled
-                  ? 'Solicitud programada cerca de ti. Ábrela para aceptarla.'
-                  : 'Pedido ¡Ya! cerca de ti. Ábrelo para aceptarlo.',
+                  ? 'Solicitud programada cerca de ti. Ábrela para ver el precio.'
+                  : 'Pedido ¡Ya! cerca de ti. Ábrelo para ver el precio.',
             ),
           ],
           if (!asProfessional && b.status == BookingStatus.completed && !b.hasReview) ...[

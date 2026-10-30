@@ -128,18 +128,42 @@ class _BalanceCard extends StatelessWidget {
           style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: HySpacing.sm),
-        Row(
-          children: [
-            const Icon(Icons.lock_clock_outlined, color: HyColors.primary, size: 20),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                'Reservado en trabajos: ${Fmt.bs(wallet.reserved)}',
-                style: const TextStyle(color: Colors.white, fontSize: 15),
-              ),
-            ),
-          ],
+        _WalletLine(icon: Icons.lock_clock_outlined, text: 'Saldo reservado en trabajos: ${Fmt.bs(wallet.reserved)}'),
+        _WalletLine(
+          key: const Key('wallet-collected'),
+          icon: Icons.receipt_long_outlined,
+          text: 'Comisiones cobradas: ${Fmt.bs(wallet.commissionsCollected)}',
         ),
+        if (wallet.commissionPending > 0)
+          _WalletLine(icon: Icons.error_outline, text: 'Comisión pendiente: ${Fmt.bs(wallet.commissionPending)}'),
+        if (wallet.extrasAwaitingFunds > 0)
+          _WalletLine(
+            key: const Key('wallet-awaiting'),
+            icon: Icons.hourglass_bottom_rounded,
+            text: wallet.extrasAwaitingFunds == 1
+                ? '1 monto aparte espera tu recarga para contar.'
+                : '${wallet.extrasAwaitingFunds} montos aparte esperan tu recarga para contar.',
+          ),
+      ],
+    ),
+  );
+}
+
+class _WalletLine extends StatelessWidget {
+  const _WalletLine({super.key, required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 4),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: HyColors.primary, size: 20),
+        const SizedBox(width: 6),
+        Expanded(child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15))),
       ],
     ),
   );

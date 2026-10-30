@@ -10,7 +10,7 @@ import '../../core/widgets/word_safe_text.dart';
 const _faq = <(String, String)>[
   (
     '¿Cómo funciona ¡Ya!?',
-    'Eliges el servicio y tu zona. Avisamos a los profesionales verificados disponibles cerca de ti y el primero que acepta toma tu pedido. Te mostramos quién es y puedes chatear con él.',
+    'Eliges el servicio y tu zona. Avisamos a los profesionales verificados disponibles cerca de ti. Aceptan tu precio o te proponen otro, y nadie empieza hasta que los dos acepten el mismo. Te mostramos quién es y puedes chatear con él.',
   ),
   (
     '¿Y si prefiero programar?',

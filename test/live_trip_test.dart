@@ -15,6 +15,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/demo_login.dart';
+import 'support/price_helpers.dart';
 
 Matcher _code(String code) => throwsA(isA<AppError>().having((e) => e.code, 'code', code));
 
@@ -38,6 +39,7 @@ const _draft = BookingDraft(
   mode: BookingMode.now,
   description: 'Se cortó la luz en la cocina',
   address: 'Calle Los Pinos 123',
+  budget: 150,
   latitude: -17.7833,
   longitude: -63.1821,
 );
@@ -50,7 +52,7 @@ Future<String> _onTheWay(DemoBackend backend) async {
   await backend.signInAs(DemoBackend.customerPhone);
   final id = await backend.create(_draft);
   await backend.signInAs(DemoBackend.professionalPhone);
-  await backend.accept(id, isOffer: true);
+  await agreeAsPro(backend, id);
   return id;
 }
 

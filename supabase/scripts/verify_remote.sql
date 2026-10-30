@@ -45,7 +45,7 @@ declare
     'hmy_pro_busy_now','_create_ya_request_extras','_claim_ya_request_scheduled',
     'hmy_test_fixture_guard','hmy_is_test_fixture','_search_professionals_base','_get_professional_public_base',
     '_booking_detail_destination','_trip_share_view_base',
-    'hmy_price_lock','hmy_price_offers_close','hmy_price_offers_close_for_pro','hmy_price_role','propose_price','_hmy_assign_pro','hmy_commission_need','commission_for_amount','_hmy_require_cover','_hmy_reserve_extra','_hmy_extra_effective','hmy_ledger_activate_extras','cancel_price_offer',
+    'hmy_price_lock','hmy_price_offers_close','hmy_price_offers_close_for_pro','hmy_price_role','propose_price','_hmy_assign_pro','hmy_commission_need','commission_for_amount','_hmy_require_cover','_hmy_reserve_extra','_hmy_extra_effective','hmy_ledger_activate_extras','cancel_price_offer','my_wallet_summary',
     'accept_price_offer','reject_price_offer','_create_ya_request_unpriced','_create_scheduled_request_unpriced',
     '_create_booking_unpriced','_booking_detail_unpriced'];
   v_missing text;

@@ -399,6 +399,7 @@ class SupabaseBackend
           'p_problem_ids': d.problemIds.isEmpty ? null : d.problemIds,
           'p_other_text': d.otherText,
           'p_destination': d.destination,
+          'p_budget': d.budget,
         },
       ) as String;
     }
@@ -421,6 +422,7 @@ class SupabaseBackend
           'p_problem_ids': d.problemIds.isEmpty ? null : d.problemIds,
           'p_other_text': d.otherText,
           'p_destination': d.destination,
+          'p_budget': d.budget,
         },
       ) as String;
     }
@@ -442,6 +444,7 @@ class SupabaseBackend
         'p_problem_ids': d.problemIds.isEmpty ? null : d.problemIds,
         'p_other_text': d.otherText,
         'p_destination': d.destination,
+        'p_budget': d.budget,
       },
     ) as String;
   }
@@ -576,15 +579,50 @@ class SupabaseBackend
   }
 
   @override
-  Future<void> accept(String bookingId, {required bool isOffer}) => _closingIfExpired(
-    () => _db.rpc(isOffer ? 'claim_ya_request' : 'accept_booking', params: {'p_booking': bookingId}),
+  Future<int> proposePrice(
+    String bookingId,
+    double amount, {
+    PriceKind kind = PriceKind.service,
+    String? note,
+    String? professionalId,
+  }) async {
+    final id = await _closingIfExpired(
+      () => _db.rpc(
+        'propose_price',
+        params: {
+          'p_booking': bookingId,
+          'p_amount': amount,
+          'p_kind': kind.key,
+          'p_note': note,
+          'p_professional': professionalId,
+        },
+      ),
+    );
+    return (id as num).toInt();
+  }
+
+  @override
+  Future<void> acceptPriceOffer(int offerId) =>
+      _closingIfExpired(() => _db.rpc('accept_price_offer', params: {'p_offer': offerId}));
+
+  @override
+  Future<void> rejectPriceOffer(int offerId) => _db.rpc('reject_price_offer', params: {'p_offer': offerId});
+
+  @override
+  Future<void> cancelPriceOffer(int offerId) => _db.rpc('cancel_price_offer', params: {'p_offer': offerId});
+
+  @override
+  Future<CommissionQuote> commissionForAmount(String bookingId, double amount) async => CommissionQuote.fromMap(
+    Map<String, dynamic>.from(
+      await _db.rpc('commission_for_amount', params: {'p_booking': bookingId, 'p_amount': amount}) as Map,
+    ),
   );
 
   // Si el pedido ya venció, se cierra enseguida para que la pantalla deje de
   // ofrecer "Aceptar".
-  Future<void> _closingIfExpired(Future<dynamic> Function() call) async {
+  Future<dynamic> _closingIfExpired(Future<dynamic> Function() call) async {
     try {
-      await call();
+      return await call();
     } on PostgrestException catch (e) {
       if (e.message.contains('HMY_REQUEST_EXPIRED')) {
         _expiredAt = null;
@@ -600,13 +638,8 @@ class SupabaseBackend
       : _db.rpc('decline_booking', params: {'p_booking': bookingId, 'p_reason': reason});
 
   @override
-  Future<void> sendQuote(String bookingId, double amount, String? note) => _closingIfExpired(
-    () => _db.rpc('send_quote', params: {'p_booking': bookingId, 'p_amount': amount, 'p_note': note}),
-  );
-
-  @override
-  Future<void> updateProgress(String bookingId, BookingStatus to, {double? finalAmount}) =>
-      _db.rpc('update_job_progress', params: {'p_booking': bookingId, 'p_to': to.key, 'p_final_amount': finalAmount});
+  Future<void> updateProgress(String bookingId, BookingStatus to) =>
+      _db.rpc('update_job_progress', params: {'p_booking': bookingId, 'p_to': to.key});
 
   @override
   Future<ArrivalPin> markArrived(String bookingId) async => ArrivalPin.fromMap(
@@ -665,10 +698,6 @@ class SupabaseBackend
   Future<SharedTrip> sharedTrip(String token) async => SharedTrip.fromMap(
     Map<String, dynamic>.from(await _db.rpc('trip_share_view', params: {'p_token': token}) as Map),
   );
-
-  @override
-  Future<void> respondQuote(String bookingId, {required bool accept}) =>
-      _db.rpc('respond_quote', params: {'p_booking': bookingId, 'p_accept': accept});
 
   @override
   Future<void> confirmCompletion(String bookingId) => _db.rpc('confirm_completion', params: {'p_booking': bookingId});
@@ -846,6 +875,11 @@ class SupabaseBackend
 
   @override
   Future<Wallet> wallet() async {
+    try {
+      return Wallet.fromMap(Map<String, dynamic>.from(await _db.rpc('my_wallet_summary') as Map));
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow; // sin la migración 0062
+    }
     final w = await _db.from('wallets').select('available, reserved').eq('professional_id', _uid).maybeSingle();
     return w == null ? const Wallet(available: 0, reserved: 0) : Wallet.fromMap(w);
   }

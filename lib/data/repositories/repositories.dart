@@ -106,19 +106,38 @@ abstract interface class BookingRepository {
   /// Avisa cuando cambia alguna solicitud del usuario (tiempo real).
   Stream<void> changes();
 
+  // Precio (0062): nadie confirma un trabajo sin un precio aceptado por los dos.
+  /// Propone un precio o contraoferta. El cliente, en un pedido abierto, se lo
+  /// propone a todos ([professionalId] null) o a uno solo.
+  Future<int> proposePrice(
+    String bookingId,
+    double amount, {
+    PriceKind kind = PriceKind.service,
+    String? note,
+    String? professionalId,
+  });
+
+  /// Acepta la propuesta del otro: antes del trabajo, lo confirma con ese precio.
+  Future<void> acceptPriceOffer(int offerId);
+  Future<void> rejectPriceOffer(int offerId);
+
+  /// Retira la propia propuesta o anula un monto aparte que espera recarga.
+  Future<void> cancelPriceOffer(int offerId);
+
+  /// Comisión de un monto en este pedido (solo el profesional).
+  Future<CommissionQuote> commissionForAmount(String bookingId, double amount);
+
   // Profesional
-  Future<void> accept(String bookingId, {required bool isOffer});
   Future<void> decline(String bookingId, {required bool isOffer, String? reason});
-  Future<void> sendQuote(String bookingId, double amount, String? note);
-  Future<void> updateProgress(String bookingId, BookingStatus to, {double? finalAmount});
+
+  /// "Terminé el trabajo" no lleva monto: vale el acordado.
+  Future<void> updateProgress(String bookingId, BookingStatus to);
 
   /// "He llegado": el servidor genera el código y lo devuelve solo al
   /// profesional asignado. Pedir otro invalida el anterior (máximo 3).
   Future<ArrivalPin> markArrived(String bookingId);
 
   // Cliente
-  Future<void> respondQuote(String bookingId, {required bool accept});
-
   /// "Verificar llegada": solo el cliente del pedido. Un código incorrecto o
   /// vencido no es un error: devuelve el resultado y los intentos que quedan.
   Future<ArrivalCheck> verifyArrivalPin(String bookingId, String pin);

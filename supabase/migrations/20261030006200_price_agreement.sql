@@ -31,6 +31,7 @@
 -- 9. Ya no se descuentan comisiones pendientes de las recargas (0043): como
 --    toda comisión se reserva antes, al completar se cobra lo reservado y
 --    nunca queda deuda nueva.
+-- 10. "Voy en camino" en un trabajo programado, recién dos horas antes.
 -- claim_ya_request y accept_booking (aceptar sin precio) ya no confirman nada.
 --
 -- Agrega una tabla, columnas, funciones y triggers. Pasa las cotizaciones que
@@ -653,6 +654,11 @@ returns public.booking_status
 language plpgsql security definer set search_path = public as $$
 begin
   if p_to not in ('on_the_way', 'in_progress', 'work_finished') then raise exception 'HMY_INVALID_TRANSITION'; end if;
+  -- Un trabajo programado: "Voy en camino" desde dos horas antes, no antes.
+  if p_to = 'on_the_way' and exists (select 1 from public.bookings where id = p_booking and mode = 'scheduled'
+                                       and scheduled_start - interval '2 hours' > now()) then
+    raise exception 'HMY_TOO_EARLY';
+  end if;
   if p_to = 'work_finished' and p_final_amount is not null then
     if p_final_amount < 0 then raise exception 'HMY_INVALID_AMOUNT'; end if;
     update public.bookings set final_amount = round(p_final_amount, 2)
@@ -786,6 +792,22 @@ begin
   ));
 end $$;
 
+-- La billetera del profesional con sesión: disponible, reservado, comisiones
+-- cobradas (lo que dice el libro) y montos aparte que esperan recarga.
+create function public.my_wallet_summary() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'available', coalesce(w.available, 0),
+    'reserved', coalesce(w.reserved, 0),
+    'commissions_collected', coalesce((select sum(-(l.available_delta + l.reserved_delta)) from public.wallet_ledger l
+                                       where l.professional_id = auth.uid() and l.entry_type = 'commission_capture'), 0),
+    'commission_pending', coalesce((select sum(commission_shortfall) from public.bookings
+                                    where professional_id = auth.uid() and commission_shortfall > 0), 0),
+    'extras_awaiting_funds', (select count(*) from public.price_offers o join public.bookings b on b.id = o.booking_id
+                              where b.professional_id = auth.uid() and o.status = 'awaiting_funds'))
+  from (select 1) one left join public.wallets w on w.professional_id = auth.uid()
+$$;
+
 -- ---------------------------------------------------------------- Datos
 -- Las cotizaciones que esperaban respuesta pasan a ser propuestas abiertas.
 insert into public.price_offers (booking_id, professional_id, author_id, author_role, kind, amount, note, created_at)
@@ -806,6 +828,8 @@ revoke execute on function public._hmy_reserve_extra(public.bookings, public.pri
 revoke execute on function public._hmy_extra_effective(bigint) from public, anon, authenticated;
 revoke execute on function public.hmy_ledger_activate_extras() from public, anon, authenticated;
 revoke execute on function public._commission_capture(uuid) from public, anon, authenticated;
+revoke execute on function public.my_wallet_summary() from public, anon;
+grant execute on function public.my_wallet_summary() to authenticated;
 revoke execute on function public.cancel_price_offer(bigint) from public, anon;
 grant execute on function public.cancel_price_offer(bigint) to authenticated;
 revoke execute on function public.commission_for_amount(uuid, numeric) from public, anon;

@@ -1,12 +1,33 @@
 double _d(Object? v) => v == null ? 0 : (v as num).toDouble();
 
 class Wallet {
-  const Wallet({required this.available, required this.reserved});
+  const Wallet({
+    required this.available,
+    required this.reserved,
+    this.commissionsCollected = 0,
+    this.commissionPending = 0,
+    this.extrasAwaitingFunds = 0,
+  });
 
   final double available;
   final double reserved;
 
-  factory Wallet.fromMap(Map<String, dynamic> m) => Wallet(available: _d(m['available']), reserved: _d(m['reserved']));
+  /// Comisiones cobradas, según el libro de movimientos.
+  final double commissionsCollected;
+
+  /// Comisiones anteriores a 0062 que no se pudieron cobrar.
+  final double commissionPending;
+
+  /// Montos aparte aprobados que esperan saldo para su comisión.
+  final int extrasAwaitingFunds;
+
+  factory Wallet.fromMap(Map<String, dynamic> m) => Wallet(
+    available: _d(m['available']),
+    reserved: _d(m['reserved']),
+    commissionsCollected: _d(m['commissions_collected']),
+    commissionPending: _d(m['commission_pending']),
+    extrasAwaitingFunds: (m['extras_awaiting_funds'] as num?)?.toInt() ?? 0,
+  );
 }
 
 enum LedgerType {

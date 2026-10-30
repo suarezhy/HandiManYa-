@@ -67,10 +67,10 @@ enum BookingStatus {
   /// Texto de ayuda que explica qué pasa ahora, para el cliente.
   String customerHint() => switch (this) {
     requested => 'Esperando que el profesional responda.',
-    awaitingResponse => 'Estamos avisando a profesionales disponibles cerca de ti.',
-    quoteSent => 'El profesional te envió una cotización. Revísala para continuar.',
+    awaitingResponse => 'Estamos avisando a profesionales cerca de ti. Aquí verás sus propuestas de precio.',
+    quoteSent => 'El profesional te propuso un precio. Acéptalo o propón otro.',
     awaitingConfirmation => 'Falta tu confirmación.',
-    confirmed => 'El profesional aceptó tu solicitud.',
+    confirmed => 'Trabajo confirmado con el precio que acordaron.',
     onTheWay => 'El profesional va en camino. Al llegar te dará un código para confirmar su llegada.',
     inProgress => 'El trabajo está en progreso.',
     workFinished => 'El profesional marcó el trabajo como terminado. Confírmalo o reporta un problema.',
@@ -81,9 +81,9 @@ enum BookingStatus {
   };
 
   String professionalHint() => switch (this) {
-    requested => 'Nueva solicitud. Acéptala, envía una cotización o recházala.',
-    awaitingResponse => 'Pedido ¡Ya! cerca de ti. El primero que acepta se queda con el trabajo.',
-    quoteSent => 'Esperando que el cliente acepte tu cotización.',
+    requested => 'Nueva solicitud. Acepta el precio del cliente, propón el tuyo o recházala.',
+    awaitingResponse => 'Pedido ¡Ya! cerca de ti. Acepta el precio del cliente o propón el tuyo.',
+    quoteSent => 'Esperando que el cliente responda a tu precio.',
     confirmed => 'Trabajo confirmado. Avisa cuando vayas en camino.',
     onTheWay => 'Vas en camino. Al llegar, toca "He llegado" y dale el código al cliente.',
     inProgress => 'Trabajo en progreso. Márcalo terminado al finalizar.',
@@ -103,11 +103,11 @@ extension PendingScheduled on BookingStatus {
   String labelFor(BookingMode mode) => isPendingScheduled(mode) ? 'Pendiente de profesional' : label;
 
   String customerHintFor(BookingMode mode) => isPendingScheduled(mode)
-      ? 'Todavía nadie la aceptó. Te avisamos cuando un profesional la acepte; si nadie lo hace a tiempo, se cancela sola.'
+      ? 'Todavía no hay precio acordado. Aquí verás las propuestas de los profesionales; si nadie acuerda a tiempo, se cancela sola.'
       : customerHint();
 
   String professionalHintFor(BookingMode mode) => isPendingScheduled(mode)
-      ? 'Solicitud programada cerca de ti. El primero que acepta se queda con el trabajo.'
+      ? 'Solicitud programada cerca de ti. Acepta el precio del cliente o propón el tuyo.'
       : professionalHint();
 }
 
@@ -313,6 +313,7 @@ class BookingDetail {
     this.photos = const [],
     this.problems = const [],
     this.safetyNote,
+    this.price = const BookingPrice(),
   });
 
   final String id;
@@ -326,6 +327,9 @@ class BookingDetail {
   final String description;
   final DateTime? scheduledStart;
   final DateTime? responseDeadline;
+
+  /// Precio acordado, montos aparte y propuestas (0062).
+  final BookingPrice price;
   final double? quoteAmount;
   final String? quoteNote;
   final double? finalAmount;
@@ -419,8 +423,200 @@ class BookingDetail {
       photos: photos,
       problems: [for (final p in (m['problems'] as List? ?? const [])) p as String],
       safetyNote: m['safety_note'] as String?,
+      price: BookingPrice.fromMap(m['price'] as Map<String, dynamic>?, photo: photo),
     );
   }
+}
+
+/// Qué se negocia: el precio del trabajo o de la visita (antes de aceptar), y
+/// la reparación o un cobro extra (durante el trabajo).
+enum PriceKind {
+  service('service', 'Precio del trabajo'),
+  inspection('inspection', 'Visita de inspección'),
+  repair('repair', 'Reparación'),
+  extra('extra', 'Cobro extra');
+
+  const PriceKind(this.key, this.label);
+  final String key;
+  final String label;
+
+  bool get beforeJob => this == service || this == inspection;
+
+  static PriceKind parse(String? v) => values.firstWhere((k) => k.key == v, orElse: () => service);
+}
+
+enum OfferStatus {
+  open('open'),
+
+  /// Los dos aprobaron un monto aparte, pero falta saldo para su comisión.
+  awaitingFunds('awaiting_funds'),
+  accepted('accepted'),
+  rejected('rejected'),
+  superseded('superseded'),
+  withdrawn('withdrawn'),
+  expired('expired');
+
+  const OfferStatus(this.key);
+  final String key;
+
+  static OfferStatus parse(String? v) => values.firstWhere((s) => s.key == v, orElse: () => expired);
+}
+
+/// Una propuesta de precio. [professionalId] es con quién se negocia; null es
+/// el precio del cliente para todos los profesionales avisados.
+class PriceOffer {
+  const PriceOffer({
+    required this.id,
+    this.professionalId,
+    required this.byCustomer,
+    required this.kind,
+    required this.amount,
+    this.note,
+    required this.status,
+    required this.createdAt,
+    this.professional,
+  });
+
+  final int id;
+  final String? professionalId;
+  final bool byCustomer;
+  final PriceKind kind;
+  final double amount;
+  final String? note;
+  final OfferStatus status;
+  final DateTime createdAt;
+
+  /// Quién propone (solo lo ve el cliente).
+  final BookingProfessional? professional;
+
+  bool get isOpen => status == OfferStatus.open;
+  bool get forEveryone => professionalId == null;
+
+  factory PriceOffer.fromMap(Map<String, dynamic> m, {String? Function(String?)? photo}) {
+    final pro = m['professional'] as Map<String, dynamic>?;
+    return PriceOffer(
+      id: (m['id'] as num).toInt(),
+      professionalId: m['professional_id'] as String?,
+      byCustomer: m['author_role'] == 'customer',
+      kind: PriceKind.parse(m['kind'] as String?),
+      amount: (m['amount'] as num).toDouble(),
+      note: m['note'] as String?,
+      status: OfferStatus.parse(m['status'] as String?),
+      createdAt: DateTime.parse(m['created_at'] as String),
+      professional: pro == null
+          ? null
+          : BookingProfessional(
+              id: pro['id'] as String,
+              displayName: pro['display_name'] as String,
+              photoUrl: photo?.call(pro['photo_path'] as String?),
+              ratingAvg: _dn(pro['rating_avg']) ?? 0,
+              ratingCount: (pro['rating_count'] as num?)?.toInt() ?? 0,
+              isVerified: pro['is_verified'] as bool? ?? false,
+            ),
+    );
+  }
+}
+
+class BookingPrice {
+  const BookingPrice({this.agreedAmount, this.agreedKind, this.extrasAmount = 0, this.offers = const []});
+
+  final double? agreedAmount;
+  final PriceKind? agreedKind;
+  final double extrasAmount;
+
+  /// Historial, de la más vieja a la más nueva.
+  final List<PriceOffer> offers;
+
+  bool get agreed => agreedAmount != null;
+  double? get total => agreedAmount == null ? null : agreedAmount! + extrasAmount;
+
+  /// Montos aparte ya aprobados por los dos.
+  List<PriceOffer> get acceptedExtras => [
+    for (final o in offers)
+      if (!o.kind.beforeJob && o.status == OfferStatus.accepted) o,
+  ];
+
+  /// La propuesta abierta más nueva de una conversación (null = para todos).
+  PriceOffer? openIn(String? professionalId, {bool? byCustomer, bool beforeJob = true}) => offers.reversed
+      .where(
+        (o) =>
+            o.isOpen &&
+            o.professionalId == professionalId &&
+            o.kind.beforeJob == beforeJob &&
+            (byCustomer == null || o.byCustomer == byCustomer),
+      )
+      .firstOrNull;
+
+  /// El precio del cliente que puede aceptar este profesional: el que le
+  /// propuso a él, o si no, el de todos.
+  PriceOffer? customerOfferFor(String professionalId) =>
+      openIn(professionalId, byCustomer: true) ?? openIn(null, byCustomer: true);
+
+  /// Las propuestas abiertas de los profesionales (una por profesional).
+  List<PriceOffer> get openProposals => [
+    for (final o in offers.reversed)
+      if (o.isOpen && !o.byCustomer && o.kind.beforeJob) o,
+  ];
+
+  /// Cobro extra o reparación esperando respuesta.
+  PriceOffer? get openChange => offers.reversed.where((o) => o.isOpen && !o.kind.beforeJob).firstOrNull;
+
+  /// Montos aparte aprobados que esperan la recarga del profesional.
+  List<PriceOffer> get awaitingFunds => [
+    for (final o in offers)
+      if (o.status == OfferStatus.awaitingFunds) o,
+  ];
+
+  bool get repairAccepted => offers.any((o) => o.kind == PriceKind.repair && o.status == OfferStatus.accepted);
+
+  factory BookingPrice.fromMap(Map<String, dynamic>? m, {String? Function(String?)? photo}) => m == null
+      ? const BookingPrice()
+      : BookingPrice(
+          agreedAmount: _dn(m['agreed_amount']),
+          agreedKind: m['agreed_kind'] == null ? null : PriceKind.parse(m['agreed_kind'] as String?),
+          extrasAmount: _dn(m['extras_amount']) ?? 0,
+          offers: [
+            for (final o in (m['offers'] as List? ?? const []))
+              PriceOffer.fromMap(Map<String, dynamic>.from(o as Map), photo: photo),
+          ],
+        );
+}
+
+/// La comisión de un monto antes de proponerlo o aceptarlo (la calcula la base).
+class CommissionQuote {
+  const CommissionQuote({
+    required this.hasRule,
+    this.ratePercent,
+    required this.amount,
+    required this.commission,
+    required this.net,
+    required this.available,
+    required this.pendingDebt,
+    required this.canCover,
+    required this.missing,
+  });
+
+  final bool hasRule;
+  final double? ratePercent;
+  final double amount;
+  final double commission;
+  final double net;
+  final double available;
+  final double pendingDebt;
+  final bool canCover;
+  final double missing;
+
+  factory CommissionQuote.fromMap(Map<String, dynamic> m) => CommissionQuote(
+    hasRule: m['has_rule'] as bool? ?? false,
+    ratePercent: _dn(m['rate_percent']),
+    amount: _dn(m['amount']) ?? 0,
+    commission: _dn(m['commission']) ?? 0,
+    net: _dn(m['net']) ?? 0,
+    available: _dn(m['available']) ?? 0,
+    pendingDebt: _dn(m['pending_debt']) ?? 0,
+    canCover: m['can_cover'] as bool? ?? true,
+    missing: _dn(m['missing']) ?? 0,
+  );
 }
 
 /// Lo que el cliente llena para pedir un servicio.
@@ -442,11 +638,16 @@ class BookingDraft {
     this.problemIds = const [],
     this.otherText,
     this.destination,
+    this.budget,
   });
 
   final int categoryId;
   final int cityId;
   final BookingMode mode;
+
+  /// Lo que el cliente ofrece pagar (opcional); los profesionales lo aceptan
+  /// o proponen otro precio.
+  final double? budget;
   final String description;
   final String address;
   final String? addressReference;
@@ -491,6 +692,7 @@ class BookingDraft {
         problemIds: problemIds,
         otherText: otherText,
         destination: destination,
+        budget: budget,
       );
 }
 

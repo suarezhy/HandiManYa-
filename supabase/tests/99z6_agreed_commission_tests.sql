@@ -120,6 +120,10 @@ select test.eq((select available || '/' || reserved from public.wallets
 select test.eq((select count(*)::int from public.wallet_ledger
                 where booking_id = (select v::uuid from t63 where k = 'a') and entry_type = 'commission_reserve'), 3,
                'tres reservas en el historial: el precio y los dos extras');
+select test.login('00000000-0000-0000-0000-000009a9b002');
+select test.eq((public.my_wallet_summary() ->> 'commissions_collected')::numeric, 35.00::numeric,
+               'la billetera muestra Bs 35 de comisiones cobradas');
+select test.logout();
 
 -- Cancelar devuelve la reserva.
 select test.login('00000000-0000-0000-0000-000009a9b001');

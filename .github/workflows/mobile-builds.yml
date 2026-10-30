@@ -86,6 +86,16 @@ jobs:
             echo "Llave de depuración reutilizada."
           fi
           keytool -list -v -keystore "$ks" -storepass android | grep -m2 -E "SHA1:|SHA256:" | tee -a "$GITHUB_STEP_SUMMARY"
+          # La llave con la que están instalados los teléfonos de prueba (desde la
+          # compilación 32, rama feature/base-app). Una llave distinta da un APK
+          # que no actualiza la app instalada ("App no instalada"): se para aquí.
+          # Cambiarla a propósito obliga a desinstalar en los teléfonos de prueba.
+          esperada="B5:2E:AE:FA:00:17:BE:1C:15:0B:81:88:91:20:6E:33:38:91:7D:CD:48:56:A7:69:D0:64:83:C5:57:54:80:84"
+          actual=$(keytool -list -v -keystore "$ks" -storepass android | grep -m1 "SHA256:" | awk '{print $2}')
+          if [ "$actual" != "$esperada" ]; then
+            echo "::error::La llave de depuración cambió ($actual). El APK no actualizaría la app de los teléfonos de prueba. Compila desde feature/base-app; si la llave guardada venció, avisa antes de seguir."
+            exit 1
+          fi
       - name: Preparar la firma (si hay secretos)
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
