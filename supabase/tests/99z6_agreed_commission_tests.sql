@@ -1,5 +1,5 @@
--- 0062: la comisión general (10 %) sale del precio acordado; se reserva al
--- aceptar y al aprobar un monto aparte, sin saldo negativo ni cobros dobles.
+-- 0062: la comisión general (10 %) sale del precio acordado. Desde 0066 no se
+-- reserva: el saldo tiene que cubrirla para acordar y se cobra en "Ya pagué".
 -- Cuentas propias (…9a9b…), en Tupiza.
 \set ON_ERROR_STOP 1
 \o /dev/null
@@ -50,9 +50,9 @@ select test.login('00000000-0000-0000-0000-000009a9b001');
 select public.accept_price_offer((select v::bigint from t63 where k = 'a1'));
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a9b002');
-select test.eq((select available || '/' || reserved from public.wallets), '10.00/20.00', 'al acordar se reservan Bs 20');
+select test.eq((select available || '/' || reserved from public.wallets), '30.00/0.00', 'al acordar no se reserva ni descuenta nada (0066)');
 
--- Monto aparte: se reserva su comisión al aprobarlo, una sola vez.
+-- Monto aparte: cuenta si el saldo cubre su comisión y la del precio (0066).
 select public.update_job_progress((select v::uuid from t63 where k = 'a'), 'on_the_way');
 select test.arrive((select v::uuid from t63 where k = 'a'), '00000000-0000-0000-0000-000009a9b002',
                    '00000000-0000-0000-0000-000009a9b001');
@@ -65,8 +65,8 @@ select test.expect_error($$select public.accept_price_offer((select v::bigint fr
 insert into t63 select 'x2', public.propose_price((select v::uuid from t63 where k = 'a'), 100, 'extra');
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a9b002');
-select test.eq((select available || '/' || reserved from public.wallets), '5.00/25.00', 'el extra de Bs 50 reserva Bs 5');
--- Extra de Bs 100 (Bs 10 de comisión, tiene Bs 5): los dos lo aprueban, pero
+select test.eq((select available || '/' || reserved from public.wallets), '30.00/0.00', 'el extra de Bs 50 cabe (Bs 20 + 5 por cobrar) y no reserva');
+-- Extra de Bs 100 (Bs 25 + 10 por cobrar, tiene Bs 30): los dos lo aprueban, pero
 -- espera la recarga. El trabajo y el precio acordado siguen igual.
 select test.eq(public.accept_price_offer((select v::bigint from t63 where k = 'x2'))::text, 'in_progress',
                'aprobar un extra sin saldo no cambia el trabajo');
@@ -76,7 +76,7 @@ select test.eq((select status from public.price_offers where id = (select v::big
 select test.eq((select agreed_amount || '/' || extras_amount from public.bookings where id = (select v::uuid from t63 where k = 'a')),
                '200.00/50.00', 'el extra en espera todavía no se suma');
 select test.eq((select available || '/' || reserved from public.wallets
-                where professional_id = '00000000-0000-0000-0000-000009a9b002'), '5.00/25.00', 'sin saldo negativo ni reserva');
+                where professional_id = '00000000-0000-0000-0000-000009a9b002'), '30.00/0.00', 'sin saldo negativo ni reserva');
 
 -- La recarga activa el extra en espera; no se descuenta nada más.
 select test.login('00000000-0000-0000-0000-00000000000a');
@@ -87,7 +87,7 @@ select test.eq((select status from public.price_offers where id = (select v::big
 select test.eq((select extras_amount from public.bookings where id = (select v::uuid from t63 where k = 'a')), 150.00::numeric,
                'ahora se suma: Bs 150 aparte');
 select test.eq((select available || '/' || reserved from public.wallets
-                where professional_id = '00000000-0000-0000-0000-000009a9b002'), '15.00/35.00', 'se reservan Bs 10 más');
+                where professional_id = '00000000-0000-0000-0000-000009a9b002'), '50.00/0.00', 'tampoco se reserva al activarse');
 
 -- Otro extra sin saldo que el cliente anula.
 select test.login('00000000-0000-0000-0000-000009a9b001');
@@ -110,22 +110,25 @@ select public.update_job_progress((select v::uuid from t63 where k = 'a'), 'work
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a9b001');
 select public.confirm_completion((select v::uuid from t63 where k = 'a'));
+select test.eq((select commission_captured is null from public.bookings where id = (select v::uuid from t63 where k = 'a')),
+               true, 'confirmar el trabajo no cobra (0066)');
+select public.acknowledge_payment((select v::uuid from t63 where k = 'a'), 'cash');
 select test.logout();
 select test.eq((select final_amount || '/' || commission_captured || '/' || commission_shortfall from public.bookings
                 where id = (select v::uuid from t63 where k = 'a')), '350.00/35.00/0.00',
-               'final Bs 350: se cobra el 10 %, sin deuda');
+               'final Bs 350: Ya pagué cobra el 10 %, sin deuda');
 select test.eq((select available || '/' || reserved from public.wallets
                 where professional_id = '00000000-0000-0000-0000-000009a9b002'), '15.00/0.00',
-               'la reserva pasa a comisión cobrada');
+               'se descuentan Bs 35 del saldo');
 select test.eq((select count(*)::int from public.wallet_ledger
-                where booking_id = (select v::uuid from t63 where k = 'a') and entry_type = 'commission_reserve'), 3,
-               'tres reservas en el historial: el precio y los dos extras');
+                where booking_id = (select v::uuid from t63 where k = 'a') and entry_type in ('commission_reserve', 'commission_capture')), 1,
+               'un solo movimiento: el cobro');
 select test.login('00000000-0000-0000-0000-000009a9b002');
 select test.eq((public.my_wallet_summary() ->> 'commissions_collected')::numeric, 35.00::numeric,
                'la billetera muestra Bs 35 de comisiones cobradas');
 select test.logout();
 
--- Cancelar devuelve la reserva.
+-- Cancelar no mueve nada.
 select test.login('00000000-0000-0000-0000-000009a9b001');
 insert into t63 select 'b', public.create_booking('00000000-0000-0000-0000-000009a9b002',
   (select id from public.service_categories where slug = 'plomeria'), 'now', 'Revisar el tanque', 'Calle Tupiza 1',
@@ -133,9 +136,9 @@ insert into t63 select 'b', public.create_booking('00000000-0000-0000-0000-00000
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a9b002');
 select test.agree((select v::uuid from t63 where k = 'b'));
-select test.eq((select available || '/' || reserved from public.wallets), '11.00/4.00', 'Bs 40: se reservan Bs 4');
+select test.eq((select available || '/' || reserved from public.wallets), '15.00/0.00', 'Bs 40: nada reservado');
 select public.cancel_booking((select v::uuid from t63 where k = 'b'), 'No llego a tiempo');
-select test.eq((select available || '/' || reserved from public.wallets), '15.00/0.00', 'al cancelar vuelve todo');
+select test.eq((select available || '/' || reserved from public.wallets), '15.00/0.00', 'al cancelar el saldo sigue igual');
 select test.logout();
 
 update public.commission_rules r set is_active = z.is_active from z6_rules z where z.id = r.id;

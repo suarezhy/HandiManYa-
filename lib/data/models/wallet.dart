@@ -12,7 +12,8 @@ class Wallet {
   final double available;
   final double reserved;
 
-  /// Saldo total: lo disponible más lo reservado en trabajos acordados.
+  /// Saldo total. Desde 0066 nada se reserva; [reserved] solo queda por las
+  /// versiones anteriores y siempre es 0.
   double get total => available + reserved;
 
   /// Comisiones cobradas, según el libro de movimientos.
@@ -352,4 +353,127 @@ class QrRechargeReport {
     },
     unmatchedEvents: (m['unmatched_events'] as num?)?.toInt() ?? 0,
   );
+}
+
+/// "No recibí el pago" (0066): la revisión que resuelve el propietario.
+class PaymentReview {
+  const PaymentReview({
+    required this.id,
+    required this.bookingId,
+    required this.bookingCode,
+    required this.status,
+    required this.reason,
+    required this.commissionAmount,
+    this.finalAmount,
+    this.customerPaidAt,
+    required this.professionalName,
+    required this.customerName,
+    this.customerRefundedBefore = 0,
+    this.resolution,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String bookingId;
+  final String bookingCode;
+
+  /// open, refunded o rejected.
+  final String status;
+  final String reason;
+  final double commissionAmount;
+  final double? finalAmount;
+  final DateTime? customerPaidAt;
+  final String professionalName;
+  final String customerName;
+
+  /// Otras revisiones de este cliente en las que se le dio la razón al profesional.
+  final int customerRefundedBefore;
+  final String? resolution;
+  final DateTime createdAt;
+
+  bool get isOpen => status == 'open';
+
+  String get statusLabel => switch (status) {
+    'open' => 'En revisión',
+    'refunded' => 'Comisión devuelta',
+    'rejected' => 'Comisión mantenida',
+    _ => status,
+  };
+
+  factory PaymentReview.fromMap(Map<String, dynamic> m) => PaymentReview(
+    id: (m['id'] as num).toInt(),
+    bookingId: m['booking_id'] as String,
+    bookingCode: m['booking_code'] as String? ?? '',
+    status: m['status'] as String? ?? 'open',
+    reason: m['reason'] as String? ?? '',
+    commissionAmount: _d(m['commission_amount']),
+    finalAmount: m['final_amount'] == null ? null : _d(m['final_amount']),
+    customerPaidAt: m['customer_paid_at'] == null ? null : DateTime.parse(m['customer_paid_at'] as String),
+    professionalName: m['professional_name'] as String? ?? 'Profesional',
+    customerName: m['customer_name'] as String? ?? 'Cliente',
+    customerRefundedBefore: (m['customer_refunded_before'] as num?)?.toInt() ?? 0,
+    resolution: m['resolution'] as String?,
+    createdAt: DateTime.parse(m['created_at'] as String),
+  );
+}
+
+/// Un trabajo completado hace más de 72 horas en el que el cliente no marcó "Ya pagué".
+class UnpaidJob {
+  const UnpaidJob({
+    required this.bookingId,
+    required this.bookingCode,
+    this.finalAmount,
+    required this.commission,
+    this.completedAt,
+    required this.professionalPaidAck,
+    required this.professionalName,
+    required this.customerName,
+  });
+
+  final String bookingId;
+  final String bookingCode;
+  final double? finalAmount;
+  final double commission;
+  final DateTime? completedAt;
+  final bool professionalPaidAck;
+  final String professionalName;
+  final String customerName;
+
+  factory UnpaidJob.fromMap(Map<String, dynamic> m) => UnpaidJob(
+    bookingId: m['booking_id'] as String,
+    bookingCode: m['booking_code'] as String? ?? '',
+    finalAmount: m['final_amount'] == null ? null : _d(m['final_amount']),
+    commission: _d(m['commission']),
+    completedAt: m['completed_at'] == null ? null : DateTime.parse(m['completed_at'] as String),
+    professionalPaidAck: m['professional_paid_ack'] as bool? ?? false,
+    professionalName: m['professional_name'] as String? ?? 'Profesional',
+    customerName: m['customer_name'] as String? ?? 'Cliente',
+  );
+}
+
+class PaymentReviewReport {
+  const PaymentReviewReport({
+    required this.items,
+    required this.unpaid,
+    this.open = 0,
+    this.refunded = 0,
+    this.rejected = 0,
+  });
+
+  final List<PaymentReview> items;
+  final List<UnpaidJob> unpaid;
+  final int open;
+  final int refunded;
+  final int rejected;
+
+  factory PaymentReviewReport.fromMap(Map<String, dynamic> m) {
+    final sum = (m['summary'] as Map<String, dynamic>?) ?? const {};
+    return PaymentReviewReport(
+      items: [for (final i in (m['items'] as List? ?? const [])) PaymentReview.fromMap(i as Map<String, dynamic>)],
+      unpaid: [for (final i in (m['unpaid'] as List? ?? const [])) UnpaidJob.fromMap(i as Map<String, dynamic>)],
+      open: (sum['open'] as num?)?.toInt() ?? 0,
+      refunded: (sum['refunded'] as num?)?.toInt() ?? 0,
+      rejected: (sum['rejected'] as num?)?.toInt() ?? 0,
+    );
+  }
 }

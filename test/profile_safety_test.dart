@@ -451,7 +451,7 @@ void main() {
       await _openProfile(tester, phone: DemoBackend.professionalPhone);
       await _tap(tester, find.text('Mi billetera'));
       expect(find.byType(WalletPage), findsOneWidget);
-      expect(find.text('Saldo disponible (Bs)'), findsOneWidget);
+      expect(find.text('Saldo total (Bs)'), findsOneWidget);
       expect(find.text('Recargar saldo'), findsWidgets);
       await tester.scrollUntilVisible(
         find.text('Historial de movimientos'),

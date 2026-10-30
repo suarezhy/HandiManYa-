@@ -15,7 +15,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/demo_login.dart';
 
-// El ejemplo del dueño: saldo Bs 100, precio acordado Bs 120, comisión Bs 12.
+// El ejemplo del dueño: saldo Bs 100, precio acordado Bs 120, comisión Bs 12,
+// con las reglas finales (0066): se cobra solo en "Ya pagué".
 Future<void> _pump(WidgetTester tester, Wallet wallet, {Size size = const Size(390, 844), double textScale = 1}) async {
   await initializeDateFormatting('es');
   SharedPreferences.setMockInitialValues({});
@@ -49,48 +50,58 @@ Future<void> _pump(WidgetTester tester, Wallet wallet, {Size size = const Size(3
   await tester.pumpAndSettle();
 }
 
-String _text(WidgetTester tester, String key) =>
-    tester.widget<Text>(find.descendant(of: find.byKey(Key(key)), matching: find.byType(Text))).data!;
+String _text(WidgetTester tester, String key) {
+  final f = find.byKey(Key(key));
+  final w = tester.widget(f);
+  if (w is Text) return w.data!;
+  return tester.widget<Text>(find.descendant(of: f, matching: find.byType(Text))).data!;
+}
 
 void main() {
-  test('saldo total = disponible + reservado', () {
-    const w = Wallet(available: 88, reserved: 12);
-    expect(w.total, 100);
+  test('saldo total: nada reservado desde 0066', () {
     expect(Wallet.fromMap({'available': 88, 'reserved': 0, 'commissions_collected': 12}).total, 88);
+    expect(Wallet.fromMap({'available': 100, 'reserved': 0}).total, 100);
   });
 
-  testWidgets('acordado, antes de confirmar: total Bs 100, reservado Bs 12, cobrado ${Fmt.bs(0)}', (tester) async {
-    await _pump(tester, const Wallet(available: 88, reserved: 12));
-    expect(find.text(Fmt.bs(88)), findsOneWidget);
-    expect(_text(tester, 'wallet-total'), 'Saldo total: ${Fmt.bs(100)}');
-    expect(_text(tester, 'wallet-reserved'), 'Saldo reservado: ${Fmt.bs(12)}');
+  testWidgets('acordado Bs 120, antes de "Ya pagué": total Bs 100, cobrado ${Fmt.bs(0)}', (tester) async {
+    await _pump(tester, const Wallet(available: 100, reserved: 0));
+    expect(_text(tester, 'wallet-total'), Fmt.bs(100));
     expect(_text(tester, 'wallet-collected'), 'Comisiones cobradas: ${Fmt.bs(0)}');
   });
 
-  testWidgets('después de que el cliente confirma: total Bs 88 y Bs 12 cobrados', (tester) async {
+  testWidgets('después de "Ya pagué": total Bs 88 y Bs 12 cobrados', (tester) async {
     await _pump(tester, const Wallet(available: 88, reserved: 0, commissionsCollected: 12));
-    expect(_text(tester, 'wallet-total'), 'Saldo total: ${Fmt.bs(88)}');
-    expect(_text(tester, 'wallet-reserved'), 'Saldo reservado: ${Fmt.bs(0)}');
+    expect(_text(tester, 'wallet-total'), Fmt.bs(88));
     expect(_text(tester, 'wallet-collected'), 'Comisiones cobradas: ${Fmt.bs(12)}');
   });
 
-  testWidgets('explica el cobro al confirmar, sin deudas ni descuentos de recargas', (tester) async {
-    await _pump(tester, const Wallet(available: 88, reserved: 12));
-    expect(find.textContaining('cuando el cliente confirma que el trabajo terminó'), findsOneWidget);
-    expect(find.textContaining('nunca queda negativo'), findsOneWidget);
-    expect(find.textContaining('próxima recarga'), findsNothing);
-    expect(find.textContaining('pendiente y se descuenta'), findsNothing);
+  testWidgets('muestra solo saldo total, comisiones cobradas, recargar e historial', (tester) async {
+    await _pump(tester, const Wallet(available: 88, reserved: 0, commissionPending: 5, extrasAwaitingFunds: 1));
+    expect(find.text('Saldo total (Bs)'), findsOneWidget);
+    expect(find.byKey(const Key('wallet-collected')), findsOneWidget);
+    expect(find.byKey(const Key('wallet-recharge')), findsOneWidget);
+    expect(find.text('Historial de movimientos'), findsOneWidget);
+    expect(find.byKey(const Key('wallet-reserved')), findsNothing);
+    expect(find.byKey(const Key('wallet-awaiting')), findsNothing);
+    expect(find.textContaining('eservad'), findsNothing);
+    expect(find.textContaining('disponible'), findsNothing);
+    expect(find.textContaining('sin cobrar'), findsNothing);
+    expect(find.textContaining('pendiente'), findsNothing);
   });
 
   testWidgets('la tarjeta cabe en un teléfono chico con letra grande', (tester) async {
-    await _pump(tester, const Wallet(available: 88, reserved: 12), size: const Size(320, 568), textScale: 1.6);
+    await _pump(tester, const Wallet(available: 88, reserved: 0), size: const Size(320, 568), textScale: 1.6);
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('wallet-total')), findsOneWidget);
   });
 
-  test('los textos legales y de error ya no prometen cobrar de la próxima recarga', () {
-    expect(LegalDoc.commissions.body, isNot(contains('próxima recarga')));
-    expect(LegalDoc.commissions.body, contains('cuando el cliente confirma que el trabajo terminó'));
+  test('la política dice que la comisión se cobra en "Ya pagué" y nada se reserva', () {
+    final body = LegalDoc.commissions.body;
+    expect(body, contains('cuando el cliente marca "Ya pagué"'));
+    expect(body, contains('Nada se reserva'));
+    expect(body, contains('No recibí el pago'));
+    expect(body, isNot(contains('se reserva de tu saldo')));
+    expect(body, isNot(contains('próxima recarga')));
     expect(AppError.from(Exception('HMY_COMMISSION_DEBT')).message, isNot(contains('Recarga')));
   });
 }

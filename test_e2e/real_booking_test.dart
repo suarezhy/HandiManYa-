@@ -301,10 +301,11 @@ void main() {
         expect(d.address?.line, 'Calle Prueba 123, casa verde');
       });
       if (methods.isNotEmpty) {
-        await _step('al acordar se reserva la comisión del precio acordado', () async {
+        await _step('al acordar no se reserva ni se descuenta la comisión (0066)', () async {
+          expect(quote.canCover, isTrue, reason: 'el saldo cubría la comisión: por eso pudo acordar');
           final w = await pro.wallet();
-          expect(w.reserved, closeTo(quote.commission, 0.005));
-          expect(w.available, closeTo(walletBefore.available - quote.commission, 0.005));
+          expect(w.reserved, 0);
+          expect(w.available, closeTo(walletBefore.available, 0.005));
         });
       }
       await _step('aviso dentro de la app: al cliente le llega que lo aceptaron', () async {
@@ -416,8 +417,10 @@ void main() {
         expect((await customer.detail(bookingId)).price.total, closeTo(150, 0.005));
       });
       final preview = await _step('comisión esperada sobre el precio final', () => pro.commissionPreview(bookingId));
-      await _step('el cliente confirma, paga con QR y califica', () async {
+      await _step('el cliente confirma (no cobra), marca "Ya pagué" con QR y califica', () async {
         await customer.confirmCompletion(bookingId);
+        expect((await pro.wallet()).available, closeTo(walletBefore.available, 0.005));
+        await customer.acknowledgePayment(bookingId, PaymentMethod.qr);
         await customer.acknowledgePayment(bookingId, PaymentMethod.qr);
         await customer.submitReview(bookingId, 5, 'Prueba E2E: puntual y prolijo');
         final d = await customer.detail(bookingId);
@@ -429,7 +432,7 @@ void main() {
         await pro.acknowledgePayment(bookingId, PaymentMethod.cash);
         expect((await customer.detail(bookingId)).paymentMethod, PaymentMethod.qr);
       });
-      await _step('la comisión cobrada es la esperada y no queda reserva colgada', () async {
+      await _step('"Ya pagué" cobró la comisión esperada una sola vez, sin reservas', () async {
         final w = await pro.wallet();
         expect(w.reserved, 0);
         expect(w.available, greaterThanOrEqualTo(0));
@@ -450,7 +453,11 @@ void main() {
         expect(charged, closeTo(math.min(preview.expected, walletBefore.available), 0.005));
         if (preview.expected > 0 && walletBefore.available > 0) {
           final ledger = await pro.ledger();
-          expect(ledger.where((e) => e.type == LedgerType.commissionCapture), isNotEmpty);
+          final code = (await pro.detail(bookingId)).code;
+          expect(
+            ledger.where((e) => e.type == LedgerType.commissionCapture && (e.note ?? '').contains(code)),
+            hasLength(1),
+          );
         }
       });
 

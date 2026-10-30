@@ -267,16 +267,11 @@ class _WalletCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Saldo de tu billetera', style: TextStyle(color: HyColors.textSecondary)),
+                const Text('Saldo total', style: TextStyle(color: HyColors.textSecondary)),
                 Text(
-                  Fmt.bs(dashboard.walletAvailable),
+                  Fmt.bs(dashboard.walletAvailable + dashboard.walletReserved),
                   style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
                 ),
-                if (dashboard.walletReserved > 0)
-                  Text(
-                    'Reservado: ${Fmt.bs(dashboard.walletReserved)}',
-                    style: const TextStyle(color: HyColors.textMuted, fontSize: 14),
-                  ),
                 if (low)
                   const Text(
                     'Saldo bajo: recarga para seguir aceptando trabajos.',

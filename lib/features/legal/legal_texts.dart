@@ -6,7 +6,7 @@ import '../../data/models/booking.dart';
 
 /// Versión de los textos. Si cambia, se vuelve a pedir la aceptación y queda
 /// registrada en `consent_records`.
-const legalVersion = '2026-10-borrador-3';
+const legalVersion = '2026-10-borrador-4';
 
 const _draftNotice =
     'BORRADOR para revisión legal. No es un texto final ni está aprobado por un abogado. '
@@ -133,7 +133,7 @@ const _cancellations = '''Cliente
 
 Profesional
 • Si aceptas un trabajo, es un compromiso. Cancelar sin un motivo justificado puede afectar tu calificación y tu cuenta.
-• Si el trabajo se cancela, la comisión reservada vuelve a tu saldo disponible.
+• Si el trabajo se cancela antes de que el cliente marque "Ya pagué", no se cobra comisión.
 
 Si alguien no se presenta
 Repórtalo desde la solicitud ("Reportar un problema"). El equipo revisa el caso con las dos partes.
@@ -141,7 +141,7 @@ Repórtalo desde la solicitud ("Reportar un problema"). El equipo revisa el caso
 Disputas
 Si hay un problema con un trabajo en curso o terminado, cualquiera de las dos partes puede abrir una disputa. El equipo decide si el trabajo se da por completado o se cancela, y explica la decisión a ambos. Esa decisión afecta solo a la comisión del profesional y a las cuentas en la app; el pago del servicio es un asunto entre el cliente y el profesional.
 
-[PENDIENTE: plazos, penalidades y devoluciones de comisión, a definir con un abogado.]''';
+[PENDIENTE: plazos y penalidades, a definir con un abogado.]''';
 
 const _commissions = '''Esta política es para profesionales. Los clientes no tienen billetera ni pagan comisión.
 
@@ -151,11 +151,12 @@ Mi billetera
 • Recargas por transferencia o QR y registras el pago en "Recargar saldo" con el comprobante. El equipo lo verifica y lo acredita. La app nunca suma saldo sin esa verificación.
 
 Comisión
-• La comisión, la reserva y el saldo mínimo los define la administración por servicio y ciudad, y se muestran antes de que aceptes un trabajo.
-• Al acordar el precio de un trabajo se reserva de tu saldo la comisión completa. Lo reservado no se puede usar en otro trabajo.
-• La comisión se cobra una sola vez, cuando el cliente confirma que el trabajo terminó, y nunca es más que lo reservado.
-• Si el trabajo se cancela, la reserva vuelve entera a tu saldo disponible.
-• Si no te alcanza el saldo, no puedes acordar ese precio. Tu saldo nunca queda negativo y las recargas no se usan para pagar comisiones viejas.
+• La comisión (10 % del precio acordado, salvo que la administración defina otra por servicio o ciudad) se muestra antes de que aceptes un trabajo.
+• Nada se reserva ni se descuenta al acordar el precio ni al empezar el trabajo.
+• La comisión se cobra una sola vez, cuando el cliente marca "Ya pagué" después de que terminaste el trabajo. Confirmar el trabajo terminado o marcar "Recibí el pago" no la cobran.
+• Para acordar un precio, tu saldo tiene que cubrir su comisión y la de tus otros trabajos acordados que todavía no se cobraron. Si no alcanza, no puedes acordar ese precio. Tu saldo nunca queda negativo.
+• Si el cliente marcó "Ya pagué" pero no recibiste el pago, toca "No recibí el pago" en la solicitud dentro de los 7 días. El equipo lo revisa y, si el cliente no pagó, te devuelve la comisión.
+• Si una disputa termina con el trabajo cancelado, la comisión cobrada vuelve a tu saldo.
 • El pago del cliente por el servicio es todo tuyo: lo recibes directamente en efectivo o por QR.
 
 Historial de movimientos

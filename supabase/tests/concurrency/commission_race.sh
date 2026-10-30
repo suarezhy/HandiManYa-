@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Carrera real por el mismo saldo: un profesional con Bs 15 acepta dos trabajos
 # de Bs 100 (Bs 10 de comisión cada uno) al mismo tiempo, desde dos conexiones,
-# N veces. Debe quedar exactamente uno acordado, el otro con
-# HMY_INSUFFICIENT_BALANCE, y la billetera en 5 / 10, nunca negativa.
+# N veces. Desde 0066 nada se reserva, pero el saldo tiene que cubrir todas las
+# comisiones por cobrar: debe quedar exactamente uno acordado, el otro con
+# HMY_INSUFFICIENT_BALANCE, y la billetera intacta en 15 / 0, nunca negativa.
 # Solo local: copia la base de run_local.sh.
 #
 # Uso: PGHOST=... PGPORT=... PGUSER=postgres supabase/tests/concurrency/commission_race.sh [N]
@@ -42,8 +43,9 @@ ok=0; bad=0
 for i in $(seq 1 "$N"); do
   a_id="00000000-0000-0000-0000-$(printf '%012x' $((2 * i - 1)))"
   b_id="00000000-0000-0000-0000-$(printf '%012x' $((2 * i)))"
-  # Cada carrera empieza con Bs 15 disponibles y nada reservado.
-  psql -X -q -d "$DB" -c "set session_replication_role = replica; update public.wallets set available = 15, reserved = 0 where professional_id = '$P'"
+  # Cada carrera empieza con Bs 15 y sin trabajos por cobrar (los de la carrera
+  # anterior se cierran).
+  psql -X -q -d "$DB" -c "set session_replication_role = replica; update public.wallets set available = 15, reserved = 0 where professional_id = '$P'; update public.bookings set status = 'cancelled' where professional_id = '$P' and status = 'confirmed'"
   a=$(mktemp); b=$(mktemp)
   agree "$a_id" > "$a" & agree "$b_id" > "$b" & wait
   r="$(cat "$a") $(cat "$b")"; rm -f "$a" "$b"
@@ -51,7 +53,7 @@ for i in $(seq 1 "$N"); do
   n=$(psql -X -At -d "$DB" -c "select count(*) from public.bookings where id in ('$a_id', '$b_id') and status = 'confirmed'")
   case "$r" in
     "confirmed HMY_INSUFFICIENT_BALANCE"|"HMY_INSUFFICIENT_BALANCE confirmed")
-      if [ "$w" = "5.00/10.00" ] && [ "$n" = 1 ]; then ok=$((ok + 1)); else bad=$((bad + 1)); echo "carrera $i: $r · billetera $w · acordados $n"; fi ;;
+      if [ "$w" = "15.00/0.00" ] && [ "$n" = 1 ]; then ok=$((ok + 1)); else bad=$((bad + 1)); echo "carrera $i: $r · billetera $w · acordados $n"; fi ;;
     *) bad=$((bad + 1)); echo "carrera $i: $r · billetera $w · acordados $n" ;;
   esac
 done

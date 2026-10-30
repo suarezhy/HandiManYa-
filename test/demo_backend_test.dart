@@ -55,13 +55,13 @@ void main() {
     await asPro();
 
     await agreeAsPro(backend, id);
-    expect((await backend.wallet()).reserved, 15, reason: 'se reserva la comisión del precio acordado');
     final confirmed = await backend.detail(id);
     expect(confirmed.status, BookingStatus.confirmed);
     expect(confirmed.address, isNotNull);
-    final reserved = await backend.wallet();
-    expect(reserved.reserved, greaterThan(0));
-    expect(reserved.available, lessThan(startBalance));
+    // Reglas finales (0066): acordar no reserva ni descuenta nada.
+    final agreed = await backend.wallet();
+    expect(agreed.reserved, 0);
+    expect(agreed.available, startBalance);
 
     await backend.updateProgress(id, BookingStatus.onTheWay);
     final pin = await backend.markArrived(id);
@@ -75,6 +75,7 @@ void main() {
     await asCustomer();
     // El cliente pagó directo al profesional y dice cómo: por QR, aunque pidió efectivo.
     await backend.acknowledgePayment(id, PaymentMethod.qr);
+    await backend.acknowledgePayment(id, PaymentMethod.qr);
     final paid = await backend.detail(id);
     expect(paid.customerPaidAck, isTrue);
     expect(paid.paymentMethod, PaymentMethod.qr);
@@ -87,7 +88,9 @@ void main() {
     await asPro();
     final after = await backend.wallet();
     expect(after.reserved, 0);
-    expect(after.available, lessThan(startBalance));
+    expect(after.available, startBalance - 15, reason: '"Ya pagué" (dos toques) cobra Bs 15 una sola vez');
+    expect(after.commissionsCollected, 15);
+    expect((await backend.detail(id)).commissionCharged, 15);
   });
 
   test('¡Ya!: si nadie está disponible avisa con un mensaje claro', () async {
@@ -106,7 +109,7 @@ void main() {
     );
   });
 
-  test('cancelar un trabajo aceptado devuelve la comisión reservada', () async {
+  test('cancelar un trabajo aceptado no mueve el saldo', () async {
     await asPro();
     await backend.setAvailability(true);
     final start = await backend.wallet();

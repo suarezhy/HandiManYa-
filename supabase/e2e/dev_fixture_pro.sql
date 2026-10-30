@@ -174,14 +174,16 @@ select '(lo que sigue, visto como …02)' where set_config('request.jwt.claims',
 select 'lista de …02: ' || count(*) || ' filas (' || count(*) filter (where is_offer) || ' ofertas)'
 from public.my_bookings('professional');
 select 'activo ' || b.code || ' · ' || b.status || ' · ' || b.mode || ' · acordado Bs ' || coalesce(b.agreed_amount::text, '-')
-       || ' · reservado Bs ' || b.commission_reserved || ' · creado ' || to_char(b.created_at at time zone 'America/La_Paz', 'DD-MM HH24:MI')
+       || ' · comisión cobrada Bs ' || coalesce(b.commission_captured::text, '-') || ' · creado ' || to_char(b.created_at at time zone 'America/La_Paz', 'DD-MM HH24:MI')
        || ' · en su lista: ' || exists (select 1 from public.my_bookings('professional') m where m.id = b.id)
 from public.bookings b
 where b.professional_id = :'p_id' and b.status in ('confirmed', 'on_the_way', 'in_progress', 'work_finished')
 order by b.created_at desc limit 10;
 select 'pedido F9A50778: ' || coalesce((select b.status || ' · ' || b.mode || ' · profesional '
        || case when b.professional_id = :'p_id'::uuid then '…02' when b.professional_id is null then 'ninguno' else 'otra cuenta' end
-       || ' · acordado Bs ' || coalesce(b.agreed_amount::text, '-') || ' · reservado Bs ' || b.commission_reserved
+       || ' · acordado Bs ' || coalesce(b.agreed_amount::text, '-')
+       || ' · Ya pagué: ' || case when b.customer_paid_ack_at is null then 'no' else 'sí' end
+       || ' · comisión cobrada Bs ' || coalesce(b.commission_captured::text, '-')
        || ' · en la lista de …02: ' || exists (select 1 from public.my_bookings('professional') m where m.id = b.id)
        from public.bookings b where b.code = 'F9A50778'), 'no existe');
 commit;

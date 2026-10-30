@@ -94,7 +94,7 @@ select test.eq(public.hmy_push_text('wallet_credited'), 'Tu saldo ya está dispo
 select test.eq((select count(*)::int from public.qr_recharge_events where recharge_id = pg_temp.qr('ok')), 2,
                'los dos avisos con resultado quedan para conciliar (el repetido no se guarda dos veces)');
 
--- Con el saldo recargado ya puede acordar un precio (reserva la comisión).
+-- Con el saldo recargado ya puede acordar un precio (desde 0066 no se reserva nada).
 select test.login('00000000-0000-0000-0000-000009aa0004');
 insert into tqr select 'job', public.create_booking('00000000-0000-0000-0000-000009aa0002',
   (select id from public.service_categories where slug = 'plomeria'), 'now', 'Destapar el lavaplatos', 'Calle Tupiza 5');
@@ -102,7 +102,7 @@ select test.logout();
 select test.login('00000000-0000-0000-0000-000009aa0002');
 select test.agree(pg_temp.qr('job'), 120);
 select test.logout();
-select test.eq(pg_temp.qr_wallet(), '38.00/12.00', 'después de recargar: reserva Bs 12 del precio Bs 120');
+select test.eq(pg_temp.qr_wallet(), '50.00/0.00', 'después de recargar acuerda Bs 120 sin reservar');
 
 -- Monto distinto: no se acredita, queda en verificación.
 select test.login('00000000-0000-0000-0000-000009aa0002');
@@ -113,7 +113,7 @@ insert into tqr select 'moneda', public.create_qr_recharge(20) ->> 'id';
 select test.eq(public.dev_simulate_qr_payment(pg_temp.qr('moneda'), 20, 'USD'), 'verifying_wrong_currency', 'pagó en dólares');
 select test.eq((public.qr_recharge_status(pg_temp.qr('moneda')) ->> 'status'), 'verifying', 'Pago en verificación');
 select test.logout();
-select test.eq(pg_temp.qr_wallet(), '38.00/12.00', 'nada acreditado sin revisar');
+select test.eq(pg_temp.qr_wallet(), '50.00/0.00', 'nada acreditado sin revisar');
 
 -- Vencida: sin pago se ve vencida; un pago tarde va a verificación.
 select test.login('00000000-0000-0000-0000-000009aa0002');
@@ -167,7 +167,7 @@ select test.otp('00000000-0000-0000-0000-000009aa0001');
 select test.eq((public.owner_review_qr_recharge(pg_temp.qr('moneda'), false, 'Pagó en dólares: se devuelve por el banco', 'otp')
                 ->> 'status'), 'rejected', 'rechazar no acredita');
 select test.logout();
-select test.eq(pg_temp.qr_wallet(), '128.00/12.00', 'solo se sumaron los Bs 90 aprobados');
+select test.eq(pg_temp.qr_wallet(), '140.00/0.00', 'solo se sumaron los Bs 90 aprobados');
 select test.eq((select count(*)::int from public.admin_audit_log where action in ('wallet.qr_approve', 'wallet.qr_reject')
                 and target_id in (pg_temp.qr('monto')::text, pg_temp.qr('moneda')::text)), 2, 'cada revisión queda auditada');
 
@@ -188,7 +188,7 @@ select test.eq((public.owner_reverse_qr_recharge(pg_temp.qr('ok'), 'El banco anu
 select test.otp('00000000-0000-0000-0000-000009aa0001');
 select test.expect_error($$select public.owner_reverse_qr_recharge(pg_temp.qr('ok'), 'otra vez', 'otp')$$, 'HMY_INVALID_STATUS');
 select test.logout();
-select test.eq(pg_temp.qr_wallet(), '10.00/12.00', 'se descontaron los Bs 50 una vez; la reserva no se toca');
+select test.eq(pg_temp.qr_wallet(), '10.00/0.00', 'se descontaron los Bs 50 una vez');
 select test.eq((select count(*)::int from public.wallet_ledger where idempotency_key = 'qr-reverse:' || pg_temp.qr('ok')), 1,
                'la reversión queda en el historial');
 

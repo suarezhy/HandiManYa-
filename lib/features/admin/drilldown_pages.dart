@@ -397,10 +397,7 @@ class _BookingDetailBody extends StatelessWidget {
                 const SectionHeader(title: 'Dinero (solo propietario)'),
                 if (b.quoteAmount != null) _Row('Cotizado', Fmt.bs(b.quoteAmount!)),
                 if (b.finalAmount != null) _Row('Pagado al profesional', Fmt.bs(b.finalAmount!)),
-                if (b.commissionCaptured != null)
-                  _Row('Comisión cobrada', Fmt.bs(b.commissionCaptured!))
-                else if ((b.commissionReserved ?? 0) > 0)
-                  _Row('Comisión reservada (sin cobrar)', Fmt.bs(b.commissionReserved!)),
+                if (b.commissionCaptured != null) _Row('Comisión cobrada', Fmt.bs(b.commissionCaptured!)),
                 const Text(
                   'El cliente paga al profesional. La plataforma solo cobra la comisión de su billetera.',
                   style: TextStyle(color: HyColors.textSecondary),
@@ -719,12 +716,11 @@ class _OwnerWalletsPageState extends ConsumerState<OwnerWalletsPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _Row('Disponible en total', Fmt.bs(value.available)),
-                    _Row('Reservado en total', Fmt.bs(value.reserved)),
                     _Row('Billeteras', '${value.total}'),
                     const SizedBox(height: HySpacing.xxs),
                     const Text(
                       'Es dinero de los profesionales (recargas), no un ingreso de la plataforma. '
-                      'Lo reservado se cobra como comisión solo cuando el trabajo se completa.',
+                      'La comisión se descuenta solo cuando el cliente marca "Ya pagué".',
                       style: TextStyle(color: HyColors.textSecondary),
                     ),
                   ],
@@ -757,10 +753,7 @@ class _OwnerWalletsPageState extends ConsumerState<OwnerWalletsPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(w.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-              InfoLine(
-                Icons.account_balance_wallet_outlined,
-                'Disponible ${Fmt.bs(w.available)} · Reservado ${Fmt.bs(w.reserved)}',
-              ),
+              InfoLine(Icons.account_balance_wallet_outlined, 'Saldo ${Fmt.bs(w.available + w.reserved)}'),
               InfoLine(
                 Icons.history,
                 [

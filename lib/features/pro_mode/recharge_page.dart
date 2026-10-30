@@ -111,6 +111,7 @@ class _RechargePageState extends ConsumerState<RechargePage> {
   @override
   Widget build(BuildContext context) {
     final history = ref.watch(qrRechargesProvider);
+    final topups = ref.watch(topupsProvider).value ?? const <TopupRequest>[];
     final valid = _amount != null && _amountError == null;
     return Scaffold(
       appBar: AppBar(title: const OneLineText('Recargar mi billetera')),
@@ -184,6 +185,10 @@ class _RechargePageState extends ConsumerState<RechargePage> {
                       'El saldo se acredita cuando el banco confirma el pago. Una captura de pantalla o un mensaje '
                       'no acreditan saldo. Con transferencia, el equipo verifica el pago antes de acreditarlo.',
                 ),
+                if (topups.isNotEmpty) ...[
+                  const SectionHeader(title: 'Transferencias bancarias'),
+                  for (final t in topups) TopupTile(topup: t),
+                ],
                 const SectionHeader(title: 'Historial de recargas con QR'),
                 switch (history) {
                   AsyncData(:final value) when value.isEmpty => const Text(

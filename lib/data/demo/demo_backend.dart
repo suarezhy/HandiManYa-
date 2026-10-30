@@ -906,10 +906,12 @@ class DemoBackend
       _conversations[c.id] = c;
       b.conversationId = c.id;
     } else if (to == BookingStatus.completed) {
-      _capture(b);
+      // Completar no cobra: la comisión se cobra en "Ya pagué" (0066).
       _pros[b.professionalId]?.completedJobs++;
     } else if (to == BookingStatus.cancelled) {
       _release(b);
+      // Una disputa que se cancela devuelve la comisión cobrada.
+      if (b.captured && !b.refunded) _refund(b, 'el trabajo se canceló después de la disputa');
     }
     final title = 'Solicitud ${b.code}: ${to.label}';
     if (actorId != b.customerId) _notify(b.customerId, 'booking_status', title, note ?? '', bookingId: b.id);
@@ -939,25 +941,57 @@ class DemoBackend
         );
   }
 
-  /// Como 0062: al acordar se reserva el 10 % del precio acordado.
+  /// La comisión de un trabajo: 10 % del monto final, o del acordado más lo aparte.
+  static double _feeOf(_Booking b) => _commissionOf(b.finalAmount ?? ((b.agreedAmount ?? 0) + b.extras));
+
+  /// Como 0066: comisiones de trabajos acordados todavía sin cobrar.
+  double _openCommissions(String pro) => _bookings.values
+      .where(
+        (x) =>
+            x.professionalId == pro &&
+            x.agreedAmount != null &&
+            !x.captured &&
+            ({
+                  BookingStatus.confirmed,
+                  BookingStatus.onTheWay,
+                  BookingStatus.inProgress,
+                  BookingStatus.workFinished,
+                  BookingStatus.disputed,
+                }.contains(x.status) ||
+                (x.status == BookingStatus.completed &&
+                    x.events.last.at.isAfter(DateTime.now().subtract(const Duration(hours: 72))))),
+      )
+      .fold(0.0, (t, x) => t + _feeOf(x));
+
+  /// Como 0066: al acordar no se reserva nada; el saldo tiene que cubrir la
+  /// comisión de este trabajo y la de los otros sin cobrar.
   void _reserve(_Booking b) {
     final pro = b.professionalId!;
     if (!_wallets.containsKey(pro)) return; // profesionales de ejemplo sin billetera simulada
-    final fee = _commissionOf(b.agreedAmount ?? 0);
-    if (fee <= 0) return;
-    if (_wallets[pro]![0] < fee) throw AppError.from('HMY_INSUFFICIENT_BALANCE');
-    _post(pro, LedgerType.commissionReserve, -fee, fee, 'Reserva de comisión ${b.code}');
-    b.reserved = fee;
+    if (_wallets[pro]![0] < _openCommissions(pro)) throw AppError.from('HMY_INSUFFICIENT_BALANCE');
   }
 
-  /// Al completar se cobra el 10 % del monto final, hasta lo reservado.
-  void _capture(_Booking b) {
-    if (b.reserved == 0 || b.captured) return;
-    final fee = min(_commissionOf(b.finalAmount ?? b.agreedAmount ?? 0), b.reserved);
-    _post(b.professionalId!, LedgerType.commissionCapture, b.reserved - fee, -b.reserved, 'Comisión ${b.code}');
-    b
-      ..reserved = 0
-      ..captured = true;
+  /// "Ya pagué" del cliente: se cobra una vez, nunca deja saldo negativo.
+  void _charge(_Booking b) {
+    if (b.captured) return;
+    b.captured = true;
+    final pro = b.professionalId!;
+    if (!_wallets.containsKey(pro)) return;
+    final fee = _feeOf(b);
+    final take = min(fee, _wallets[pro]![0]);
+    b.chargedAmount = take;
+    if (take > 0) {
+      _post(pro, LedgerType.commissionCapture, -take, 0, 'Comisión ${b.code} (el cliente marcó "Ya pagué")');
+      _notify(pro, 'commission_charged', 'Comisión cobrada', 'Solicitud ${b.code}: ${Fmt.bs(take)}.', bookingId: b.id);
+    }
+  }
+
+  void _refund(_Booking b, String note) {
+    if (!b.captured || b.refunded) return;
+    b.refunded = true;
+    if (b.chargedAmount > 0) {
+      _post(b.professionalId!, LedgerType.refund, b.chargedAmount, 0, 'Devolución de la comisión ${b.code}: $note');
+    }
   }
 
   void _release(_Booking b) {
@@ -1250,6 +1284,8 @@ class DemoBackend
       paymentMethod: b.paidWith ?? b.draft.paymentMethod,
       customerPaidAck: b.customerPaid,
       professionalPaidAck: b.professionalPaid,
+      paymentReviewStatus: b.paymentReview?.status,
+      commissionCharged: isCustomer || !b.captured ? null : (b.refunded ? 0 : b.chargedAmount),
       createdAt: b.createdAt,
       cancelReason: b.status == BookingStatus.cancelled ? b.events.last.note : null,
       viewerIsCustomer: isCustomer,
@@ -1486,7 +1522,7 @@ class DemoBackend
     if (!o.kind.beforeJob) {
       final pro = b.professionalId!;
       final fee = _wallets.containsKey(pro) ? _commissionOf(o.amount) : 0.0;
-      if (fee > 0 && _wallets[pro]![0] < fee) {
+      if (fee > 0 && _wallets[pro]![0] < _openCommissions(pro) + fee) {
         o.status = OfferStatus.awaitingFunds;
         _notify(
           pro,
@@ -1496,10 +1532,6 @@ class DemoBackend
           bookingId: b.id,
         );
       } else {
-        if (fee > 0) {
-          _post(pro, LedgerType.commissionReserve, -fee, fee, 'Reserva de comisión ${b.code} (monto aparte)');
-          b.reserved += fee;
-        }
         o.status = OfferStatus.accepted;
         b.extras += o.amount;
       }
@@ -1576,6 +1608,7 @@ class DemoBackend
     final fee = _commissionOf(amount);
     final available = _wallets[me]?[0] ?? 0;
     final simulated = !_wallets.containsKey(me);
+    final open = simulated ? 0.0 : _openCommissions(me);
     return CommissionQuote(
       hasRule: true,
       ratePercent: _ratePercent,
@@ -1584,8 +1617,9 @@ class DemoBackend
       net: amount - fee,
       available: available,
       pendingDebt: 0,
-      canCover: simulated || available >= fee,
-      missing: simulated ? 0 : max(fee - available, 0),
+      canCover: simulated || available >= open + fee,
+      missing: simulated ? 0 : max(open + fee - available, 0),
+      openCommissions: open,
     );
   }
 
@@ -1944,16 +1978,35 @@ class DemoBackend
   Future<void> acknowledgePayment(String bookingId, PaymentMethod method) async {
     await _latency();
     final b = _get(bookingId);
-    _requireStatus(b, {BookingStatus.workFinished, BookingStatus.completed});
     if (b.customerId == _me.id) {
+      if (b.customerPaid) return;
+      _requireStatus(b, {BookingStatus.workFinished, BookingStatus.completed});
       b.customerPaid = true;
+      b.customerPaidAt = DateTime.now();
       // El cliente dice cómo pagó; el servidor hace lo mismo.
       b.paidWith = method;
+      // Como 0066: "Ya pagué" del cliente cobra la comisión, una sola vez.
+      _charge(b);
     } else if (b.professionalId == _me.id) {
+      if (b.professionalPaid) return;
+      _requireStatus(b, {BookingStatus.workFinished, BookingStatus.completed});
       b.professionalPaid = true;
     } else {
       throw AppError.from('HMY_FORBIDDEN');
     }
+    _changes.add(null);
+  }
+
+  @override
+  Future<void> reportPaymentNotReceived(String bookingId, String reason) async {
+    await _latency();
+    final b = _get(bookingId);
+    if (b.professionalId != _me.id) throw AppError.from('HMY_FORBIDDEN');
+    if (reason.trim().length < 5) throw AppError.from('HMY_REASON_REQUIRED');
+    if (b.paymentReview != null) throw AppError.from('HMY_ALREADY_REPORTED');
+    if (!b.customerPaid || b.professionalPaid) throw AppError.from('HMY_INVALID_TRANSITION');
+    b.paymentReview = _PaymentReviewDemo(id: _seq++, reason: reason.trim(), createdAt: DateTime.now());
+    _notify(b.customerId, 'payment_review', 'Revisamos tu pago', 'Solicitud ${b.code}.', bookingId: b.id);
     _changes.add(null);
   }
 
@@ -2267,9 +2320,11 @@ class DemoBackend
     return Wallet(
       available: w[0],
       reserved: w[1],
-      commissionsCollected: ledger
-          .where((e) => e.type == LedgerType.commissionCapture)
-          .fold(0.0, (sum, e) => sum - e.availableDelta - e.reservedDelta),
+      commissionsCollected:
+          ledger
+              .where((e) => e.type == LedgerType.commissionCapture)
+              .fold(0.0, (sum, e) => sum - e.availableDelta - e.reservedDelta) -
+          ledger.where((e) => e.type == LedgerType.refund).fold(0.0, (sum, e) => sum + e.availableDelta),
       extrasAwaitingFunds: _bookings.values
           .where((b) => b.professionalId == _me.id)
           .expand((b) => b.priceOffers)
@@ -2436,6 +2491,71 @@ class DemoBackend
 
   @override
   Future<List<RechargeBankAccount>> rechargeBankAccounts() async => const [];
+
+  @override
+  Future<PaymentReviewReport> ownerPaymentReviews({String status = 'open'}) async {
+    await _latency(120);
+    final rows = [
+      for (final b in _bookings.values)
+        if (b.paymentReview case final r?)
+          PaymentReview(
+            id: r.id,
+            bookingId: b.id,
+            bookingCode: b.code,
+            status: r.status,
+            reason: r.reason,
+            commissionAmount: b.chargedAmount,
+            finalAmount: b.finalAmount,
+            customerPaidAt: b.customerPaidAt,
+            professionalName: _nameOf(b.professionalId ?? ''),
+            customerName: _nameOf(b.customerId),
+            resolution: r.resolution,
+            createdAt: r.createdAt,
+          ),
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final old = DateTime.now().subtract(const Duration(hours: 72));
+    return PaymentReviewReport(
+      items: status == 'all' ? rows : rows.where((r) => r.status == status).toList(),
+      unpaid: [
+        for (final b in _bookings.values)
+          if (b.status == BookingStatus.completed && !b.customerPaid && b.events.last.at.isBefore(old))
+            UnpaidJob(
+              bookingId: b.id,
+              bookingCode: b.code,
+              finalAmount: b.finalAmount,
+              commission: _feeOf(b),
+              completedAt: b.events.last.at,
+              professionalPaidAck: b.professionalPaid,
+              professionalName: _nameOf(b.professionalId ?? ''),
+              customerName: _nameOf(b.customerId),
+            ),
+      ],
+      open: rows.where((r) => r.isOpen).length,
+      refunded: rows.where((r) => r.status == 'refunded').length,
+      rejected: rows.where((r) => r.status == 'rejected').length,
+    );
+  }
+
+  @override
+  Future<void> resolvePaymentReview(
+    int id, {
+    required bool refund,
+    required String note,
+    required String authMethod,
+  }) async {
+    await _latency();
+    if (note.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    final b = _bookings.values.where((b) => b.paymentReview?.id == id).firstOrNull;
+    final r = b?.paymentReview;
+    if (b == null || r == null) throw AppError.from('HMY_NOT_FOUND');
+    if (r.status != 'open') throw AppError.from('HMY_ALREADY_REVIEWED');
+    if (refund) _refund(b, 'el cliente no pagó (revisión de pago)');
+    r
+      ..status = refund ? 'refunded' : 'rejected'
+      ..resolution = note.trim()
+      ..resolvedAt = DateTime.now();
+    _changes.add(null);
+  }
 
   @override
   Future<QrRechargeReport> ownerQrRecharges({QrRechargeStatus? status}) async {
@@ -4535,7 +4655,7 @@ class DemoBackend
       finalAmount: money ? b.finalAmount : null,
       quoteAmount: money ? b.quoteAmount : null,
       commissionReserved: money ? b.reserved : null,
-      commissionCaptured: money && b.captured ? b.reserved : null,
+      commissionCaptured: money && b.captured ? b.chargedAmount : null,
     );
   }
 
@@ -5522,7 +5642,13 @@ class _Booking {
   PaymentMethod? paidWith;
   bool hasReview = false;
   double reserved = 0;
+
+  /// Como 0066: la comisión se cobró en "Ya pagué" (una vez) y cuánto.
   bool captured = false;
+  double chargedAmount = 0;
+  bool refunded = false;
+  DateTime? customerPaidAt;
+  _PaymentReviewDemo? paymentReview;
   String? conversationId;
   final List<BookingPhoto> photos = [];
   String? disputeReason;
@@ -5630,4 +5756,15 @@ class _DemoOffer {
   OfferStatus status = OfferStatus.open;
 
   bool get forEveryone => professionalId == null;
+}
+
+class _PaymentReviewDemo {
+  _PaymentReviewDemo({required this.id, required this.reason, required this.createdAt});
+
+  final int id;
+  final String reason;
+  final DateTime createdAt;
+  String status = 'open';
+  String? resolution;
+  DateTime? resolvedAt;
 }

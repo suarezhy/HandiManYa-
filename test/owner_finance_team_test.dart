@@ -294,7 +294,6 @@ void main() {
       ('fin-card-unverified', () => topups(TopupFilter.unverified, month)),
       ('fin-card-not-found', () => topups(TopupFilter.notFound, month)),
       ('fin-card-available', () => wallets(WalletSort.available)),
-      ('fin-card-reserved', () => wallets(WalletSort.reserved)),
       ('fin-card-pending', () => find.byType(AdminTopupsPage).evaluate().isNotEmpty),
       ('fin-card-unverified-all', () => topups(TopupFilter.unverified, null)),
     ];

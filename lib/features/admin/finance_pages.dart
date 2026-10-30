@@ -232,7 +232,7 @@ class _FinanceSummaryView extends StatelessWidget {
           padding: EdgeInsets.only(top: HySpacing.xs),
           child: Text(
             'Lo único que gana la plataforma es la comisión que se cobra de la billetera del profesional: '
-            'se reserva completa al aceptar, se cobra al completar y vuelve al saldo si se cancela. '
+            'se cobra una sola vez cuando el cliente marca "Ya pagué"; nada se reserva antes. '
             'Lo que el cliente paga por el trabajo (en efectivo o QR) lo recibe el profesional y no pasa por aquí.',
             style: note,
           ),
@@ -303,14 +303,6 @@ class _FinanceSummaryView extends StatelessWidget {
               onTap: () => go(Routes.adminFinanceWallets),
             ),
             PanelStat(
-              'Saldos reservados',
-              null,
-              key: const Key('fin-card-reserved'),
-              display: Fmt.bs(s.walletsReservedBs),
-              detail: 'Comisiones de trabajos en curso',
-              onTap: () => go('${Routes.adminFinanceWallets}?orden=reservado'),
-            ),
-            PanelStat(
               'Recargas por revisar',
               s.topupsPending,
               key: const Key('fin-card-pending'),
@@ -342,6 +334,14 @@ class _FinanceSummaryView extends StatelessWidget {
               ? 'Pendiente de configuración'
               : '${s.receivingAccountsActive} activa(s) · ${s.receivingAccountsVerified} verificada(s)',
           onTap: () => go(Routes.adminFinanceAccounts),
+        ),
+        PanelTile(
+          key: const Key('fin-payment-reviews'),
+          icon: Icons.rule_rounded,
+          title: 'Pagos en revisión',
+          subtitle: '"No recibí el pago" y trabajos sin "Ya pagué"',
+          onTap: () =>
+              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const OwnerPaymentReviewsPage())),
         ),
         PanelTile(
           key: const Key('fin-qr-recharges'),
@@ -1636,6 +1636,169 @@ class _OwnerQrRechargesPageState extends ConsumerState<OwnerQrRechargesPage> {
                     label: const Text('Revertir'),
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final ownerPaymentReviewsProvider = FutureProvider.autoDispose.family<PaymentReviewReport, String>(
+  (ref, status) => ref.watch(backendProvider).ownerPaymentReviews(status: status),
+);
+
+/// Propietario: el profesional dice que no recibió el pago que el cliente marcó
+/// con "Ya pagué" (0066). Devolver la comisión o mantenerla, con nota, código
+/// nuevo y auditoría. Abajo, los trabajos completados sin "Ya pagué".
+class OwnerPaymentReviewsPage extends ConsumerStatefulWidget {
+  const OwnerPaymentReviewsPage({super.key});
+
+  @override
+  ConsumerState<OwnerPaymentReviewsPage> createState() => _OwnerPaymentReviewsPageState();
+}
+
+class _OwnerPaymentReviewsPageState extends ConsumerState<OwnerPaymentReviewsPage> {
+  String _status = 'open';
+
+  Future<void> _resolve(PaymentReview r, {required bool refund}) async {
+    final note = await promptText(
+      context,
+      title: refund ? 'Devolver ${Fmt.bs(r.commissionAmount)} al profesional' : 'Mantener la comisión',
+      label: refund ? 'Qué confirmaste (por ejemplo, el cliente no pagó)' : 'Por qué se mantiene',
+      confirm: 'Continuar',
+    );
+    if (note == null || !mounted) return;
+    final method = await _confirm(
+      context,
+      refund ? 'Devolver una comisión' : 'Cerrar una revisión de pago',
+      details: [('Solicitud', r.bookingCode), ('Comisión', Fmt.bs(r.commissionAmount))],
+    );
+    if (method == null || !mounted) return;
+    try {
+      await ref.read(backendProvider).resolvePaymentReview(r.id, refund: refund, note: note, authMethod: method);
+      ref.invalidate(ownerPaymentReviewsProvider);
+      _refreshFinance(ref);
+      if (mounted) showMessage(context, 'Listo. Quedó en el historial de cambios.');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = ref.watch(ownerPaymentReviewsProvider(_status));
+    final report = value.value;
+    return Scaffold(
+      appBar: AppBar(title: const OneLineText('Pagos en revisión')),
+      body: AdminList<PaymentReview>(
+        value: value.whenData((r) => r.items),
+        onRefresh: () => ref.refresh(ownerPaymentReviewsProvider(_status).future),
+        emptyIcon: Icons.check_circle_outline,
+        emptyTitle: _status == 'open' ? 'No hay pagos por revisar.' : 'No hay revisiones.',
+        header: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Wrap(
+              spacing: HySpacing.xs,
+              runSpacing: HySpacing.xs,
+              children: [
+                for (final (key, label, count) in [
+                  ('open', 'En revisión', report?.open),
+                  ('refunded', 'Devueltas', report?.refunded),
+                  ('rejected', 'Mantenidas', report?.rejected),
+                  ('all', 'Todas', null),
+                ])
+                  ChoiceChip(
+                    key: Key('pay-filter-$key'),
+                    label: Text(count == null ? label : '$label ($count)'),
+                    selected: _status == key,
+                    onSelected: (_) => setState(() => _status = key),
+                  ),
+              ],
+            ),
+            if ((report?.unpaid ?? const []).isNotEmpty) ...[
+              const SectionHeader(title: 'Completados sin "Ya pagué" (más de 72 horas)'),
+              for (final u in report!.unpaid)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: HySpacing.xs),
+                  child: AppCard(
+                    key: Key('owner-unpaid-${u.bookingId}'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Solicitud #${u.bookingCode} · ${u.professionalName}',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          'Cliente: ${u.customerName}'
+                          '${u.finalAmount == null ? '' : ' · Total ${Fmt.bs(u.finalAmount!)}'}'
+                          ' · Comisión sin cobrar ${Fmt.bs(u.commission)}',
+                          style: const TextStyle(color: HyColors.textSecondary),
+                        ),
+                        if (u.professionalPaidAck)
+                          const Text(
+                            'El profesional marcó "Recibí el pago".',
+                            style: TextStyle(color: HyColors.warning, fontWeight: FontWeight.w700),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              const InfoBanner(
+                text:
+                    'La comisión se cobra solo cuando el cliente marca "Ya pagué". Estos trabajos no la pagaron; '
+                    'si se repiten con el mismo profesional, revisa el caso.',
+              ),
+            ],
+            const SizedBox(height: HySpacing.sm),
+          ],
+        ),
+        itemBuilder: (context, r) => AppCard(
+          key: Key('owner-pay-${r.id}'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Solicitud #${r.bookingCode} · ${r.statusLabel}',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+              Text(
+                '${r.professionalName} dice que ${r.customerName} no le pagó'
+                '${r.finalAmount == null ? '' : ' ${Fmt.bs(r.finalAmount!)}'}.',
+              ),
+              Text('Motivo: ${r.reason}', style: const TextStyle(color: HyColors.textSecondary)),
+              Text(
+                'Comisión cobrada: ${Fmt.bs(r.commissionAmount)}'
+                '${r.customerPaidAt == null ? '' : ' · "Ya pagué" el ${Fmt.dateTime(r.customerPaidAt!)}'}',
+                style: const TextStyle(color: HyColors.textSecondary),
+              ),
+              if (r.customerRefundedBefore > 0)
+                Text(
+                  'Este cliente ya tuvo ${r.customerRefundedBefore} revisión(es) en contra.',
+                  style: const TextStyle(color: HyColors.danger, fontWeight: FontWeight.w700),
+                ),
+              if (r.resolution != null) Text('Nota: ${r.resolution}'),
+              if (r.isOpen) ...[
+                const SizedBox(height: HySpacing.sm),
+                Wrap(
+                  spacing: HySpacing.sm,
+                  runSpacing: HySpacing.xs,
+                  children: [
+                    FilledButton(
+                      key: Key('owner-pay-refund-${r.id}'),
+                      onPressed: () => _resolve(r, refund: true),
+                      child: const Text('Devolver comisión'),
+                    ),
+                    OutlinedButton(
+                      key: Key('owner-pay-keep-${r.id}'),
+                      onPressed: () => _resolve(r, refund: false),
+                      child: const Text('Mantener'),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

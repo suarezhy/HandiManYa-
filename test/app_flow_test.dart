@@ -78,7 +78,7 @@ void main() {
     await _login(tester, professional: true);
 
     expect(find.text('No disponible'), findsOneWidget);
-    expect(find.text('Saldo de tu billetera'), findsOneWidget);
+    expect(find.text('Saldo total'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

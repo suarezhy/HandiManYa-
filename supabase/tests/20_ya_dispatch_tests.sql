@@ -66,7 +66,7 @@ select test.logout();
 
 do $$ begin
   perform test.eq((select status from public.booking_offers where professional_id = '00000000-0000-0000-0000-0000000000d2'), 'lost', '¡Ya!: la otra oferta se cierra');
-  perform test.eq((select reserved from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000d1'), 15.00::numeric, '¡Ya!: se reserva la comisión completa al aceptar');
+  perform test.eq((select available || '/' || reserved from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000d1'), '50.00/0.00', '¡Ya!: aceptar no reserva ni descuenta (0066)');
   perform test.eq((select count(*)::int from public.conversations where booking_id = (select v from t_ya)), 1, '¡Ya!: se abre el chat');
 end $$;
 
@@ -90,7 +90,7 @@ select test.eq((select count(*)::int from public.my_bookings('customer')) >= 1, 
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000d1');
 select test.eq((public.pro_dashboard() ->> 'active')::int, 1, 'panel profesional: un trabajo activo');
-select test.eq((public.pro_dashboard() ->> 'wallet_available')::numeric, 35.00::numeric, 'panel profesional: saldo disponible (50 − 15 reservados)');
+select test.eq((public.pro_dashboard() ->> 'wallet_available')::numeric, 50.00::numeric, 'panel profesional: saldo (nada reservado, 0066)');
 select test.logout();
 
 \o

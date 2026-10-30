@@ -273,7 +273,8 @@ class _ResolveSheetState extends State<_ResolveSheet> {
           ),
         ),
         const Text(
-          'Si se cancela, se libera la comisión reservada al profesional. Si se completa, se cobra.',
+          'Si se cancela y el cliente ya había marcado "Ya pagué", la comisión vuelve al profesional. '
+          'Completar no cobra: la comisión se cobra solo con "Ya pagué".',
           style: TextStyle(color: HyColors.textSecondary),
         ),
         const SizedBox(height: HySpacing.sm),

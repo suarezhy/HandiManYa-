@@ -256,12 +256,6 @@ class _Summary extends StatelessWidget {
               onTap: () => go(Routes.adminFinanceWallets),
             ),
             PanelStat(
-              'Saldos reservados',
-              null,
-              display: _bs(d.walletReserved),
-              onTap: () => go('${Routes.adminFinanceWallets}?orden=reservado'),
-            ),
-            PanelStat(
               'Recargas pendientes${d.pendingTopupsAmount != null ? ' (${Fmt.bs(d.pendingTopupsAmount!)})' : ''}',
               d.pendingTopups,
               tone: StatusTone.brand,

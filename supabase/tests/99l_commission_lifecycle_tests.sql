@@ -1,6 +1,6 @@
--- Ciclo de la comisión (0043): reservar completa al aceptar, cobrar al
--- completar, liberar al cancelar, y la falta queda anotada y se cobra de la
--- próxima recarga. Cuentas propias (…9a3000…); ningún dato real cambia.
+-- Ciclo de la comisión: desde 0066 acordar solo revisa el saldo, "Ya pagué"
+-- cobra una vez, una falta queda anotada y bloquea trabajos nuevos, y una
+-- devolución la borra. Cuentas propias (…9a3000…); ningún dato real cambia.
 \set ON_ERROR_STOP 1
 \o /dev/null
 
@@ -50,56 +50,66 @@ select test.expect_error($$select public.commission_preview('00000000-0000-0000-
 select test.logout();
 
 -- ---------------------------------------------------------------------------
--- Aceptar reserva la comisión completa; cancelar la devuelve entera.
+-- Desde 0066 acordar no reserva: anota la regla y revisa que el saldo cubra
+-- todo lo que queda por cobrar, sin mover dinero.
 -- ---------------------------------------------------------------------------
+update public.bookings set agreed_amount = 200, status = 'confirmed' where id = '00000000-0000-0000-0000-000009a3b001';
 select public._commission_reserve(b) from public.bookings b where id = '00000000-0000-0000-0000-000009a3b001';
-select test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
-               10.00::numeric, 'aceptar: Bs 30 − 20 reservados');
-select test.eq((select reserved from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
-               20.00::numeric, 'aceptar: Bs 20 reservados');
+select test.eq((select available || '/' || reserved from public.wallets
+                where professional_id = '00000000-0000-0000-0000-000009a30004'), '30.00/0.00', 'acordar: el saldo no se mueve');
+select test.eq((select commission_rule_id from public.bookings where id = '00000000-0000-0000-0000-000009a3b001'),
+               99000901, 'acordar: queda anotada la regla');
+select test.eq(public.hmy_commission_open('00000000-0000-0000-0000-000009a30004'), 20.00::numeric,
+               'por cobrar: Bs 20 (10 % de Bs 200)');
 select test.eq((select commission_captured from public.bookings where id = '00000000-0000-0000-0000-000009a3b001') is null,
-               true, 'aceptar no cobra');
+               true, 'acordar no cobra');
 
-select public._commission_reserve(b) from public.bookings b where id = '00000000-0000-0000-0000-000009a3b002';
+-- Bs 150 más: Bs 20 + 15 por cobrar no caben en Bs 30.
+update public.bookings set agreed_amount = 150, status = 'confirmed' where id = '00000000-0000-0000-0000-000009a3b002';
+select test.expect_error($$select public._commission_reserve(b) from public.bookings b
+                           where id = '00000000-0000-0000-0000-000009a3b002'$$, 'HMY_INSUFFICIENT_BALANCE');
+update public.bookings set status = 'cancelled' where id = '00000000-0000-0000-0000-000009a3b002';
 select public._commission_release('00000000-0000-0000-0000-000009a3b002');
-select test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
-               10.00::numeric, 'cancelar devuelve la reserva entera');
-select test.eq((select count(*)::int from public.wallet_ledger where booking_id = '00000000-0000-0000-0000-000009a3b002'
-                and entry_type in ('commission_capture')), 0, 'cancelar no cobra');
+select test.eq((select count(*)::int from public.wallet_ledger where booking_id = '00000000-0000-0000-0000-000009a3b002'), 0,
+               'cancelar: ningún movimiento');
 
 -- ---------------------------------------------------------------------------
--- Completar con un precio final mayor que lo reservado (desde 0062): se cobra
--- solo lo reservado y no queda deuda; las recargas no descuentan nada.
--- Precio final 400 → comisión 40; hay 20 reservados y 10 disponibles.
+-- Completar no cobra. "Ya pagué" cobra una vez; si falta saldo cobra lo que
+-- hay, nunca deja negativo y anota la diferencia. Precio Bs 200 → Bs 20, y
+-- un ajuste en contra deja Bs 15 (como una recarga revertida).
 -- ---------------------------------------------------------------------------
-update public.bookings set final_amount = 400, status = 'completed', completed_at = now()
+update public.bookings set status = 'completed', finished_at = now(), completed_at = now()
 where id = '00000000-0000-0000-0000-000009a3b001';
 select public._commission_capture('00000000-0000-0000-0000-000009a3b001');
-select test.eq((select commission_captured from public.bookings where id = '00000000-0000-0000-0000-000009a3b001'),
-               20.00::numeric, 'completar: se cobra lo reservado (Bs 20)');
-select test.eq((select commission_shortfall from public.bookings where id = '00000000-0000-0000-0000-000009a3b001'),
-               0.00::numeric, 'completar: no queda deuda');
-select test.eq((select available || '/' || reserved from public.wallets
-                where professional_id = '00000000-0000-0000-0000-000009a30004'), '10.00/0.00',
-               'el saldo disponible no se toca');
-
-select public.wallet_post('00000000-0000-0000-0000-000009a30004', 'adjustment', 0.01, 0, 'test99l:a0', null, null, 'Centavo');
-select public._commission_reserve(b) from public.bookings b where id = '00000000-0000-0000-0000-000009a3b003';
-select test.eq((select commission_reserved from public.bookings where id = '00000000-0000-0000-0000-000009a3b003'),
-               10.00::numeric, 'sin deuda sigue aceptando (reserva Bs 10)');
-select public.wallet_post('00000000-0000-0000-0000-000009a30004', 'topup', 50, 0, 'test99l:t2', null, null, 'Recarga');
 select test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
-               50.01::numeric, 'la recarga entra entera: no se descuenta nada');
+               30.00::numeric, 'completar no cobra');
+select public.wallet_post('00000000-0000-0000-0000-000009a30004', 'adjustment', -15, 0, 'test99l:a1', null, null, 'Reversión');
+select public._commission_charge('00000000-0000-0000-0000-000009a3b001');
+select public._commission_charge('00000000-0000-0000-0000-000009a3b001');
+select test.eq((select commission_captured || '/' || commission_shortfall from public.bookings
+                where id = '00000000-0000-0000-0000-000009a3b001'), '15.00/5.00', 'cobra Bs 15 y anota Bs 5');
+select test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
+               0.00::numeric, 'el saldo queda en cero, no negativo');
 select test.eq((select count(*)::int from public.wallet_ledger
                 where booking_id = '00000000-0000-0000-0000-000009a3b001' and entry_type = 'commission_capture'),
                1, 'un solo cobro en el libro');
 
--- Precio final menor: se devuelve la diferencia de la reserva.
-update public.bookings set final_amount = 60, status = 'completed', completed_at = now()
-where id = '00000000-0000-0000-0000-000009a3b003';
-select public._commission_capture('00000000-0000-0000-0000-000009a3b003');
+-- Con lo anotado no acuerda trabajos nuevos, y la recarga no lo paga sola.
+update public.bookings set agreed_amount = 100, status = 'confirmed' where id = '00000000-0000-0000-0000-000009a3b003';
+select public.wallet_post('00000000-0000-0000-0000-000009a30004', 'topup', 50, 0, 'test99l:t2', null, null, 'Recarga');
+select test.expect_error($$select public._commission_reserve(b) from public.bookings b
+                           where id = '00000000-0000-0000-0000-000009a3b003'$$, 'HMY_COMMISSION_DEBT');
 select test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
-               54.01::numeric, 'precio final 60: se cobran Bs 6 y vuelven Bs 4 de la reserva');
+               50.00::numeric, 'la recarga entra entera: no se descuenta nada');
+
+-- Devolver la comisión (revisión de pago o disputa cancelada) borra lo anotado.
+select public._commission_refund('00000000-0000-0000-0000-000009a3b001', 'prueba');
+select public._commission_refund('00000000-0000-0000-0000-000009a3b001', 'prueba');
+select test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-000009a30004'),
+               65.00::numeric, 'vuelven los Bs 15, una vez');
+select public._commission_reserve(b) from public.bookings b where id = '00000000-0000-0000-0000-000009a3b003';
+select test.eq(public.hmy_commission_open('00000000-0000-0000-0000-000009a30004'), 10.00::numeric,
+               'sin lo anotado vuelve a acordar (Bs 10 por cobrar)');
 
 -- ---------------------------------------------------------------------------
 -- Ya no se cobra al aceptar.

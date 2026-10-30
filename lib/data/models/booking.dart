@@ -311,6 +311,8 @@ class BookingDetail {
     this.paymentMethod,
     this.customerPaidAck = false,
     this.professionalPaidAck = false,
+    this.paymentReviewStatus,
+    this.commissionCharged,
     required this.createdAt,
     this.cancelReason,
     required this.viewerIsCustomer,
@@ -351,6 +353,12 @@ class BookingDetail {
   final PaymentMethod? paymentMethod;
   final bool customerPaidAck;
   final bool professionalPaidAck;
+
+  /// "No recibí el pago" (0066): null sin revisión; open, refunded o rejected.
+  final String? paymentReviewStatus;
+
+  /// Comisión cobrada en "Ya pagué" (solo la ve el profesional; 0 si se devolvió).
+  final double? commissionCharged;
   final DateTime createdAt;
   final String? cancelReason;
   final bool viewerIsCustomer;
@@ -402,6 +410,8 @@ class BookingDetail {
       paymentMethod: PaymentMethod.parse(m['payment_method'] as String?),
       customerPaidAck: m['customer_paid_ack'] as bool? ?? false,
       professionalPaidAck: m['professional_paid_ack'] as bool? ?? false,
+      paymentReviewStatus: (m['payment'] as Map<String, dynamic>?)?['review_status'] as String?,
+      commissionCharged: _dn((m['payment'] as Map<String, dynamic>?)?['commission_charged']),
       createdAt: DateTime.parse(m['created_at'] as String),
       cancelReason: m['cancel_reason'] as String?,
       viewerIsCustomer: m['viewer_role'] == 'customer',
@@ -611,6 +621,7 @@ class CommissionQuote {
     required this.pendingDebt,
     required this.canCover,
     required this.missing,
+    this.openCommissions = 0,
   });
 
   final bool hasRule;
@@ -623,6 +634,9 @@ class CommissionQuote {
   final bool canCover;
   final double missing;
 
+  /// Comisiones de otros trabajos acordados todavía sin cobrar (0066).
+  final double openCommissions;
+
   factory CommissionQuote.fromMap(Map<String, dynamic> m) => CommissionQuote(
     hasRule: m['has_rule'] as bool? ?? false,
     ratePercent: _dn(m['rate_percent']),
@@ -633,6 +647,7 @@ class CommissionQuote {
     pendingDebt: _dn(m['pending_debt']) ?? 0,
     canCover: m['can_cover'] as bool? ?? true,
     missing: _dn(m['missing']) ?? 0,
+    openCommissions: _dn(m['open_commissions']) ?? 0,
   );
 }
 

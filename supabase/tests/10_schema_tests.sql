@@ -242,8 +242,8 @@ select test.eq((select available from public.wallets), 100.00::numeric, 'recarga
 select test.eq(test.agree((select v from t_ids where k = 'b1'))::text, 'confirmed', 'el profesional acepta');
 select test.expect_error(format('select test.agree(%L)', (select v from t_ids where k = 'b1')), 'HMY_INVALID_TRANSITION');
 do $$ begin
-  perform test.eq((select available from public.wallets), 85.00::numeric, 'aceptar reserva la comisión completa (disponible, 0043)');
-  perform test.eq((select reserved from public.wallets), 15.00::numeric, 'aceptar reserva la comisión completa (reservado, 0043)');
+  perform test.eq((select available from public.wallets), 100.00::numeric, 'acordar no descuenta la comisión (0066)');
+  perform test.eq((select reserved from public.wallets), 0.00::numeric, 'acordar no reserva nada (0066)');
   perform test.eq((select count(*)::int from public.booking_addresses), 1, 'dirección visible después de aceptar');
   perform test.eq((select count(*)::int from public.conversations), 1, 'se abre el chat al confirmar');
 end $$;
@@ -275,6 +275,7 @@ select public.update_job_progress((select v from t_ids where k = 'b1'), 'on_the_
 select test.arrive((select v from t_ids where k = 'b1')::uuid, '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000c1');
 select public.update_job_progress((select v from t_ids where k = 'b1'), 'in_progress');
 select public.update_job_progress((select v from t_ids where k = 'b1'), 'work_finished', 250);
+select test.eq((select available from public.wallets), 100.00::numeric, '"Terminé el trabajo" no cobra (0066)');
 select test.logout();
 
 select test.login('00000000-0000-0000-0000-0000000000c1');
@@ -287,11 +288,12 @@ select test.logout();
 do $$
 declare v_b uuid := (select v from t_ids where k = 'b1');
 begin
-  perform test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000b1'), 85.00::numeric, 'al completar se cobra la comisión fija de Bs 15');
-  perform test.eq((select reserved from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000b1'), 0.00::numeric, 'la reserva se libera al cobrar');
+  perform test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000b1'), 85.00::numeric, '"Ya pagué" cobra la comisión fija de Bs 15 (0066)');
+  perform test.eq((select reserved from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000b1'), 0.00::numeric, 'nada reservado');
   perform public._commission_capture(v_b);
+  perform public._commission_charge(v_b);
   perform test.eq((select available from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000b1'), 85.00::numeric, 'cobrar dos veces no duplica el cargo');
-  perform test.eq((select count(*)::int from public.wallet_ledger where booking_id = v_b), 2, 'libro mayor: reserva + cobro');
+  perform test.eq((select count(*)::int from public.wallet_ledger where booking_id = v_b), 1, 'libro mayor: un solo cobro');
   perform test.eq((select rating_avg from public.professional_profiles where user_id = '00000000-0000-0000-0000-0000000000b1'), 5.00::numeric, 'calificación calculada de reseñas reales');
   perform test.eq((select completed_jobs from public.professional_profiles where user_id = '00000000-0000-0000-0000-0000000000b1'), 1, 'trabajos completados');
   perform test.eq((select count(*)::int from public.booking_events where booking_id = v_b), 6, 'historial de estados completo');
@@ -301,17 +303,16 @@ end $$;
 select test.expect_error($$update public.wallet_ledger set available_delta = 0$$, 'HMY_LEDGER_APPEND_ONLY');
 select test.expect_error($$delete from public.wallet_ledger$$, 'HMY_LEDGER_APPEND_ONLY');
 
--- 5. Cancelar libera la reserva
+-- 5. Cancelar un trabajo acordado
 select test.login('00000000-0000-0000-0000-0000000000c1');
 insert into t_ids select 'b2', public.create_booking('00000000-0000-0000-0000-0000000000b1', 1, 'now', 'Gotea el grifo de la cocina', 'Calle Sucre 45');
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000b1');
 select test.agree((select v from t_ids where k = 'b2'));
-select test.eq((select reserved from public.wallets), 15.00::numeric, 'segunda reserva retenida (comisión completa)');
+select test.eq((select available || '/' || reserved from public.wallets), '85.00/0.00', 'segundo trabajo: nada reservado ni descontado');
 select test.expect_error(format('select public.cancel_booking(%L, %L)', (select v from t_ids where k = 'b2'), ''), 'HMY_REASON_REQUIRED');
 select public.cancel_booking((select v from t_ids where k = 'b2'), 'Emergencia familiar');
-select test.eq((select reserved from public.wallets), 0.00::numeric, 'cancelar libera la reserva');
-select test.eq((select available from public.wallets), 85.00::numeric, 'cancelar devuelve el saldo');
+select test.eq((select available || '/' || reserved from public.wallets), '85.00/0.00', 'cancelar no mueve el saldo');
 select test.logout();
 
 -- 6. Cotización y disputa
@@ -336,13 +337,13 @@ select test.expect_error(format('select public.confirm_completion(%L)', (select 
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000b1');
 select test.expect_error(format('select public.update_job_progress(%L, %L)', (select v from t_ids where k = 'b3'), 'work_finished'), 'HMY_INVALID_TRANSITION');
-select test.eq((select reserved from public.wallets), 15.00::numeric, 'la reserva se mantiene durante la disputa');
+select test.eq((select available || '/' || reserved from public.wallets), '85.00/0.00', 'la disputa no mueve el saldo');
 select test.logout();
 select test.login('00000000-0000-0000-0000-00000000000a');
 select test.eq(public.resolve_dispute((select v from t_ids where k = 'b3'), 'cancelled', 'Se reembolsa por trabajo incompleto')::text, 'cancelled', 'el admin resuelve la disputa');
 select test.eq((select count(*)::int from public.admin_audit_log where action = 'dispute.resolve'), 1, 'auditoría de la resolución');
 select test.logout();
-select test.eq((select reserved from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000b1'), 0.00::numeric, 'resolver con cancelación libera la reserva');
+select test.eq((select available || '/' || reserved from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000b1'), '85.00/0.00', 'resolver con cancelación: sin cobro');
 
 -- 7. Reservas programadas sin cruces
 select test.login('00000000-0000-0000-0000-0000000000c1');

@@ -17,7 +17,8 @@ import 'recharge_page.dart';
 import '../../core/widgets/trailing_row.dart';
 import '../../core/widgets/word_safe_text.dart';
 
-/// Billetera prepagada del profesional: saldo, recargas y movimientos.
+/// Billetera prepagada del profesional: saldo total, comisiones cobradas,
+/// recargar y movimientos.
 class WalletPage extends ConsumerWidget {
   const WalletPage({super.key});
 
@@ -25,9 +26,10 @@ class WalletPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final wallet = ref.watch(walletProvider);
     final ledger = ref.watch(ledgerProvider);
-    final topups = ref.watch(topupsProvider).value ?? const <TopupRequest>[];
-    final pending = topups.where((t) => t.status == TopupStatus.pending).toList();
 
+    // Reglas finales del dueño (30-10-2026): la billetera muestra solo el saldo
+    // total, las comisiones cobradas, "Recargar saldo" y el historial. Nada se
+    // reserva; la comisión se cobra cuando el cliente marca "Ya pagué".
     return Scaffold(
       appBar: AppBar(title: const OneLineText('Mi billetera')),
       body: RefreshIndicator(
@@ -59,17 +61,6 @@ class WalletPage extends ConsumerWidget {
                     onPressed: () =>
                         Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const RechargePage())),
                   ),
-                  const SizedBox(height: HySpacing.sm),
-                  const InfoBanner(
-                    text:
-                        'Antes de acordar un precio ves la comisión. Al acordarlo se reserva de tu saldo y no se '
-                        'puede usar en otro trabajo. Se cobra solo cuando el cliente confirma que el trabajo terminó, '
-                        'y si se cancela vuelve entera a tu saldo disponible. Tu saldo nunca queda negativo.',
-                  ),
-                  if (pending.isNotEmpty) ...[
-                    const SectionHeader(title: 'Recargas en revisión'),
-                    for (final t in pending) _TopupTile(topup: t),
-                  ],
                   const SectionHeader(title: 'Historial de movimientos'),
                   ledger.when(
                     loading: () => const LoadingView(),
@@ -88,10 +79,6 @@ class WalletPage extends ConsumerWidget {
                             ),
                           ),
                   ),
-                  if (topups.any((t) => t.status != TopupStatus.pending)) ...[
-                    const SectionHeader(title: 'Historial de recargas'),
-                    for (final t in topups.where((t) => t.status != TopupStatus.pending)) _TopupTile(topup: t),
-                  ],
                 ],
               ),
             ),
@@ -121,44 +108,19 @@ class _BalanceCard extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Saldo disponible (${kCountry.currencySymbol})',
-          style: const TextStyle(color: Colors.white70, fontSize: 16),
-        ),
+        Text('Saldo total (${kCountry.currencySymbol})', style: const TextStyle(color: Colors.white70, fontSize: 16)),
         const SizedBox(height: 4),
         Text(
-          Fmt.bs(wallet.available),
+          Fmt.bs(wallet.total),
+          key: const Key('wallet-total'),
           style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: HySpacing.sm),
-        _WalletLine(
-          key: const Key('wallet-total'),
-          icon: Icons.account_balance_wallet_outlined,
-          text: 'Saldo total: ${Fmt.bs(wallet.total)}',
-        ),
-        _WalletLine(
-          key: const Key('wallet-reserved'),
-          icon: Icons.lock_clock_outlined,
-          text: 'Saldo reservado: ${Fmt.bs(wallet.reserved)}',
-        ),
         _WalletLine(
           key: const Key('wallet-collected'),
           icon: Icons.receipt_long_outlined,
           text: 'Comisiones cobradas: ${Fmt.bs(wallet.commissionsCollected)}',
         ),
-        if (wallet.commissionPending > 0)
-          _WalletLine(
-            icon: Icons.error_outline,
-            text: 'Comisión anterior sin cobrar: ${Fmt.bs(wallet.commissionPending)}',
-          ),
-        if (wallet.extrasAwaitingFunds > 0)
-          _WalletLine(
-            key: const Key('wallet-awaiting'),
-            icon: Icons.hourglass_bottom_rounded,
-            text: wallet.extrasAwaitingFunds == 1
-                ? '1 monto aparte espera tu recarga para contar.'
-                : '${wallet.extrasAwaitingFunds} montos aparte esperan tu recarga para contar.',
-          ),
       ],
     ),
   );
@@ -233,8 +195,9 @@ class _LedgerTile extends StatelessWidget {
   }
 }
 
-class _TopupTile extends StatelessWidget {
-  const _TopupTile({required this.topup});
+/// Una recarga por transferencia y su estado.
+class TopupTile extends StatelessWidget {
+  const TopupTile({super.key, required this.topup});
 
   final TopupRequest topup;
 

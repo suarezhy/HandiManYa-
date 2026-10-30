@@ -149,6 +149,10 @@ abstract interface class BookingRepository {
   Future<void> openDispute(String bookingId, String reason);
   Future<void> acknowledgePayment(String bookingId, PaymentMethod method);
 
+  /// Profesional: el cliente marcó "Ya pagué" pero el pago no llegó (0066).
+  /// Abre una revisión del propietario; una vez por trabajo.
+  Future<void> reportPaymentNotReceived(String bookingId, String reason);
+
   /// Estado de la llegada (nunca el código).
   Future<BookingArrival> arrival(String bookingId);
 
@@ -434,6 +438,13 @@ abstract interface class FinanceRepository {
 
   /// Revierte una recarga acreditada; no deja saldo negativo.
   Future<void> reverseQrRecharge(String id, {required String reason, required String authMethod});
+
+  /// Revisiones de pago ("No recibí el pago") y trabajos sin "Ya pagué" (0066).
+  /// [status]: open, refunded, rejected o all.
+  Future<PaymentReviewReport> ownerPaymentReviews({String status = 'open'});
+
+  /// Resolver una revisión: con [refund] la comisión vuelve al profesional.
+  Future<void> resolvePaymentReview(int id, {required bool refund, required String note, required String authMethod});
 
   /// Lo que hay detrás de cada tarjeta de Finanzas (0042), con las mismas
   /// definiciones del resumen. [kind]: tipo de movimiento; [month]: cualquier

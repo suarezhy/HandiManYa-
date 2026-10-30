@@ -552,7 +552,8 @@ Future<PriceInput?> showPriceSheet(
   );
 }
 
-/// "Comisión 10 %: Bs 20. Te quedan Bs 180." y, si falta saldo, cuánto.
+/// "Comisión 10 %: Bs 20. Te quedan Bs 180." y, si falta saldo, cuánto. Se
+/// cobra cuando el cliente marca "Ya pagué".
 class CommissionText extends StatelessWidget {
   const CommissionText({super.key, required this.quote});
 
@@ -564,10 +565,16 @@ class CommissionText extends StatelessWidget {
         ? ''
         : ' ${quote.ratePercent!.toStringAsFixed(quote.ratePercent! % 1 == 0 ? 0 : 1)} %';
     final base = 'Comisión$rate: ${Fmt.bs(quote.commission)}. Te quedan ${Fmt.bs(quote.net)}.';
+    // Reglas finales (0066): nada se reserva; el saldo tiene que cubrir esta
+    // comisión y la de los otros trabajos sin cobrar. Lo anotado sin cobrar no
+    // se muestra: se resuelve con soporte.
     final short = quote.pendingDebt > 0
-        ? ' Tienes una comisión pendiente de ${Fmt.bs(quote.pendingDebt)}.'
+        ? ' Escribe a soporte para seguir aceptando trabajos.'
         : !quote.canCover
-        ? ' Te faltan ${Fmt.bs(quote.missing)} de saldo: recarga para aceptar este precio.'
+        ? quote.openCommissions > 0
+              ? ' Te faltan ${Fmt.bs(quote.missing)} de saldo: tu saldo tiene que cubrir también las comisiones de '
+                    'tus otros trabajos. Recarga para aceptar este precio.'
+              : ' Te faltan ${Fmt.bs(quote.missing)} de saldo: recarga para aceptar este precio.'
         : '';
     return Text(
       base + short,

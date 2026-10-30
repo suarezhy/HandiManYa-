@@ -38,7 +38,9 @@ const _faq = <(String, String)>[
   ),
   (
     'Soy profesional: ¿cómo funciona la billetera?',
-    'Tu billetera tiene saldo prepagado. Al aceptar un trabajo se reserva la comisión; se cobra cuando el trabajo se completa y se libera si se cancela. Puedes recargar por transferencia o QR.',
+    'Tu billetera tiene saldo prepagado para las comisiones. Nada se reserva al aceptar: la comisión se cobra '
+        'una vez, cuando el cliente marca "Ya pagué". Para aceptar un trabajo tu saldo tiene que cubrir su comisión. '
+        'Puedes recargar por QR o transferencia.',
   ),
 ];
 

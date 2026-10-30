@@ -205,10 +205,7 @@ class AdminCommissionsPage extends ConsumerWidget {
                   if (r.fixedFee != null) '${Fmt.bs(r.fixedFee!)} fijo',
                 ].join(' o '),
               ),
-              InfoLine(
-                Icons.lock_clock_outlined,
-                'Reserva mínima al aceptar: ${Fmt.bs(r.reserveAmount)} · se cobra al completar',
-              ),
+              const InfoLine(Icons.payments_outlined, 'Se cobra cuando el cliente marca "Ya pagué"'),
               InfoLine(Icons.account_balance_wallet_outlined, 'Saldo mínimo para aceptar: ${Fmt.bs(r.minBalance)}'),
             ],
           ),
@@ -380,16 +377,6 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
                 children: [
                   Expanded(
                     child: TextFormField(
-                      controller: _reserve,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: numberInput,
-                      decoration: InputDecoration(labelText: 'Reserva al aceptar', prefixText: kCountry.moneyPrefix),
-                      validator: _money,
-                    ),
-                  ),
-                  const SizedBox(width: HySpacing.sm),
-                  Expanded(
-                    child: TextFormField(
                       controller: _min,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                       inputFormatters: numberInput,
@@ -403,9 +390,9 @@ class _RuleSheetState extends ConsumerState<_RuleSheet> {
               const InfoBanner(
                 icon: Icons.info_outline,
                 text:
-                    'Al acordar el precio se reserva la comisión completa (o esta reserva, si es mayor). Se cobra '
-                    'cuando el cliente confirma que el trabajo terminó y vuelve al saldo si se cancela. Sin saldo '
-                    'suficiente el profesional no puede acordar el precio; nunca queda saldo negativo.',
+                    'Nada se reserva al acordar el precio. La comisión se cobra una sola vez cuando el cliente marca '
+                    '"Ya pagué". Para acordar, el saldo del profesional tiene que cubrir esta comisión y la de sus '
+                    'otros trabajos sin cobrar (y al menos el saldo mínimo); nunca queda saldo negativo.',
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

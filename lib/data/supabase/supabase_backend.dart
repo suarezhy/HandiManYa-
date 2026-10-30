@@ -726,6 +726,10 @@ class SupabaseBackend
   Future<void> acknowledgePayment(String bookingId, PaymentMethod method) =>
       _db.rpc('acknowledge_payment', params: {'p_booking': bookingId, 'p_method': method.key});
 
+  @override
+  Future<void> reportPaymentNotReceived(String bookingId, String reason) =>
+      _db.rpc('report_payment_not_received', params: {'p_booking': bookingId, 'p_reason': reason});
+
   // ---------------------------------------------------------------- Mensajes
   @override
   Future<List<Conversation>> conversations() async =>
@@ -1771,6 +1775,18 @@ class SupabaseBackend
   @override
   Future<void> reverseQrRecharge(String id, {required String reason, required String authMethod}) =>
       _db.rpc('owner_reverse_qr_recharge', params: {'p_id': id, 'p_reason': reason, 'p_auth_method': authMethod});
+
+  @override
+  Future<PaymentReviewReport> ownerPaymentReviews({String status = 'open'}) async => PaymentReviewReport.fromMap(
+    await _db.rpc('owner_payment_reviews', params: {'p_status': status}) as Map<String, dynamic>,
+  );
+
+  @override
+  Future<void> resolvePaymentReview(int id, {required bool refund, required String note, required String authMethod}) =>
+      _db.rpc(
+        'owner_resolve_payment_review',
+        params: {'p_id': id, 'p_refund': refund, 'p_note': note, 'p_auth_method': authMethod},
+      );
 
   @override
   Future<List<ReceivingAccount>> receivingAccounts() async => [

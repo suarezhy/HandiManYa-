@@ -432,10 +432,35 @@ class _PaymentStatus extends StatelessWidget {
         const SizedBox(height: 4),
         _Ack(done: b.customerPaidAck, text: 'El cliente indicó que pagó'),
         _Ack(done: b.professionalPaidAck, text: 'El profesional indicó que recibió el pago'),
+        if (!b.viewerIsCustomer && (b.commissionCharged ?? 0) > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Comisión cobrada: ${Fmt.bs(b.commissionCharged!)}',
+              key: const Key('payment-commission'),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        if (b.paymentReviewStatus != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              switch (b.paymentReviewStatus) {
+                'open' => 'Pago en revisión: el equipo lo está revisando.',
+                'refunded' => 'Revisión de pago resuelta: se devolvió la comisión.',
+                _ => 'Revisión de pago resuelta.',
+              },
+              key: const Key('payment-review'),
+              style: const TextStyle(color: HyColors.textSecondary),
+            ),
+          ),
         const SizedBox(height: 4),
-        const Text(
-          'HandiMan ¡Ya! no recibe ni verifica este pago. Si no coinciden, puedes reportar un problema.',
-          style: TextStyle(color: HyColors.textMuted, fontSize: 14),
+        Text(
+          b.viewerIsCustomer
+              ? 'Le pagas directo al profesional; HandiMan ¡Ya! no recibe este pago. Marca "Ya pagué" solo después '
+                    'de pagar.'
+              : 'La comisión se cobra cuando el cliente marca "Ya pagué". Si no recibiste el pago, avísanos.',
+          style: const TextStyle(color: HyColors.textMuted, fontSize: 14),
         ),
       ],
     ),
@@ -551,6 +576,21 @@ class _ActionsState extends ConsumerState<_Actions> {
 
     Future<void> ackPayment() =>
         _run(() => api.acknowledgePayment(b.id, b.paymentMethod ?? PaymentMethod.cash), success: 'Pago registrado');
+
+    // El cliente marcó "Ya pagué" pero el pago no llegó: revisión del propietario.
+    Future<void> notPaid() async {
+      final reason = await promptText(
+        context,
+        title: 'No recibí el pago',
+        label: '¿Qué pasó?',
+        confirm: 'Pedir revisión',
+        hint: 'El equipo lo revisa y, si el cliente no pagó, te devuelve la comisión',
+        minLength: 5,
+      );
+      if (reason != null) {
+        await _run(() => api.reportPaymentNotReceived(b.id, reason), success: 'Enviamos tu pedido de revisión');
+      }
+    }
 
     // El cliente dice cómo pagó (efectivo o QR, directo al profesional).
     Future<void> customerPaid() async {
@@ -856,6 +896,11 @@ class _ActionsState extends ConsumerState<_Actions> {
         case BookingStatus.workFinished || BookingStatus.completed:
           if (!b.professionalPaidAck) {
             primary.add(PrimaryButton(label: 'Recibí el pago', icon: Icons.payments_outlined, onPressed: ackPayment));
+            if (b.customerPaidAck && b.paymentReviewStatus == null) {
+              secondary.add(
+                SecondaryButton(key: const Key('pro-not-paid'), label: 'No recibí el pago', onPressed: notPaid),
+              );
+            }
           }
           addChat();
         case BookingStatus.disputed:
