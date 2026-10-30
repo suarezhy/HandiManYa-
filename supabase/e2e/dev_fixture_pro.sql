@@ -150,4 +150,23 @@ from public.ya_eligible_professionals(
        (select id from public.service_categories where slug = 'plomeria'),
        (select city_id from public.professional_profiles where user_id = :'p_id'),
        null, (select id from auth.users where phone = '59170000001')) e;
+-- Trabajos de …02 (solo códigos y estados, sin datos personales) y si salen en
+-- su lista "Mis trabajos", vista como …02 (my_bookings tiene un límite de 100).
+select 'trabajos de …02: ' || count(*) || ' en total · activos: '
+       || count(*) filter (where status in ('confirmed', 'on_the_way', 'in_progress', 'work_finished'))
+from public.bookings where professional_id = :'p_id';
+select '(lo que sigue, visto como …02)' where set_config('request.jwt.claims', json_build_object('sub', :'p_id', 'role', 'authenticated')::text, true) is not null;
+select 'lista de …02: ' || count(*) || ' filas (' || count(*) filter (where is_offer) || ' ofertas)'
+from public.my_bookings('professional');
+select 'activo ' || b.code || ' · ' || b.status || ' · ' || b.mode || ' · acordado Bs ' || coalesce(b.agreed_amount::text, '-')
+       || ' · reservado Bs ' || b.commission_reserved || ' · creado ' || to_char(b.created_at at time zone 'America/La_Paz', 'DD-MM HH24:MI')
+       || ' · en su lista: ' || exists (select 1 from public.my_bookings('professional') m where m.id = b.id)
+from public.bookings b
+where b.professional_id = :'p_id' and b.status in ('confirmed', 'on_the_way', 'in_progress', 'work_finished')
+order by b.created_at desc limit 10;
+select 'pedido F9A50778: ' || coalesce((select b.status || ' · ' || b.mode || ' · profesional '
+       || case when b.professional_id = :'p_id'::uuid then '…02' when b.professional_id is null then 'ninguno' else 'otra cuenta' end
+       || ' · acordado Bs ' || coalesce(b.agreed_amount::text, '-') || ' · reservado Bs ' || b.commission_reserved
+       || ' · en la lista de …02: ' || exists (select 1 from public.my_bookings('professional') m where m.id = b.id)
+       from public.bookings b where b.code = 'F9A50778'), 'no existe');
 commit;
