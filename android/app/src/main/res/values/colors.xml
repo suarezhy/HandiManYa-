@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fondo del ícono adaptable (mipmap-anydpi-v26/ic_launcher.xml). -->
+    <color name="ic_launcher_background">#02173A</color>
+    <!-- Fondo de la app (HyColors.background). La pantalla nativa de arranque
+         y la de Flutter usan el mismo color para que no haya un destello. -->
+    <color name="splash_background">#F7F8FA</color>
+    <!-- Color de los avisos push (naranja de ¡Ya!). -->
+    <color name="notification_accent">#F25500</color>
+</resources>

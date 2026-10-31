@@ -1,0 +1,43 @@
+name: Aviso de prueba con retraso (handimanya-flutter-dev)
+
+# Manda UN aviso de prueba a la cuenta de prueba …01 en DESARROLLO, 60 segundos
+# después de empezar, para probarlo con el teléfono ya bloqueado. Usa el mismo
+# camino que el botón de la app y se niega si hay teléfonos de otras cuentas.
+# Después muestra el estado (solo lectura). Nunca imprime tokens ni secretos.
+#
+# Solo se activa al subir la rama supabase/push-test-dev, con permiso del dueño.
+
+on:
+  push:
+    branches: [supabase/push-test-dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev-db
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Un aviso de prueba a …01
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      EXPECTED_REF: yldqopeldibwgbwmdnzy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar que es el proyecto nuevo
+        run: supabase/scripts/check_target.sh
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
+      - name: Esperar 60 segundos (bloquea el teléfono)
+        run: sleep 60
+      - name: Mandar el aviso de prueba
+        run: |
+          date -u '+Enviado a las %H:%M:%S UTC' | tee -a "$GITHUB_STEP_SUMMARY"
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -f supabase/e2e/push_test_delayed.sql | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Esperar la respuesta de Firebase
+        run: sleep 20
+      - name: Estado (solo lectura)
+        run: psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -f supabase/e2e/push_status.sql | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,35 @@
+{
+    "name": "HandiMan ¡Ya!",
+    "short_name": "HandiMan ¡Ya!",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#02173A",
+    "theme_color": "#02173A",
+    "description": "Servicios para el hogar y más en Bolivia, ¡Ya!",
+    "orientation": "any",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

@@ -46,3 +46,14 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Firma de publicación: nunca al repositorio
+/android/key.properties
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+
+# Lo escribe GitHub Actions con el secreto FIREBASE_API_KEY; nunca se sube.
+/config/firebase-*.json
+!/config/firebase-*.example.json

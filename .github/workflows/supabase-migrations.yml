@@ -1,0 +1,145 @@
+name: Base de datos Supabase (handimanya-flutter-dev)
+
+# Nunca corre solo con el PR. Se activa únicamente:
+# - al subir la rama supabase/revisar-dev  -> solo lee la base (no cambia nada);
+# - al subir la rama supabase/aplicar-dev  -> aplica TODAS las migraciones en una
+#   sola transacción (si algo falla, se deshace todo y la base queda como estaba),
+#   comprueba el resultado y corre las pruebas;
+# - al subir la rama supabase/probar-dev   -> solo comprueba y corre las pruebas
+#   (dentro de una transacción que siempre se deshace: no deja datos);
+# - o a mano desde Actions, cuando este archivo ya esté en main.
+# La rama de aplicar solo se sube con la aprobación explícita del dueño del proyecto.
+# La contraseña de la base va en el secreto SUPABASE_DB_URL; nunca en el código.
+# Antes de aplicar se hace un respaldo comprobado y cifrado (respaldo-dev.yml).
+# Si el respaldo falla o no se pudo guardar, no se aplica ninguna migración.
+
+on:
+  push:
+    branches: [supabase/revisar-dev, supabase/aplicar-dev, supabase/probar-dev]
+  workflow_dispatch:
+    inputs:
+      accion:
+        description: 'revisar (solo lectura), probar o aplicar'
+        required: true
+        default: revisar
+        type: choice
+        options: [revisar, probar, aplicar]
+      confirmar:
+        description: 'Para aplicar, escribe APLICAR'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-dev-db
+  cancel-in-progress: false
+
+jobs:
+  respaldo:
+    name: Respaldo antes de aplicar
+    if: inputs.accion == 'aplicar' || github.ref_name == 'supabase/aplicar-dev'
+    uses: ./.github/workflows/respaldo-dev.yml
+    secrets: inherit
+
+  db:
+    needs: respaldo
+    if: ${{ !cancelled() && (needs.respaldo.result == 'success' || needs.respaldo.result == 'skipped') }}
+    name: ${{ (inputs.accion == 'aplicar' || github.ref_name == 'supabase/aplicar-dev') && 'Aplicar migraciones' || ((inputs.accion == 'probar' || github.ref_name == 'supabase/probar-dev') && 'Probar la base' || 'Revisar la base (solo lectura)') }}
+    runs-on: ubuntu-latest
+    env:
+      DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      EXPECTED_REF: yldqopeldibwgbwmdnzy
+      APPLY: ${{ (inputs.accion == 'aplicar' && inputs.confirmar == 'APLICAR') || github.ref_name == 'supabase/aplicar-dev' }}
+      WANTS_APPLY: ${{ inputs.accion == 'aplicar' || github.ref_name == 'supabase/aplicar-dev' }}
+      BACKUP: ${{ needs.respaldo.result }}
+      CHECK: ${{ (inputs.accion == 'aplicar' && inputs.confirmar == 'APLICAR') || github.ref_name == 'supabase/aplicar-dev' || inputs.accion == 'probar' || github.ref_name == 'supabase/probar-dev' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar que es el proyecto nuevo
+        run: supabase/scripts/check_target.sh
+
+      - name: Instalar cliente de PostgreSQL
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client >/dev/null
+
+      - name: Revisar la base (solo lectura)
+        run: |
+          set -euo pipefail
+          psql "${DB_URL}" -X -v ON_ERROR_STOP=1 -At <<'SQL'
+          set default_transaction_read_only = on;
+          select 'Sesión de solo lectura: ' || current_setting('default_transaction_read_only');
+          select 'Base: ' || current_database() || ' · usuario: ' || current_user;
+          select 'Versión: ' || version();
+          select 'Tablas en public: ' || count(*) from information_schema.tables
+            where table_schema = 'public' and table_type = 'BASE TABLE';
+          select '  - ' || table_name from information_schema.tables
+            where table_schema = 'public' and table_type = 'BASE TABLE' order by table_name;
+          select 'Usuarios registrados: ' || count(*) from auth.users;
+          select 'Buckets de archivos: ' || count(*) from storage.buckets;
+          SQL
+
+      - name: Aplicar migraciones (una sola transacción)
+        if: env.WANTS_APPLY == 'true'
+        run: |
+          set -euo pipefail
+          if [ "${APPLY}" != "true" ]; then
+            echo "::error::Para aplicar, escribe APLICAR en el campo de confirmación."
+            exit 1
+          fi
+          if [ "${BACKUP}" != "success" ]; then
+            echo "::error::No hay un respaldo comprobado de esta corrida: no se aplica nada."
+            exit 1
+          fi
+          # Solo se aplican las migraciones que todavía no están anotadas en
+          # supabase_migrations.schema_migrations (la tabla que usa la CLI de Supabase).
+          # Todas las pendientes van en UNA transacción y se anotan en ella misma.
+          applied=""
+          if [ "$(psql "${DB_URL}" -X -At -c "select to_regclass('supabase_migrations.schema_migrations') is not null")" = "t" ]; then
+            applied="$(psql "${DB_URL}" -X -At -c "select version from supabase_migrations.schema_migrations")"
+          fi
+          record="$(mktemp --suffix .sql)"
+          {
+            echo "create schema if not exists supabase_migrations;"
+            echo "create table if not exists supabase_migrations.schema_migrations (version text primary key, statements text[], name text);"
+          } > "$record"
+          args=()
+          for f in supabase/migrations/*.sql; do
+            base="$(basename "$f" .sql)"
+            if grep -qx "${base%%_*}" <<< "$applied"; then echo "Ya aplicada: $f"; continue; fi
+            echo "Pendiente: $f"
+            args+=(-f "$f")
+            echo "insert into supabase_migrations.schema_migrations (version, name) values ('${base%%_*}', '${base#*_}');" >> "$record"
+          done
+          if [ ${#args[@]} -eq 0 ]; then echo "No hay migraciones pendientes."; exit 0; fi
+          args+=(-f "$record")
+          # -1: todo o nada. ON_ERROR_STOP: se detiene en el primer error.
+          psql "${DB_URL}" -X -1 -v ON_ERROR_STOP=1 -q "${args[@]}"
+          echo "Migraciones aplicadas."
+
+      - name: Comprobar resultado
+        if: env.CHECK == 'true'
+        run: |
+          versions="$(for f in supabase/migrations/*.sql; do b="$(basename "$f")"; printf '%s,' "${b%%_*}"; done)"
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 -v versions="${versions%,}" -f supabase/scripts/verify_remote.sql
+
+      - name: Correr las pruebas de la base (se deshacen al terminar)
+        if: env.CHECK == 'true'
+        run: |
+          set -o pipefail
+          psql "${DB_URL}" -X -f supabase/tests/run_remote.sql 2>&1 | sed "s/^psql:[^ ]* NOTICE:  /  /"
+
+      - name: Confirmar que las pruebas no dejaron datos
+        if: always() && env.CHECK == 'true'
+        run: |
+          psql "${DB_URL}" -X -At -v ON_ERROR_STOP=1 <<'SQL'
+          select 'Usuarios de prueba que quedaron: ' || count(*) from auth.users where email like '%@test.bo';
+          select 'Esquema de pruebas presente: ' || exists (select 1 from pg_namespace where nspname = 'test');
+          do $$ begin
+            if exists (select 1 from auth.users where email like '%@test.bo')
+               or exists (select 1 from pg_namespace where nspname = 'test') then
+              raise exception 'HMY: quedaron datos de prueba en la base';
+            end if;
+          end $$;
+          SQL

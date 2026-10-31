@@ -1,0 +1,1162 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/utils/app_error.dart';
+import '../../core/theme/tokens.dart';
+import '../../core/utils/formatters.dart';
+import '../../core/widgets/buttons.dart';
+import '../../core/widgets/common.dart';
+import '../../data/models/booking.dart';
+import '../../data/providers.dart';
+import '../../router.dart';
+import '../common/photo_picker.dart';
+import '../common/safety_menu.dart';
+import '../safety/emergency_sheet.dart';
+import 'arrival_pin.dart';
+import 'live_trip.dart';
+import 'price_panel.dart';
+import '../../core/widgets/word_safe_text.dart';
+
+/// Detalle de una solicitud. Muestra el estado en tiempo real y solo las
+/// acciones que el servidor permite en ese estado para quien la mira.
+class BookingDetailPage extends ConsumerWidget {
+  const BookingDetailPage({super.key, required this.id});
+
+  final String id;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final detail = ref.watch(bookingDetailProvider(id));
+    return Scaffold(
+      appBar: AppBar(
+        title: OneLineText(detail.value == null ? 'Solicitud' : 'Solicitud ${detail.value!.code}'),
+        actions: [
+          if (detail.value case final b?)
+            if (b.viewerIsCustomer && b.professional != null)
+              SafetyMenuButton(userId: b.professional!.id, name: b.professional!.displayName, bookingId: b.id)
+            else if (!b.viewerIsCustomer)
+              SafetyMenuButton(userId: b.customerId, name: b.customerFirstName, bookingId: b.id),
+        ],
+      ),
+      body: detail.when(
+        skipLoadingOnReload: true,
+        loading: () => const LoadingView(),
+        error: (e, _) => ErrorView(
+          // Un aviso viejo: otro profesional tomó el pedido o el cliente lo canceló.
+          error: AppError.from(e).code == 'HMY_NOT_FOUND' ? const AppError('Este pedido ya no está disponible.') : e,
+          onRetry: () => ref.invalidate(bookingDetailProvider(id)),
+        ),
+        data: (b) => RefreshIndicator(
+          color: HyColors.primary,
+          onRefresh: () async => ref.invalidate(bookingDetailProvider(id)),
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: HySpacing.xxl),
+            children: [PageBody(child: _Content(b: b))],
+          ),
+        ),
+      ),
+      bottomNavigationBar: detail.value == null ? null : _Actions(b: detail.value!),
+    );
+  }
+}
+
+class _Content extends StatelessWidget {
+  const _Content({required this.b});
+
+  final BookingDetail b;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final hint = b.viewerIsCustomer ? b.status.customerHintFor(b.mode) : b.status.professionalHintFor(b.mode);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: HySpacing.xs),
+        _StatusHeader(b: b, hint: hint),
+        const SizedBox(height: HySpacing.md),
+        ArrivalCard(b: b),
+        _LiveTrip(b: b),
+        EmergencyLink(b: b),
+
+        if (b.viewerIsCustomer && b.professional != null) ...[
+          AppCard(
+            onTap: () => context.push(Routes.professional(b.professional!.id)),
+            child: Row(
+              children: [
+                PersonAvatar(name: b.professional!.displayName, url: b.professional!.photoUrl, size: 56),
+                const SizedBox(width: HySpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: HySpacing.xs,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(b.professional!.displayName, style: text.titleMedium),
+                          if (b.professional!.isVerified) const VerifiedBadge(compact: true),
+                          RankBadge(tier: b.professional!.rankTier, compact: true),
+                        ],
+                      ),
+                      RatingLabel(rating: b.professional!.ratingAvg, count: b.professional!.ratingCount),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: HyColors.textMuted),
+              ],
+            ),
+          ),
+          const SizedBox(height: HySpacing.sm),
+        ],
+        if (!b.viewerIsCustomer) ...[
+          AppCard(
+            child: Row(
+              children: [
+                PersonAvatar(name: b.customerFirstName, size: 48),
+                const SizedBox(width: HySpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Cliente', style: TextStyle(color: HyColors.textMuted)),
+                      Text(b.customerFirstName, style: text.titleMedium),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: HySpacing.sm),
+        ],
+
+        PricePanel(b: b),
+
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _Line(icon: Icons.build_outlined, label: 'Servicio', value: b.category),
+              _Line(
+                icon: b.mode == BookingMode.now ? Icons.bolt_rounded : Icons.event_outlined,
+                label: 'Cuándo',
+                value: b.mode == BookingMode.now
+                    ? 'Ahora (pedido ${Fmt.relative(b.createdAt)})'
+                    : '${Fmt.date(b.scheduledStart!)}, ${Fmt.time(b.scheduledStart!)}',
+              ),
+              _Line(icon: Icons.place_outlined, label: 'Zona', value: b.areaLabel),
+              if (b.distanceKm != null)
+                _Line(
+                  icon: Icons.near_me_outlined,
+                  label: 'Distancia',
+                  value: 'A unos ${Fmt.km(b.distanceKm!)} de tu base (aproximado)',
+                ),
+              if (b.paymentMethod != null)
+                _Line(
+                  icon: b.paymentMethod!.icon,
+                  label: 'Pago',
+                  value: '${b.paymentMethod!.label}, directo al profesional',
+                ),
+              if (b.finalAmount != null && !b.price.agreed)
+                _Line(icon: Icons.payments_outlined, label: 'Monto final', value: Fmt.bs(b.finalAmount!)),
+              const Divider(height: HySpacing.lg),
+              if (b.problems.isNotEmpty) ...[
+                const Text(
+                  'Qué necesita',
+                  style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                for (final p in b.problems)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 2),
+                          child: Icon(Icons.check_circle_outline, size: 20, color: HyColors.primary),
+                        ),
+                        const SizedBox(width: HySpacing.xs),
+                        Expanded(
+                          child: Text(p, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: HySpacing.sm),
+              ],
+              if (b.problems.isEmpty || b.description != b.problems.join('. ')) ...[
+                const Text(
+                  'Descripción',
+                  style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(b.description, style: const TextStyle(fontSize: 17)),
+              ],
+              if (b.safetyNote != null) ...[
+                const SizedBox(height: HySpacing.md),
+                InfoBanner(icon: Icons.shield_outlined, tone: StatusTone.warning, text: b.safetyNote!),
+              ],
+              if (b.photos.isNotEmpty) ...[const SizedBox(height: HySpacing.md), BookingPhotosStrip(photos: b.photos)],
+            ],
+          ),
+        ),
+        const SizedBox(height: HySpacing.sm),
+
+        if (b.address != null)
+          AppCard(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.home_outlined, color: HyColors.primary),
+                const SizedBox(width: HySpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Dirección',
+                        style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
+                      ),
+                      Text(b.address!.line, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+                      if ((b.address!.reference ?? '').isNotEmpty)
+                        Text(b.address!.reference!, style: const TextStyle(color: HyColors.textSecondary)),
+                      if ((b.address!.destination ?? '').isNotEmpty) ...[
+                        const SizedBox(height: HySpacing.xs),
+                        const Text(
+                          'Destino',
+                          style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          b.address!.destination!,
+                          key: const Key('booking-destination'),
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Copiar dirección',
+                  icon: const Icon(Icons.copy_rounded),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: b.address!.line));
+                    showMessage(context, 'Dirección copiada');
+                  },
+                ),
+              ],
+            ),
+          ),
+        if (b.address != null && !b.viewerIsCustomer) ...[
+          const SizedBox(height: HySpacing.sm),
+          PrimaryButton(
+            label: 'Cómo llegar',
+            icon: Icons.directions_rounded,
+            color: HyColors.navy,
+            onPressed: () async {
+              final ok = await launchUrl(b.address!.directionsUrl, mode: LaunchMode.externalApplication);
+              if (!ok && context.mounted) showMessage(context, 'No pudimos abrir el mapa. Copia la dirección.');
+            },
+          ),
+        ],
+        if (b.address == null && !b.viewerIsCustomer)
+          const InfoBanner(icon: Icons.lock_outline, text: 'La dirección exacta se muestra cuando aceptas el trabajo.'),
+
+        if (b.status == BookingStatus.workFinished || b.status == BookingStatus.completed) ...[
+          const SizedBox(height: HySpacing.sm),
+          _PaymentStatus(b: b),
+        ],
+        if (b.cancelPenalty != null) ...[
+          const SizedBox(height: HySpacing.sm),
+          InfoBanner(
+            key: const Key('cancel-penalty'),
+            icon: Icons.receipt_long_outlined,
+            tone: StatusTone.warning,
+            text: b.cancelPenaltyWaived
+                ? 'Penalización por cancelación devuelta: ${Fmt.bs(b.cancelPenalty!)} volvieron a tu billetera.'
+                : 'Penalización por cancelación: ${Fmt.bs(b.cancelPenalty!)} descontados de tu billetera.'
+                      '${b.cancelPenaltyShortfall > 0 ? ' Tu saldo no alcanzó para ${Fmt.bs(cancelPenaltyBs)}; el equipo lo revisará.' : ''}',
+          ),
+        ],
+
+        if (b.events.isNotEmpty) ...[
+          const SectionHeader(title: 'Historial'),
+          for (final e in b.events.reversed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: HySpacing.sm),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 6),
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(color: e.status.tone.foreground, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: HySpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(e.status.label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        if ((e.note ?? '').isNotEmpty)
+                          Text(e.note!, style: const TextStyle(color: HyColors.textSecondary)),
+                      ],
+                    ),
+                  ),
+                  Text(Fmt.dateTime(e.at), style: const TextStyle(color: HyColors.textMuted, fontSize: 14)),
+                ],
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Ubicación en vivo mientras el profesional va en camino y la llegada no se verificó.
+class _LiveTrip extends ConsumerWidget {
+  const _LiveTrip({required this.b});
+
+  final BookingDetail b;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (b.status != BookingStatus.onTheWay) return const SizedBox.shrink();
+    final arrival = ref.watch(bookingArrivalProvider(b.id)).value;
+    if (arrival == null || arrival.verified) return const SizedBox.shrink();
+    return b.viewerIsCustomer
+        ? CustomerTripCard(key: ValueKey('trip-${b.id}'), bookingId: b.id)
+        : ProTripSharer(key: ValueKey('share-${b.id}'), bookingId: b.id);
+  }
+}
+
+class _StatusHeader extends ConsumerWidget {
+  const _StatusHeader({required this.b, required this.hint});
+
+  final BookingDetail b;
+  final String hint;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final arrived =
+        b.status == BookingStatus.onTheWay && (ref.watch(bookingArrivalProvider(b.id)).value?.verified ?? false);
+    final searching = b.status == BookingStatus.awaitingResponse && b.viewerIsCustomer && b.mode == BookingMode.now;
+    // Con la llegada verificada sigue "en camino" en la base: el texto no.
+    final hint = arrived ? arrivedHint(customer: b.viewerIsCustomer) : this.hint;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(HySpacing.md),
+      decoration: BoxDecoration(color: b.status.tone.background, borderRadius: BorderRadius.circular(HyRadii.lg)),
+      child: Semantics(
+        liveRegion: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                if (searching) ...[
+                  const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 3, color: HyColors.primary),
+                  ),
+                  const SizedBox(width: HySpacing.sm),
+                ],
+                Expanded(
+                  child: Text(
+                    arrived
+                        ? 'Llegada verificada'
+                        : b.negotiating
+                        ? 'Negociando precio'
+                        : b.status.labelFor(b.mode),
+                    style: TextStyle(color: b.status.tone.foreground, fontSize: 22, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+            if (hint.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(hint, style: TextStyle(color: b.status.tone.foreground, fontSize: 16)),
+            ],
+            if ((searching || (b.viewerIsCustomer && b.status.isPendingScheduled(b.mode))) &&
+                (b.offersSent ?? 0) > 0) ...[
+              const SizedBox(height: 4),
+              Text(
+                b.offersSent == 1 ? 'Avisamos a 1 profesional.' : 'Avisamos a ${b.offersSent} profesionales.',
+                style: TextStyle(color: b.status.tone.foreground, fontWeight: FontWeight.w600),
+              ),
+            ],
+            if (b.status == BookingStatus.cancelled && (b.cancelReason ?? '').isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                b.cancelReason == customerCancelNote || b.cancelReason == proCancelNote
+                    ? b.cancelReason!
+                    : 'Motivo: ${b.cancelReason}',
+                style: TextStyle(color: b.status.tone.foreground),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Line extends StatelessWidget {
+  const _Line({required this.icon, required this.label, required this.value});
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: HySpacing.xs),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: HyColors.textMuted),
+        const SizedBox(width: HySpacing.xs),
+        SizedBox(
+          width: 96,
+          child: Text(label, style: const TextStyle(color: HyColors.textSecondary, fontSize: 15)),
+        ),
+        Expanded(
+          child: Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        ),
+      ],
+    ),
+  );
+}
+
+class _PaymentStatus extends StatelessWidget {
+  const _PaymentStatus({required this.b});
+
+  final BookingDetail b;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = b.finalAmount ?? b.price.total;
+    final paid = paymentStatusLabel(customerPaid: b.customerPaidAck, professionalPaid: b.professionalPaidAck);
+    final charged = b.commissionCharged;
+    final commissionState = b.paymentReviewStatus == 'open'
+        ? 'Pago en revisión'
+        : charged == null
+        ? 'Se cobra cuando el cliente marca "Ya pagué"'
+        : charged == 0 && b.paymentReviewStatus == 'refunded'
+        ? 'Devuelta'
+        : 'Cobrada';
+    return AppCard(
+      key: const Key('payment-card'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (total != null) _Line(icon: Icons.payments_outlined, label: 'Precio del trabajo', value: Fmt.bs(total)),
+          _Line(
+            icon: b.paymentMethod?.icon ?? Icons.payments_outlined,
+            label: 'Pago',
+            value: b.paymentMethod?.label ?? 'Sin indicar',
+          ),
+          Row(
+            key: const Key('payment-state'),
+            children: [
+              const Icon(Icons.verified_outlined, size: 20, color: HyColors.textMuted),
+              const SizedBox(width: HySpacing.xs),
+              const SizedBox(
+                width: 96,
+                child: Text('Estado del pago', style: TextStyle(color: HyColors.textSecondary, fontSize: 15)),
+              ),
+              Expanded(
+                child: Text(paid, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          if (b.paymentReviewStatus != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                switch (b.paymentReviewStatus) {
+                  'open' => 'Pago en revisión: el equipo lo está revisando.',
+                  'refunded' => 'Revisión de pago resuelta: se devolvió la comisión.',
+                  _ => 'Revisión de pago resuelta.',
+                },
+                key: const Key('payment-review'),
+                style: const TextStyle(color: HyColors.textSecondary),
+              ),
+            ),
+          // La comisión no se muestra en grande: solo en el detalle, para el profesional.
+          if (!b.viewerIsCustomer && b.commissionRate != null)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: const Key('payment-finance'),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: HySpacing.xs),
+                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                title: const Text('Detalle financiero', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                children: [
+                  if (total != null) Text('Precio final acordado: ${Fmt.bs(total)}'),
+                  Text('Comisión: ${b.commissionRate!.toStringAsFixed(b.commissionRate! % 1 == 0 ? 0 : 1)} %'),
+                  if (b.commissionAmount != null)
+                    Text(
+                      'Monto de la comisión: ${Fmt.bs(charged != null && charged > 0 ? charged : b.commissionAmount!)}',
+                      key: const Key('payment-commission'),
+                    ),
+                  Text('Estado de la comisión: $commissionState'),
+                  Text('Referencia: Solicitud #${b.code}'),
+                ],
+              ),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            b.viewerIsCustomer
+                ? 'Le pagas directo al profesional; HandiMan ¡Ya! no recibe este pago. Marca "Ya pagué" solo después '
+                      'de pagar.'
+                : 'La comisión se cobra cuando el cliente marca "Ya pagué". Si no recibiste el pago, avísanos.',
+            style: const TextStyle(color: HyColors.textMuted, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Barra inferior con las acciones posibles según rol y estado.
+class _Actions extends ConsumerStatefulWidget {
+  const _Actions({required this.b});
+
+  final BookingDetail b;
+
+  @override
+  ConsumerState<_Actions> createState() => _ActionsState();
+}
+
+class _ActionsState extends ConsumerState<_Actions> {
+  bool _busy = false;
+
+  Future<void> _run(Future<void> Function() action, {String? success}) async {
+    setState(() => _busy = true);
+    await runGuarded(context, action, success: success);
+    // También si falló: el pedido pudo vencer o tomarlo otro profesional, y la
+    // pantalla tiene que mostrarlo.
+    ref.invalidate(bookingDetailProvider(widget.b.id));
+    ref.invalidate(myBookingsProvider(!widget.b.viewerIsCustomer));
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.b;
+    final api = ref.read(backendProvider);
+    final s = b.status;
+    final arrival = s == BookingStatus.onTheWay ? ref.watch(bookingArrivalProvider(b.id)).value : null;
+    final primary = <Widget>[];
+    final secondary = <Widget>[];
+    // El precio que el profesional está por aceptar: se muestra su comisión.
+    double? commissionFor;
+
+    void addChat() {
+      if (b.conversationId != null && s.chatOpen) {
+        secondary.add(
+          SecondaryButton(
+            label: 'Chat',
+            icon: Icons.chat_bubble_outline,
+            onPressed: () => context.push(Routes.chat(b.conversationId!)),
+          ),
+        );
+      }
+    }
+
+    // El profesional ya aceptó: cancelar cuesta Bs 3 (0067). Sin motivo escrito.
+    Future<void> cancel() async {
+      if (_busy) return;
+      final ok = await confirmDialog(
+        context,
+        title: '¿Cancelar este trabajo?',
+        message:
+            'Penalización por cancelación: ${Fmt.bs(cancelPenaltyBs)}\n\n'
+            'Si cancelas este trabajo después de aceptarlo, se descontarán ${Fmt.bs(cancelPenaltyBs)} de tu billetera.',
+        confirm: 'Confirmar cancelación',
+        destructive: true,
+      );
+      if (ok) await _run(() => api.cancel(b.id, ''), success: 'Trabajo cancelado');
+    }
+
+    // El cliente nunca tiene que explicar por qué cancela. Si nadie aceptó
+    // todavía, se cancela al tocar; si ya hay un profesional, se pregunta una vez.
+    Future<void> customerCancel() async {
+      if (_busy) return;
+      if (s == BookingStatus.confirmed) {
+        final ok = await confirmDialog(
+          context,
+          title: '¿Cancelar este servicio?',
+          message: 'Le avisaremos al profesional.',
+          confirm: 'Sí, cancelar',
+          destructive: true,
+        );
+        if (!ok) return;
+      }
+      await _run(() => api.cancel(b.id, ''), success: 'Solicitud cancelada');
+    }
+
+    Future<void> dispute() async {
+      final reason = await promptText(
+        context,
+        title: 'Reportar un problema',
+        label: '¿Qué pasó?',
+        confirm: 'Enviar reporte',
+        hint: 'Nuestro equipo revisará el caso',
+        minLength: 5,
+      );
+      if (reason != null) await _run(() => api.openDispute(b.id, reason), success: 'Reporte enviado');
+    }
+
+    Future<void> ackPayment() =>
+        _run(() => api.acknowledgePayment(b.id, b.paymentMethod ?? PaymentMethod.cash), success: 'Pago registrado');
+
+    // El cliente marcó "Ya pagué" pero el pago no llegó: revisión del propietario.
+    Future<void> notPaid() async {
+      final reason = await promptText(
+        context,
+        title: 'No recibí el pago',
+        label: '¿Qué pasó?',
+        confirm: 'Pedir revisión',
+        hint: 'El equipo lo revisa y, si el cliente no pagó, te devuelve la comisión',
+        minLength: 5,
+      );
+      if (reason != null) {
+        await _run(() => api.reportPaymentNotReceived(b.id, reason), success: 'Enviamos tu pedido de revisión');
+      }
+    }
+
+    // El cliente dice cómo pagó (efectivo o QR, directo al profesional).
+    Future<void> customerPaid() async {
+      final method = await showPaymentMethodSheet(context, initial: b.paymentMethod ?? PaymentMethod.cash);
+      if (method != null) await _run(() => api.acknowledgePayment(b.id, method), success: 'Pago registrado');
+    }
+
+    final me = ref.watch(authUserProvider).value?.id;
+    final price = b.price;
+    final negotiating =
+        !price.agreed && {BookingStatus.requested, BookingStatus.awaitingResponse, BookingStatus.quoteSent}.contains(s);
+
+    // El cliente pone o cambia su precio: para todos los avisados, o para el
+    // profesional elegido.
+    void addCustomerPrice() {
+      final mine = price.openIn(b.professional?.id, byCustomer: true);
+      secondary.add(
+        SecondaryButton(
+          key: const Key('price-budget'),
+          label: mine == null ? 'Poner mi precio' : 'Cambiar mi precio',
+          onPressed: () async {
+            final r = await showPriceSheet(context, title: '¿Cuánto quieres pagar?', initial: mine?.amount);
+            if (r != null) await _run(() => api.proposePrice(b.id, r.amount, note: r.note), success: 'Precio enviado');
+          },
+        ),
+      );
+    }
+
+    // El profesional acepta el precio del cliente o propone el suyo.
+    void addProPrice({required Widget decline}) {
+      final theirs = me == null ? null : price.customerOfferFor(me);
+      final mine = me == null ? null : price.openIn(me, byCustomer: false);
+      Future<void> propose() async {
+        final r = await showPriceSheet(
+          context,
+          title: theirs == null ? 'Tu precio' : 'Tu contraoferta',
+          initial: mine?.amount ?? theirs?.amount,
+          kinds: const [PriceKind.service, PriceKind.inspection],
+          commission: (amount) => api.commissionForAmount(b.id, amount),
+        );
+        if (r != null) {
+          await _run(
+            () => api.proposePrice(b.id, r.amount, kind: r.kind, note: r.note),
+            success: 'Propuesta enviada',
+          );
+        }
+      }
+
+      if (theirs != null) {
+        commissionFor = theirs.amount;
+        primary.add(
+          PrimaryButton(
+            key: const Key('price-accept'),
+            label: 'Aceptar ${Fmt.bsShort(theirs.amount)}',
+            icon: b.mode == BookingMode.scheduled ? Icons.event_available_outlined : Icons.check_rounded,
+            onPressed: () => _run(
+              () => api.acceptPriceOffer(theirs.id),
+              success: '¡Trabajo tuyo! Precio acordado: ${Fmt.bsShort(theirs.amount)}',
+            ),
+          ),
+        );
+        secondary.add(
+          SecondaryButton(
+            key: const Key('price-propose'),
+            label: mine == null ? 'Proponer otro precio' : 'Cambiar mi propuesta',
+            onPressed: propose,
+          ),
+        );
+      } else {
+        primary.add(
+          PrimaryButton(
+            key: const Key('price-propose'),
+            label: mine == null ? 'Proponer precio' : 'Cambiar mi propuesta',
+            icon: Icons.sell_outlined,
+            onPressed: propose,
+          ),
+        );
+      }
+      secondary.add(decline);
+    }
+
+    // Con el precio acordado, cualquiera de los dos propone un NUEVO TOTAL
+    // (0067); el otro acepta, rechaza o contraoferta. Si se acordó solo la
+    // visita, el profesional además cotiza la reparación.
+    void addPriceChange() {
+      if (!price.agreed || price.openChange != null) return;
+      if (!b.viewerIsCustomer && price.agreedKind == PriceKind.inspection && !price.repairAccepted) {
+        secondary.add(
+          SecondaryButton(
+            key: const Key('price-repair'),
+            label: 'Cotizar reparación',
+            onPressed: () async {
+              final r = await showPriceSheet(
+                context,
+                title: 'Cotizar la reparación',
+                kinds: const [PriceKind.repair],
+                commission: (amount) => api.commissionForAmount(b.id, amount),
+              );
+              if (r != null) {
+                await _run(
+                  () => api.proposePrice(b.id, r.amount, kind: PriceKind.repair, note: r.note),
+                  success: 'Enviado. El cliente tiene que aceptarlo antes de que lo hagas.',
+                );
+              }
+            },
+          ),
+        );
+      }
+      secondary.add(
+        SecondaryButton(
+          key: const Key('price-counteroffer'),
+          label: 'Contraoferta',
+          icon: Icons.sell_outlined,
+          onPressed: () async {
+            final r = await showCounterofferSheet(
+              context,
+              current: price.total!,
+              commissionRate: b.viewerIsCustomer ? null : b.commissionRate,
+            );
+            if (r != null) {
+              await _run(
+                () => api.proposePrice(b.id, r.amount, kind: PriceKind.total, note: r.note),
+                success: 'Contraoferta enviada. El precio cambia cuando la otra persona la acepte.',
+              );
+            }
+          },
+        ),
+      );
+    }
+
+    if (b.viewerIsCustomer && {BookingStatus.confirmed, BookingStatus.onTheWay, BookingStatus.inProgress}.contains(s)) {
+      secondary.add(
+        SecondaryButton(
+          key: const Key('share-trip'),
+          label: 'Compartir mi viaje',
+          icon: Icons.share_outlined,
+          onPressed: () => showShareTripSheet(context, b),
+        ),
+      );
+    }
+    if (b.viewerIsCustomer) {
+      switch (s) {
+        case BookingStatus.requested || BookingStatus.awaitingResponse || BookingStatus.quoteSent:
+          if (negotiating) addCustomerPrice();
+          secondary.add(
+            SecondaryButton(
+              key: const Key('customer-cancel'),
+              label: 'Cancelar solicitud',
+              onPressed: _busy ? null : customerCancel,
+            ),
+          );
+        case BookingStatus.confirmed:
+          addChat();
+          addPriceChange();
+          secondary.add(
+            SecondaryButton(
+              key: const Key('customer-cancel'),
+              label: 'Cancelar',
+              onPressed: _busy ? null : customerCancel,
+            ),
+          );
+        case BookingStatus.onTheWay when arrival?.stage == ArrivalStage.waitingPin:
+          primary.add(
+            PrimaryButton(
+              key: const Key('arrival-verify'),
+              label: 'Verificar llegada',
+              icon: Icons.pin_outlined,
+              onPressed: () async {
+                final ok = await showVerifyArrivalSheet(context, b.id);
+                if (ok && context.mounted) {
+                  ref.invalidate(bookingArrivalProvider(b.id));
+                  showMessage(context, 'Llegada verificada');
+                }
+              },
+            ),
+          );
+          addChat();
+          secondary.add(SecondaryButton(label: 'Reportar problema', onPressed: dispute));
+        case BookingStatus.onTheWay || BookingStatus.inProgress:
+          addChat();
+          addPriceChange();
+          secondary.add(SecondaryButton(label: 'Reportar problema', onPressed: dispute));
+        case BookingStatus.workFinished:
+          primary.add(
+            PrimaryButton(
+              label: 'Confirmar trabajo terminado',
+              icon: Icons.check_circle_outline,
+              onPressed: () async {
+                final ok = await confirmDialog(
+                  context,
+                  title: '¿El trabajo quedó bien?',
+                  message: price.total == null
+                      ? 'Al confirmar, la solicitud se marca como completada.'
+                      : 'Total acordado: ${Fmt.bsShort(price.total!)}. Al confirmar, la solicitud se marca como completada.',
+                  confirm: 'Sí, confirmar',
+                );
+                if (ok) await _run(() => api.confirmCompletion(b.id), success: '¡Gracias! Trabajo completado');
+              },
+            ),
+          );
+          if (!b.customerPaidAck) secondary.add(SecondaryButton(label: 'Ya pagué', onPressed: customerPaid));
+          secondary.add(SecondaryButton(label: 'Reportar problema', onPressed: dispute));
+        case BookingStatus.completed:
+          if (!b.hasReview) {
+            primary.add(
+              PrimaryButton(
+                label: 'Calificar al profesional',
+                icon: Icons.star_rounded,
+                onPressed: () async {
+                  final r = await showReviewSheet(context);
+                  if (r != null) {
+                    await _run(() => api.submitReview(b.id, r.$1, r.$2), success: '¡Gracias por tu reseña!');
+                  }
+                },
+              ),
+            );
+          }
+          if (!b.customerPaidAck) secondary.add(SecondaryButton(label: 'Ya pagué', onPressed: customerPaid));
+          addChat();
+        case BookingStatus.disputed:
+          addChat();
+        default:
+          break;
+      }
+    } else {
+      switch (s) {
+        // Dijo "No puedo" (0067): ya no puede aceptar ni proponer, pero mientras
+        // el pedido siga abierto lo puede volver a tomar.
+        case BookingStatus.awaitingResponse when b.isOffer && b.declinedByMe:
+          primary.add(
+            const InfoBanner(
+              key: Key('pro-declined'),
+              icon: Icons.do_not_disturb_on_outlined,
+              text: 'Dijiste "No puedo" a este pedido. Si cambiaste de idea, vuelve a tomarlo mientras siga abierto.',
+            ),
+          );
+          secondary.add(
+            SecondaryButton(
+              key: const Key('pro-reopen'),
+              label: 'Volver a tomar el pedido',
+              onPressed: () => _run(() => api.reopenOffer(b.id), success: 'Puedes aceptar o proponer tu precio'),
+            ),
+          );
+        case BookingStatus.awaitingResponse when b.isOffer && (b.myInvite == null || b.myInvite == 'pending'):
+          addProPrice(
+            decline: SecondaryButton(
+              key: const Key('pro-decline'),
+              label: 'No puedo',
+              onPressed: () async {
+                final ok = await confirmDialog(
+                  context,
+                  title: '¿No puedes tomar este pedido?',
+                  message:
+                      'Dejarás de ver este pedido. Si cambias de idea, podrás volver a tomarlo mientras siga abierto.',
+                  confirm: 'No puedo',
+                );
+                if (!ok) return;
+                await _run(() => api.decline(b.id, isOffer: true));
+                if (context.mounted) context.pop();
+              },
+            ),
+          );
+        case BookingStatus.requested || BookingStatus.quoteSent when negotiating:
+          addProPrice(
+            decline: SecondaryButton(
+              key: const Key('pro-decline'),
+              label: 'Rechazar',
+              onPressed: () => _run(() => api.decline(b.id, isOffer: false)),
+            ),
+          );
+        case BookingStatus.confirmed:
+          final opens = onTheWayOpensAt(b);
+          if (opens != null && DateTime.now().isBefore(opens)) {
+            primary.add(
+              InfoBanner(
+                key: const Key('on-the-way-later'),
+                icon: Icons.schedule_rounded,
+                text: 'Podrás avisar "Voy en camino" desde el ${Fmt.date(opens)}, ${Fmt.time(opens)}.',
+              ),
+            );
+          } else {
+            primary.add(
+              PrimaryButton(
+                key: const Key('on-the-way'),
+                label: 'Voy en camino',
+                icon: Icons.directions_walk,
+                onPressed: () => _run(() => api.updateProgress(b.id, BookingStatus.onTheWay)),
+              ),
+            );
+          }
+          addChat();
+          addPriceChange();
+          secondary.add(SecondaryButton(label: 'Cancelar', onPressed: cancel));
+        case BookingStatus.onTheWay when arrival?.verified ?? false:
+          primary.add(
+            PrimaryButton(
+              key: const Key('start-work'),
+              label: 'Empecé el trabajo',
+              icon: Icons.handyman_outlined,
+              onPressed: () => _run(() => api.updateProgress(b.id, BookingStatus.inProgress)),
+            ),
+          );
+          addChat();
+          addPriceChange();
+        case BookingStatus.onTheWay:
+          final again = arrival != null && arrival.stage != ArrivalStage.none;
+          primary.add(
+            PrimaryButton(
+              key: const Key('arrival-mark'),
+              label: again ? 'Generar otro código' : 'He llegado',
+              icon: Icons.where_to_vote_outlined,
+              onPressed: () async {
+                ArrivalPin? pin;
+                await _run(() async => pin = await api.markArrived(b.id));
+                if (pin != null && context.mounted) {
+                  ref.invalidate(bookingArrivalProvider(b.id));
+                  await showArrivalPinSheet(context, pin!);
+                }
+              },
+            ),
+          );
+          addChat();
+          secondary.add(SecondaryButton(label: 'Cancelar', onPressed: cancel));
+        case BookingStatus.inProgress:
+          primary.add(
+            PrimaryButton(
+              label: 'Terminé el trabajo',
+              icon: Icons.task_alt,
+              onPressed: () async {
+                final ok = await confirmDialog(
+                  context,
+                  title: '¿Terminaste el trabajo?',
+                  message: price.total == null
+                      ? 'Le avisamos al cliente para que lo confirme.'
+                      : 'Total acordado: ${Fmt.bsShort(price.total!)}. Le avisamos al cliente para que lo confirme.',
+                  confirm: 'Sí, terminé',
+                );
+                if (ok) {
+                  await _run(
+                    () => api.updateProgress(b.id, BookingStatus.workFinished),
+                    success: 'Avisamos al cliente',
+                  );
+                }
+              },
+            ),
+          );
+          addChat();
+          addPriceChange();
+        case BookingStatus.workFinished || BookingStatus.completed:
+          if (!b.professionalPaidAck) {
+            primary.add(PrimaryButton(label: 'Recibí el pago', icon: Icons.payments_outlined, onPressed: ackPayment));
+            if (b.customerPaidAck && b.paymentReviewStatus == null) {
+              secondary.add(
+                SecondaryButton(key: const Key('pro-not-paid'), label: 'No recibí el pago', onPressed: notPaid),
+              );
+            }
+          }
+          addChat();
+        case BookingStatus.disputed:
+          addChat();
+        default:
+          break;
+      }
+    }
+
+    if (primary.isEmpty && secondary.isEmpty) return const SizedBox.shrink();
+    return SafeArea(
+      top: false,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: HyColors.surface,
+          border: Border(top: BorderSide(color: HyColors.border)),
+        ),
+        padding: const EdgeInsets.fromLTRB(HySpacing.page, HySpacing.sm, HySpacing.page, HySpacing.sm),
+        // heightFactor: 1 para que la barra no ocupe toda la pantalla.
+        child: Center(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: HySizes.maxContentWidth),
+            child: AbsorbPointer(
+              absorbing: _busy,
+              child: Opacity(
+                opacity: _busy ? 0.6 : 1,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (!b.viewerIsCustomer && commissionFor != null)
+                      CommissionForAmount(bookingId: b.id, amount: commissionFor!),
+                    ...primary,
+                    if (primary.isNotEmpty && secondary.isNotEmpty) const SizedBox(height: HySpacing.xs),
+                    if (secondary.isNotEmpty) _ButtonGrid(children: secondary),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Devuelve (estrellas, comentario).
+/// Cómo pagó el cliente al profesional. HandiMan ¡Ya! no recibe ese pago.
+Future<PaymentMethod?> showPaymentMethodSheet(BuildContext context, {required PaymentMethod initial}) =>
+    showModalBottomSheet<PaymentMethod>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, HySpacing.md),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('¿Cómo pagaste?', style: Theme.of(c).textTheme.titleLarge),
+              const SizedBox(height: HySpacing.xxs),
+              const Text(
+                'Pagaste directo al profesional. HandiMan ¡Ya! no recibe ni cobra este pago.',
+                style: TextStyle(color: HyColors.textSecondary),
+              ),
+              const SizedBox(height: HySpacing.sm),
+              for (final m in PaymentMethod.values)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: HySpacing.xs),
+                  child: ListTile(
+                    key: Key('paid-${m.key}'),
+                    minTileHeight: HySizes.touch + 8,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(HyRadii.md),
+                      side: BorderSide(color: m == initial ? HyColors.primary : HyColors.border, width: 1.5),
+                    ),
+                    leading: Icon(m.icon, color: HyColors.primaryDark),
+                    title: Text(m.label, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                    onTap: () => Navigator.pop(c, m),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+Future<(int, String?)?> showReviewSheet(BuildContext context) {
+  var rating = 0;
+  final comment = TextEditingController();
+  return showModalBottomSheet<(int, String?)>(
+    context: context,
+    isScrollControlled: true,
+    builder: (c) => StatefulBuilder(
+      builder: (c, setState) => Padding(
+        padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(c) + HySpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('¿Cómo fue el trabajo?', style: Theme.of(c).textTheme.headlineSmall),
+            const SizedBox(height: HySpacing.md),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 1; i <= 5; i++)
+                  IconButton(
+                    tooltip: '$i ${i == 1 ? 'estrella' : 'estrellas'}',
+                    iconSize: 44,
+                    onPressed: () => setState(() => rating = i),
+                    icon: Icon(i <= rating ? Icons.star_rounded : Icons.star_outline_rounded, color: HyColors.star),
+                  ),
+              ],
+            ),
+            const SizedBox(height: HySpacing.sm),
+            TextField(
+              controller: comment,
+              maxLines: 3,
+              maxLength: 1000,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(labelText: 'Comentario (opcional)'),
+            ),
+            const SizedBox(height: HySpacing.sm),
+            PrimaryButton(
+              label: 'Enviar reseña',
+              onPressed: rating == 0
+                  ? null
+                  : () => Navigator.pop(c, (rating, comment.text.trim().isEmpty ? null : comment.text.trim())),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Un trabajo programado: "Voy en camino" se puede avisar desde dos horas
+/// antes (la base revisa lo mismo). Null: se puede siempre.
+@visibleForTesting
+DateTime? onTheWayOpensAt(BookingDetail b) =>
+    b.mode == BookingMode.scheduled && b.scheduledStart != null ? b.scheduledStart!.subtract(onTheWayWindow) : null;
+
+const onTheWayWindow = Duration(hours: 2);
+
+/// Lo que se lee cuando el cliente ya verificó la llegada (antes de empezar).
+@visibleForTesting
+String arrivedHint({required bool customer}) => customer
+    ? 'Confirmaste que el profesional llegó. Empezará el trabajo en un momento.'
+    : 'El cliente confirmó tu llegada. Toca "Empecé el trabajo" para comenzar.';
+
+/// Botones secundarios: hasta dos por fila, y uno por fila si no entran sin
+/// partir las palabras (pantallas chicas o letra grande).
+class _ButtonGrid extends StatelessWidget {
+  const _ButtonGrid({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      const gap = HySpacing.xs;
+      final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+      final perRow = children.length == 1 || (c.maxWidth - gap) / 2 < 150 * scale ? 1 : 2;
+      final width = perRow == 1 ? c.maxWidth : (c.maxWidth - gap) / 2;
+      return Wrap(
+        spacing: gap,
+        runSpacing: gap,
+        children: [for (final b in children) SizedBox(width: width, child: b)],
+      );
+    },
+  );
+}

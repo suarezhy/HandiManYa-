@@ -1,0 +1,122 @@
+import 'booking.dart';
+
+class Conversation {
+  const Conversation({
+    required this.id,
+    required this.bookingId,
+    required this.bookingCode,
+    required this.otherName,
+    this.otherId,
+    this.lastMessageAt,
+    this.lastMessagePreview,
+    this.unreadCount = 0,
+    required this.bookingStatus,
+  });
+
+  final String id;
+  final String bookingId;
+  final String bookingCode;
+  final String otherName;
+  final String? otherId;
+  final DateTime? lastMessageAt;
+  final String? lastMessagePreview;
+  final int unreadCount;
+  final BookingStatus bookingStatus;
+
+  factory Conversation.fromMap(Map<String, dynamic> m) => Conversation(
+    id: m['id'] as String,
+    bookingId: m['booking_id'] as String,
+    bookingCode: m['booking_code'] as String,
+    otherName: m['other_name'] as String,
+    otherId: m['other_user_id'] as String?,
+    lastMessageAt: m['last_message_at'] == null ? null : DateTime.parse(m['last_message_at'] as String),
+    lastMessagePreview: m['last_message_preview'] as String?,
+    unreadCount: (m['unread_count'] as num?)?.toInt() ?? 0,
+    bookingStatus: BookingStatus.parse(m['booking_status'] as String?),
+  );
+}
+
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.conversationId,
+    required this.senderId,
+    this.body,
+    this.imagePath,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String conversationId;
+  final String senderId;
+  final String? body;
+  final String? imagePath;
+  final DateTime createdAt;
+
+  factory ChatMessage.fromMap(Map<String, dynamic> m) => ChatMessage(
+    id: (m['id'] as num).toInt(),
+    conversationId: m['conversation_id'] as String,
+    senderId: m['sender_id'] as String,
+    body: m['body'] as String?,
+    imagePath: m['image_path'] as String?,
+    createdAt: DateTime.parse(m['created_at'] as String),
+  );
+}
+
+class AppNotification {
+  const AppNotification({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.body,
+    this.bookingId,
+    this.conversationId,
+    this.readAt,
+    required this.createdAt,
+  });
+
+  final int id;
+  final String kind;
+  final String title;
+  final String body;
+  final String? bookingId;
+  final String? conversationId;
+  final DateTime? readAt;
+  final DateTime createdAt;
+
+  bool get isRead => readAt != null;
+
+  factory AppNotification.fromMap(Map<String, dynamic> m) {
+    final data = Map<String, dynamic>.from((m['data'] as Map?) ?? const {});
+    return AppNotification(
+      id: (m['id'] as num).toInt(),
+      kind: m['kind'] as String,
+      title: m['title'] as String,
+      body: m['body'] as String? ?? '',
+      bookingId: data['booking_id'] as String?,
+      conversationId: data['conversation_id'] as String?,
+      readAt: m['read_at'] == null ? null : DateTime.parse(m['read_at'] as String),
+      createdAt: DateTime.parse(m['created_at'] as String),
+    );
+  }
+}
+
+/// Avisos push de la persona (my_push_status, migración 0045). "sent" quiere
+/// decir que Firebase aceptó el aviso, no que el teléfono lo mostró.
+class PushStatus {
+  const PushStatus({required this.devices, this.lastStatus, this.lastError, this.lastKind, this.lastCreatedAt});
+
+  final int devices;
+  final String? lastStatus;
+  final String? lastError;
+  final String? lastKind;
+  final DateTime? lastCreatedAt;
+
+  factory PushStatus.fromMap(Map<String, dynamic> m) => PushStatus(
+    devices: (m['devices'] as num?)?.toInt() ?? 0,
+    lastStatus: m['last_status'] as String?,
+    lastError: m['last_error'] as String?,
+    lastKind: m['last_kind'] as String?,
+    lastCreatedAt: DateTime.tryParse(m['last_created_at'] as String? ?? '')?.toLocal(),
+  );
+}
