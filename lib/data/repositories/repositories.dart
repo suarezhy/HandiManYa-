@@ -130,6 +130,9 @@ abstract interface class BookingRepository {
   // Profesional
   Future<void> decline(String bookingId, {required bool isOffer, String? reason});
 
+  /// Volver a tomar un pedido al que se dijo "No puedo", si sigue abierto (0067).
+  Future<void> reopenOffer(String bookingId);
+
   /// "Terminé el trabajo" no lleva monto: vale el acordado.
   Future<void> updateProgress(String bookingId, BookingStatus to);
 
@@ -445,6 +448,10 @@ abstract interface class FinanceRepository {
 
   /// Resolver una revisión: con [refund] la comisión vuelve al profesional.
   Future<void> resolvePaymentReview(int id, {required bool refund, required String note, required String authMethod});
+
+  /// Devolver la penalización de Bs 3 de una cancelación (emergencia, falla de
+  /// la plataforma u otra excepción aprobada; 0067).
+  Future<void> waiveCancelPenalty(String bookingId, {required String note, required String authMethod});
 
   /// Lo que hay detrás de cada tarjeta de Finanzas (0042), con las mismas
   /// definiciones del resumen. [kind]: tipo de movimiento; [month]: cualquier

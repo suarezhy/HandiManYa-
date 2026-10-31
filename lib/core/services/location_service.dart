@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../data/models/geo.dart';
+import '../config/env.dart';
 import '../utils/app_error.dart';
 
 /// Ubicación del teléfono. Se reemplaza en las pruebas.
@@ -37,6 +38,9 @@ class DeviceLocationService implements LocationService {
       locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 20)),
     );
     if (pos.latitude < -23.5 || pos.latitude > -9 || pos.longitude < -70 || pos.longitude > -57) {
+      // Solo en la app de desarrollo: para probar fuera de Bolivia se usa un
+      // punto fijo del centro de Santa Cruz. Nunca en producción.
+      if (Env.isDevProject) return devSimulatedLocation;
       throw const AppError(
         'Tu ubicación parece estar fuera de Bolivia. Escribe la dirección a mano.',
         code: 'HMY_INVALID_LOCATION',
@@ -45,6 +49,9 @@ class DeviceLocationService implements LocationService {
     return GeoPoint(pos.latitude, pos.longitude);
   }
 }
+
+/// Ubicación simulada de la app de desarrollo (Plaza 24 de Septiembre, Santa Cruz).
+const devSimulatedLocation = GeoPoint(-17.7834, -63.1821);
 
 final locationServiceProvider = Provider<LocationService>((ref) => const DeviceLocationService());
 

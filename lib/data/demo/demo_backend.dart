@@ -921,7 +921,7 @@ class DemoBackend
     _changes.add(null);
   }
 
-  void _post(String proId, LedgerType type, double avail, double reserved, String note) {
+  void _post(String proId, LedgerType type, double avail, double reserved, String note, {String? bookingCode}) {
     final w = _wallets.putIfAbsent(proId, () => [0, 0]);
     w[0] += avail;
     w[1] += reserved;
@@ -935,6 +935,8 @@ class DemoBackend
             availableDelta: avail,
             reservedDelta: reserved,
             availableAfter: w[0],
+            reservedAfter: w[1],
+            bookingCode: bookingCode,
             note: note,
             createdAt: DateTime.now(),
           ),
@@ -971,6 +973,14 @@ class DemoBackend
     if (_wallets[pro]![0] < _openCommissions(pro)) throw AppError.from('HMY_INSUFFICIENT_BALANCE');
   }
 
+  /// Como 0067: el saldo cubre la comisión que suma un total nuevo.
+  bool _coversTotal(_Booking b, double total) {
+    final pro = b.professionalId;
+    if (pro == null || !_wallets.containsKey(pro)) return true;
+    final add = _commissionOf(total) - _commissionOf(b.agreedAmount! + b.extras);
+    return add <= 0 || _wallets[pro]![0] >= _openCommissions(pro) + add;
+  }
+
   /// "Ya pagué" del cliente: se cobra una vez, nunca deja saldo negativo.
   void _charge(_Booking b) {
     if (b.captured) return;
@@ -981,7 +991,14 @@ class DemoBackend
     final take = min(fee, _wallets[pro]![0]);
     b.chargedAmount = take;
     if (take > 0) {
-      _post(pro, LedgerType.commissionCapture, -take, 0, 'Comisión ${b.code} (el cliente marcó "Ya pagué")');
+      _post(
+        pro,
+        LedgerType.commissionCapture,
+        -take,
+        0,
+        'Comisión ${b.code} (el cliente marcó "Ya pagué")',
+        bookingCode: b.code,
+      );
       _notify(pro, 'commission_charged', 'Comisión cobrada', 'Solicitud ${b.code}: ${Fmt.bs(take)}.', bookingId: b.id);
     }
   }
@@ -990,7 +1007,14 @@ class DemoBackend
     if (!b.captured || b.refunded) return;
     b.refunded = true;
     if (b.chargedAmount > 0) {
-      _post(b.professionalId!, LedgerType.refund, b.chargedAmount, 0, 'Devolución de la comisión ${b.code}: $note');
+      _post(
+        b.professionalId!,
+        LedgerType.refund,
+        b.chargedAmount,
+        0,
+        'Devolución de la comisión ${b.code}: $note',
+        bookingCode: b.code,
+      );
     }
   }
 
@@ -1228,6 +1252,19 @@ class DemoBackend
       problems: b.problems,
       agreedAmount: b.agreedAmount,
       extrasAmount: b.extras,
+      negotiating:
+          b.agreedAmount == null &&
+          b.status.isOpen &&
+          b.priceOffers.any(
+            (o) =>
+                o.status == OfferStatus.open &&
+                !o.byCustomer &&
+                o.kind.beforeJob &&
+                (!asProfessional || o.professionalId == _me.id),
+          ),
+      paymentMethod: b.paidWith ?? b.draft.paymentMethod,
+      customerPaid: b.customerPaid,
+      professionalPaid: b.professionalPaid,
     );
   }
 
@@ -1254,7 +1291,10 @@ class DemoBackend
     final b = _get(bookingId);
     final isCustomer = b.customerId == me;
     final isOffer = b.status == BookingStatus.awaitingResponse && b.offers.contains(me);
-    if (!isCustomer && b.professionalId != me && !isOffer) throw AppError.from('HMY_NOT_FOUND');
+    if (!isCustomer && b.professionalId != me && !isOffer && !b.declined.contains(me)) {
+      throw AppError.from('HMY_NOT_FOUND');
+    }
+    final seesFee = !isCustomer && b.professionalId == me;
     final pro = b.professionalId == null ? null : _pros[b.professionalId];
     final customer = _accounts.values.firstWhere((a) => a.id == b.customerId);
     final addressVisible =
@@ -1286,6 +1326,18 @@ class DemoBackend
       professionalPaidAck: b.professionalPaid,
       paymentReviewStatus: b.paymentReview?.status,
       commissionCharged: isCustomer || !b.captured ? null : (b.refunded ? 0 : b.chargedAmount),
+      commissionRate: seesFee && _wallets.containsKey(me) ? 10 : null,
+      commissionAmount: seesFee && _wallets.containsKey(me) && b.agreedAmount != null ? _feeOf(b) : null,
+      myInvite: isCustomer
+          ? null
+          : b.declined.contains(me)
+          ? 'declined'
+          : isOffer
+          ? 'pending'
+          : null,
+      cancelPenalty: seesFee ? b.cancelPenalty : null,
+      cancelPenaltyShortfall: b.penaltyShortfall,
+      cancelPenaltyWaived: b.penaltyWaived,
       createdAt: b.createdAt,
       cancelReason: b.status == BookingStatus.cancelled ? b.events.last.note : null,
       viewerIsCustomer: isCustomer,
@@ -1358,13 +1410,37 @@ class DemoBackend
     final me = _me.id;
     final b = _get(bookingId);
     if (isOffer) {
-      b.offers.remove(me);
+      // Como 0067: "No puedo" dos veces no falla, y queda anotado.
+      if (b.offers.remove(me)) b.declined.add(me);
+      if (!b.declined.contains(me)) throw AppError.from('HMY_NOT_FOUND');
       _changes.add(null);
       return;
     }
     if (b.professionalId != me) throw AppError.from('HMY_FORBIDDEN');
     _requireStatus(b, {BookingStatus.requested});
     _move(b, BookingStatus.cancelled, note: reason ?? 'El profesional no puede atender esta solicitud', actorId: me);
+  }
+
+  @override
+  Future<void> reopenOffer(String bookingId) async {
+    await _latency();
+    final me = _me.id;
+    final b = _get(bookingId);
+    if (!b.declined.contains(me)) throw AppError.from('HMY_NOT_FOUND');
+    if (b.status == BookingStatus.cancelled) throw AppError.from('HMY_REQUEST_CANCELLED');
+    if (b.status != BookingStatus.awaitingResponse || b.professionalId != null) {
+      throw AppError.from('HMY_ALREADY_TAKEN');
+    }
+    b.declined.remove(me);
+    b.offers = {...b.offers, me};
+    _changes.add(null);
+  }
+
+  /// Por qué alguien sin rol en el pedido no puede negociar (como 0067).
+  String _notMine(_Booking b, String me) {
+    if (b.professionalId != null && (b.offersCount > 0 || b.declined.contains(me))) return 'HMY_ALREADY_TAKEN';
+    if (b.declined.contains(me)) return 'HMY_OFFER_DECLINED';
+    return 'HMY_FORBIDDEN';
   }
 
   // ---------------------------------------------------------------- Precio
@@ -1379,7 +1455,10 @@ class DemoBackend
     String? note,
   }) {
     for (final o in b.priceOffers) {
-      if (o.status == OfferStatus.open && o.professionalId == professionalId && o.kind.beforeJob == kind.beforeJob) {
+      if (o.professionalId == professionalId &&
+          o.kind.beforeJob == kind.beforeJob &&
+          (o.status == OfferStatus.open ||
+              (kind == PriceKind.total && o.kind == PriceKind.total && o.status == OfferStatus.awaitingFunds))) {
         o.status = OfferStatus.superseded;
       }
     }
@@ -1450,14 +1529,16 @@ class DemoBackend
     final me = _me.id;
     final b = _get(bookingId);
     final role = _priceRole(b, me);
-    if (role == null) throw AppError.from('HMY_FORBIDDEN');
+    if (role == null) throw AppError.from(_notMine(b, me));
     if (amount <= 0 || amount > 100000) throw AppError.from('HMY_INVALID_AMOUNT');
     final before = _beforeJob(b);
     if (before) {
       if (!kind.beforeJob) throw AppError.from('HMY_INVALID_PRICE_KIND');
     } else if (b.agreedAmount != null &&
         {BookingStatus.confirmed, BookingStatus.onTheWay, BookingStatus.inProgress}.contains(b.status)) {
-      if (kind.beforeJob) throw AppError.from('HMY_INVALID_PRICE_KIND');
+      // Como 0067: solo la contraoferta del total o la reparación.
+      if (kind != PriceKind.total && kind != PriceKind.repair) throw AppError.from('HMY_INVALID_PRICE_KIND');
+      if (kind == PriceKind.total && amount == b.agreedAmount! + b.extras) throw AppError.from('HMY_SAME_PRICE');
       if (kind == PriceKind.repair &&
           (b.agreedKind != PriceKind.inspection ||
               b.priceOffers.any((o) => o.kind == PriceKind.repair && o.status == OfferStatus.accepted))) {
@@ -1468,6 +1549,9 @@ class DemoBackend
     }
     final thread = role == 'professional' ? me : (b.professionalId ?? professionalId);
     if (role == 'professional' && before && _wallets.containsKey(me) && _wallets[me]![0] < _commissionOf(amount)) {
+      throw AppError.from('HMY_INSUFFICIENT_BALANCE');
+    }
+    if (role == 'professional' && kind == PriceKind.total && !_coversTotal(b, amount)) {
       throw AppError.from('HMY_INSUFFICIENT_BALANCE');
     }
     final o = _addOffer(
@@ -1484,7 +1568,13 @@ class DemoBackend
     } else {
       final to = role == 'professional' ? b.customerId : thread;
       if (to != null) {
-        _notify(to, 'price_offer', 'Te propusieron un precio', '${kind.label}: ${Fmt.bs(o.amount)}', bookingId: b.id);
+        _notify(
+          to,
+          'price_offer',
+          kind == PriceKind.total ? 'Contraoferta: nuevo precio total' : 'Te propusieron un precio',
+          '${kind.label}: ${Fmt.bs(o.amount)}',
+          bookingId: b.id,
+        );
       }
       _changes.add(null);
     }
@@ -1511,7 +1601,7 @@ class DemoBackend
     if (b.status == BookingStatus.cancelled) throw AppError.from('HMY_REQUEST_CANCELLED');
     final role = _priceRole(b, me);
     if (role == null) {
-      throw AppError.from(b.professionalId != null ? 'HMY_ALREADY_TAKEN' : 'HMY_FORBIDDEN');
+      throw AppError.from(b.professionalId != null ? 'HMY_ALREADY_TAKEN' : _notMine(b, me));
     }
     if (o.kind.beforeJob && !_beforeJob(b)) throw AppError.from('HMY_ALREADY_TAKEN');
     if ((role == 'customer') == o.byCustomer ||
@@ -1521,13 +1611,33 @@ class DemoBackend
     if (o.status != OfferStatus.open) throw AppError.from('HMY_OFFER_CHANGED');
     if (!o.kind.beforeJob) {
       final pro = b.professionalId!;
+      if (o.kind == PriceKind.total) {
+        // Como 0067: el total nuevo reemplaza al anterior (nunca se suma).
+        if (!_coversTotal(b, o.amount)) {
+          if (role == 'professional') throw AppError.from('HMY_INSUFFICIENT_BALANCE');
+          o.status = OfferStatus.awaitingFunds;
+        } else {
+          o.status = OfferStatus.accepted;
+          b.extras = o.amount - b.agreedAmount!;
+          _notify(
+            b.customerId,
+            'price_offer',
+            'Nuevo precio acordado',
+            'Nuevo total: ${Fmt.bs(o.amount)}',
+            bookingId: b.id,
+          );
+          _notify(pro, 'price_offer', 'Nuevo precio acordado', 'Nuevo total: ${Fmt.bs(o.amount)}', bookingId: b.id);
+        }
+        _changes.add(null);
+        return;
+      }
       final fee = _wallets.containsKey(pro) ? _commissionOf(o.amount) : 0.0;
       if (fee > 0 && _wallets[pro]![0] < _openCommissions(pro) + fee) {
         o.status = OfferStatus.awaitingFunds;
         _notify(
           pro,
           'price_offer',
-          'Recarga tu saldo para el monto aparte',
+          'Recarga tu saldo para el precio nuevo',
           '${o.kind.label}: ${Fmt.bs(o.amount)}',
           bookingId: b.id,
         );
@@ -1944,10 +2054,10 @@ class DemoBackend
     final me = _me.id;
     final isCustomer = b.customerId == me;
     if (!isCustomer && b.professionalId != me) throw AppError.from('HMY_FORBIDDEN');
-    // Como el servidor: cancelar dos veces no repite nada, y el cliente no
-    // tiene que dar un motivo (el profesional sí).
+    // Como el servidor: cancelar dos veces no repite nada, y nadie tiene que
+    // dar un motivo (0067).
     if (b.status == BookingStatus.cancelled) return;
-    if (!isCustomer && reason.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    final accepted = !isCustomer && {BookingStatus.confirmed, BookingStatus.onTheWay}.contains(b.status);
     _requireStatus(
       b,
       isCustomer
@@ -1955,7 +2065,30 @@ class DemoBackend
           : {BookingStatus.requested, BookingStatus.quoteSent, BookingStatus.confirmed, BookingStatus.onTheWay},
     );
     b.offers = {};
-    _move(b, BookingStatus.cancelled, note: reason.trim().isEmpty ? customerCancelNote : reason.trim(), actorId: me);
+    _move(
+      b,
+      BookingStatus.cancelled,
+      note: reason.trim().isNotEmpty ? reason.trim() : (isCustomer ? customerCancelNote : proCancelNote),
+      actorId: me,
+    );
+    // Como 0067: solo el profesional que ya aceptó paga Bs 3; nunca negativo.
+    if (accepted && b.cancelPenalty == null) {
+      final w = _wallets[me];
+      final take = w == null ? 0.0 : min(3.0, w[0]);
+      b
+        ..cancelPenalty = take
+        ..penaltyShortfall = 3 - take;
+      if (take > 0) {
+        _post(me, LedgerType.penalty, -take, 0, 'Penalización por cancelación ${b.code}', bookingCode: b.code);
+      }
+      _notify(
+        me,
+        'cancel_penalty',
+        'Penalización por cancelación',
+        'Solicitud ${b.code}: ${Fmt.bs(take)} descontados de tu billetera.',
+        bookingId: b.id,
+      );
+    }
   }
 
   @override
@@ -2334,7 +2467,11 @@ class DemoBackend
   }
 
   @override
-  Future<List<LedgerEntry>> ledger() async => List.of(_ledger[_me.id] ?? const []);
+  Future<List<LedgerEntry>> ledger() async => [
+    // Como my_wallet_history (0067): una reserva vieja no cambia el total.
+    for (final e in _ledger[_me.id] ?? const <LedgerEntry>[])
+      if (e.amount != 0) e,
+  ];
 
   @override
   Future<List<TopupMethod>> topupMethods() async => const [
@@ -2530,6 +2667,19 @@ class DemoBackend
               customerName: _nameOf(b.customerId),
             ),
       ],
+      penalties: [
+        for (final b in _bookings.values)
+          if (b.cancelPenalty != null)
+            CancelPenalty(
+              bookingId: b.id,
+              bookingCode: b.code,
+              charged: b.cancelPenalty!,
+              shortfall: b.penaltyShortfall,
+              waived: b.penaltyWaived,
+              cancelledAt: b.events.last.at,
+              professionalName: _nameOf(b.professionalId ?? ''),
+            ),
+      ],
       open: rows.where((r) => r.isOpen).length,
       refunded: rows.where((r) => r.status == 'refunded').length,
       rejected: rows.where((r) => r.status == 'rejected').length,
@@ -2554,6 +2704,29 @@ class DemoBackend
       ..status = refund ? 'refunded' : 'rejected'
       ..resolution = note.trim()
       ..resolvedAt = DateTime.now();
+    _changes.add(null);
+  }
+
+  @override
+  Future<void> waiveCancelPenalty(String bookingId, {required String note, required String authMethod}) async {
+    await _latency();
+    if (note.trim().isEmpty) throw AppError.from('HMY_REASON_REQUIRED');
+    final b = _get(bookingId);
+    if (b.cancelPenalty == null) throw AppError.from('HMY_NOT_FOUND');
+    if (b.penaltyWaived) throw AppError.from('HMY_ALREADY_REVIEWED');
+    b
+      ..penaltyWaived = true
+      ..penaltyShortfall = 0;
+    if (b.cancelPenalty! > 0) {
+      _post(
+        b.professionalId!,
+        LedgerType.refund,
+        b.cancelPenalty!,
+        0,
+        'Devolución de la penalización ${b.code}: ${note.trim()}',
+        bookingCode: b.code,
+      );
+    }
     _changes.add(null);
   }
 
@@ -5629,7 +5802,15 @@ class _Booking {
   /// Quién hizo cada cambio (por posición en [events]), como booking_events.actor_id.
   final Map<int, String> actors = {};
   Set<String> _offers = {};
+
+  /// Profesionales que dijeron "No puedo" (0067): pueden volver a tomarlo.
+  final Set<String> declined = {};
   int offersCount = 0;
+
+  /// Penalización por cancelar después de aceptar (0067).
+  double? cancelPenalty;
+  double penaltyShortfall = 0;
+  bool penaltyWaived = false;
   double? quoteAmount;
   String? quoteNote;
   double? finalAmount;

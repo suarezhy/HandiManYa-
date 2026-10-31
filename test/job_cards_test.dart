@@ -104,7 +104,7 @@ void main() {
     );
     expect(find.text('Solicitud #F9A50778'), findsNWidgets(2));
     expect(_price(tester, 'x'), 'Precio acordado ${Fmt.bs(120)}');
-    expect(_price(tester, 'y'), 'Total ${Fmt.bs(150)}');
+    expect(_price(tester, 'y'), 'Precio del trabajo ${Fmt.bs(150)}');
   });
 
   for (final (size, scale) in [(const Size(320, 568), 2.0), (const Size(360, 640), 1.3), (const Size(412, 915), 1.0)]) {

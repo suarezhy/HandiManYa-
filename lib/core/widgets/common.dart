@@ -98,17 +98,20 @@ class SectionHeader extends StatelessWidget {
 }
 
 class StatusChip extends StatelessWidget {
-  const StatusChip(this.status, {super.key, this.mode = BookingMode.now});
+  const StatusChip(this.status, {super.key, this.mode = BookingMode.now, this.label});
 
   final BookingStatus status;
   final BookingMode mode;
+
+  /// Otro texto para el mismo estado (por ejemplo, "Negociando precio").
+  final String? label;
 
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: HySpacing.sm, vertical: 6),
     decoration: BoxDecoration(color: status.tone.background, borderRadius: BorderRadius.circular(HyRadii.pill)),
     child: Text(
-      status.labelFor(mode),
+      label ?? status.labelFor(mode),
       style: TextStyle(color: status.tone.foreground, fontWeight: FontWeight.w700, fontSize: 14),
     ),
   );

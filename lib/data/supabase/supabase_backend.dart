@@ -646,6 +646,9 @@ class SupabaseBackend
       : _db.rpc('decline_booking', params: {'p_booking': bookingId, 'p_reason': reason});
 
   @override
+  Future<void> reopenOffer(String bookingId) => _db.rpc('reopen_ya_offer', params: {'p_booking': bookingId});
+
+  @override
   Future<void> updateProgress(String bookingId, BookingStatus to) =>
       _db.rpc('update_job_progress', params: {'p_booking': bookingId, 'p_to': to.key});
 
@@ -897,14 +900,8 @@ class SupabaseBackend
   }
 
   @override
-  Future<List<LedgerEntry>> ledger() async => _rows(
-    await _db
-        .from('wallet_ledger')
-        .select()
-        .eq('professional_id', _uid)
-        .order('created_at', ascending: false)
-        .limit(50),
-  ).map(LedgerEntry.fromMap).toList();
+  Future<List<LedgerEntry>> ledger() async =>
+      _rows(await _db.rpc('my_wallet_history', params: {'p_limit': 50})).map(LedgerEntry.fromMap).toList();
 
   @override
   Future<List<TopupMethod>> topupMethods() async =>
@@ -1787,6 +1784,12 @@ class SupabaseBackend
         'owner_resolve_payment_review',
         params: {'p_id': id, 'p_refund': refund, 'p_note': note, 'p_auth_method': authMethod},
       );
+
+  @override
+  Future<void> waiveCancelPenalty(String bookingId, {required String note, required String authMethod}) => _db.rpc(
+    'owner_waive_cancel_penalty',
+    params: {'p_booking': bookingId, 'p_note': note, 'p_auth_method': authMethod},
+  );
 
   @override
   Future<List<ReceivingAccount>> receivingAccounts() async => [

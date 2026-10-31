@@ -559,8 +559,9 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------- Mis solicitudes
--- my_bookings (0064) más "negotiating": hay una propuesta de precio de un
--- profesional esperando (en la lista del profesional, la suya).
+-- my_bookings (0064) más "negotiating" (hay una propuesta de precio de un
+-- profesional esperando; en la lista del profesional, la suya) y el pago, para
+-- la tarjeta de un trabajo completado.
 drop function public.my_bookings(text);
 create function public.my_bookings(p_as text default 'customer')
 returns table (
@@ -569,7 +570,8 @@ returns table (
   description text, scheduled_start timestamptz, created_at timestamptz,
   other_user_id uuid, other_name text, other_photo_path text,
   quote_amount numeric, final_amount numeric, has_review boolean, is_offer boolean, distance_km numeric,
-  problems text[], agreed_amount numeric, extras_amount numeric, negotiating boolean
+  problems text[], agreed_amount numeric, extras_amount numeric, negotiating boolean,
+  payment_method public.payment_method, customer_paid boolean, professional_paid boolean
 )
 language sql stable security definer set search_path = public as $$
   select b.id, b.code, b.status, b.mode, b.category_id, sc.name, c.name, z.name,
@@ -588,7 +590,8 @@ language sql stable security definer set search_path = public as $$
            and exists (select 1 from public.price_offers po
                        where po.booking_id = b.id and po.status = 'open' and po.author_role = 'professional'
                          and po.kind in ('service', 'inspection')
-                         and (p_as = 'customer' or po.professional_id = auth.uid()))
+                         and (p_as = 'customer' or po.professional_id = auth.uid())),
+         b.payment_method, b.customer_paid_ack_at is not null, b.professional_paid_ack_at is not null
   from public.bookings b
   join public.service_categories sc on sc.id = b.category_id
   join public.cities c on c.id = b.city_id

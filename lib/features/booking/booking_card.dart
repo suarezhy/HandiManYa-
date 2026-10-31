@@ -20,6 +20,8 @@ class BookingCard extends StatelessWidget {
         b.otherName ??
         (b.status.isPendingScheduled(b.mode)
             ? 'Sin asignar'
+            : b.negotiating
+            ? 'Negociando precio…'
             : b.status == BookingStatus.awaitingResponse
             ? 'Buscando profesional…'
             : 'Sin asignar');
@@ -42,7 +44,9 @@ class BookingCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: HySpacing.xs),
-              Flexible(child: StatusChip(b.status, mode: b.mode)),
+              Flexible(
+                child: StatusChip(b.status, mode: b.mode, label: b.negotiating ? 'Negociando precio' : null),
+              ),
             ],
           ),
           const SizedBox(height: 2),
@@ -69,9 +73,7 @@ class BookingCard extends StatelessWidget {
                   TextSpan(
                     children: [
                       TextSpan(
-                        text: b.status == BookingStatus.completed && b.finalAmount != null
-                            ? 'Total '
-                            : 'Precio acordado ',
+                        text: b.status == BookingStatus.completed ? 'Precio del trabajo ' : 'Precio acordado ',
                         style: const TextStyle(color: HyColors.textSecondary, fontSize: 15),
                       ),
                       TextSpan(
@@ -81,6 +83,14 @@ class BookingCard extends StatelessWidget {
                     ],
                   ),
                 ),
+          // Trabajo completado: cómo se pagó y si está confirmado (sin la comisión).
+          if (b.status == BookingStatus.completed)
+            Text(
+              'Pago: ${b.paymentMethod?.label ?? 'sin indicar'} · Estado del pago: '
+              '${paymentStatusLabel(customerPaid: b.customerPaid, professionalPaid: b.professionalPaid)}',
+              key: Key('booking-payment-${b.id}'),
+              style: const TextStyle(color: HyColors.textSecondary, fontSize: 15),
+            ),
           const SizedBox(height: HySpacing.xs),
           Wrap(
             spacing: HySpacing.md,

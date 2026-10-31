@@ -97,7 +97,9 @@ class AppError implements Exception {
     'HMY_PRO_BUSY': 'Ya tienes un trabajo en curso. Termínalo antes de aceptar otro pedido ¡Ya!',
     'HMY_PRICE_REQUIRED':
         'Primero tienen que acordar el precio. Si ves este mensaje, actualiza la app a la última versión.',
-    'HMY_PRICE_LOCKED': 'El precio acordado no se puede cambiar. Para un monto aparte, pide la aprobación del otro.',
+    'HMY_PRICE_LOCKED': 'El precio acordado no se puede cambiar solo. Envía una contraoferta y espera que la acepten.',
+    'HMY_OFFER_DECLINED': 'Dijiste "No puedo" a este pedido. Toca "Volver a tomar el pedido" si sigue abierto.',
+    'HMY_SAME_PRICE': 'Ese ya es el precio acordado. Escribe el nuevo total.',
     'HMY_OFFER_CHANGED': 'Esta propuesta cambió. Revisa el precio actual.',
     'HMY_TOO_MANY_OFFERS': 'Ya hiciste muchas propuestas en este pedido. Usa el chat o cancela la solicitud.',
     'HMY_PRO_UNAVAILABLE': 'Este profesional ya no puede tomar el trabajo. Elige otra propuesta.',

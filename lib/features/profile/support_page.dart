@@ -26,11 +26,13 @@ const _faq = <(String, String)>[
   ),
   (
     '¿Los profesionales están verificados?',
-    'Sí. Antes de recibir pedidos revisamos su carnet de identidad y sus datos. Verás la insignia "Verificado" en su perfil.',
+    'Antes de recibir pedidos revisamos su carnet de identidad y sus datos. La insignia "Identidad verificada" aparece solo '
+        'cuando su identidad se verificó.',
   ),
   (
     '¿Cómo cancelo?',
-    'Abre la solicitud en "Solicitudes" y toca "Cancelar". Te pediremos el motivo para mejorar el servicio.',
+    'Abre la solicitud en "Solicitudes" y toca "Cancelar". Al cliente no le cuesta nada. Un profesional que cancela '
+        'después de aceptar paga Bs 3,00.',
   ),
   (
     'Tuve un problema con un trabajo',

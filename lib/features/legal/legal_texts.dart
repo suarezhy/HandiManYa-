@@ -6,7 +6,7 @@ import '../../data/models/booking.dart';
 
 /// Versión de los textos. Si cambia, se vuelve a pedir la aceptación y queda
 /// registrada en `consent_records`.
-const legalVersion = '2026-10-borrador-4';
+const legalVersion = '2026-10-borrador-5';
 
 const _draftNotice =
     'BORRADOR para revisión legal. No es un texto final ni está aprobado por un abogado. '
@@ -127,12 +127,14 @@ Puedes ver y corregir tus datos en Perfil y pedir que borremos tu cuenta en Perf
 
 const _cancellations = '''Cliente
 • Puedes cancelar sin costo mientras ningún profesional haya aceptado.
-• Después de que un profesional acepta, también puedes cancelar, pero te pediremos el motivo. Avísale por el chat si ya está en camino.
+• Después de que un profesional acepta, también puedes cancelar sin costo. Le avisaremos al profesional; si ya está en camino, escríbele por el chat.
 • Cancelar seguido puede limitar tu cuenta.
 • Como el pago es directo al profesional, HandiMan ¡Ya! no cobra ni devuelve dinero al cliente.
 
 Profesional
-• Si aceptas un trabajo, es un compromiso. Cancelar sin un motivo justificado puede afectar tu calificación y tu cuenta.
+• Decir "No puedo" antes de aceptar no tiene costo.
+• Si cancelas un trabajo después de aceptarlo, se descuentan Bs 3,00 de tu billetera, una sola vez. Si tu saldo no alcanza, se descuenta lo que haya (nunca queda negativo) y el equipo revisa el resto.
+• Si cancelaste por una emergencia o por una falla de la app, escríbenos desde Ayuda: el equipo puede devolverte la penalización.
 • Si el trabajo se cancela antes de que el cliente marque "Ya pagué", no se cobra comisión.
 
 Si alguien no se presenta
@@ -141,7 +143,7 @@ Repórtalo desde la solicitud ("Reportar un problema"). El equipo revisa el caso
 Disputas
 Si hay un problema con un trabajo en curso o terminado, cualquiera de las dos partes puede abrir una disputa. El equipo decide si el trabajo se da por completado o se cancela, y explica la decisión a ambos. Esa decisión afecta solo a la comisión del profesional y a las cuentas en la app; el pago del servicio es un asunto entre el cliente y el profesional.
 
-[PENDIENTE: plazos y penalidades, a definir con un abogado.]''';
+[PENDIENTE: plazos y demás penalidades, a definir con un abogado.]''';
 
 const _commissions = '''Esta política es para profesionales. Los clientes no tienen billetera ni pagan comisión.
 
@@ -156,7 +158,9 @@ Comisión
 • La comisión se cobra una sola vez, cuando el cliente marca "Ya pagué" después de que terminaste el trabajo. Confirmar el trabajo terminado o marcar "Recibí el pago" no la cobran.
 • Para acordar un precio, tu saldo tiene que cubrir su comisión y la de tus otros trabajos acordados que todavía no se cobraron. Si no alcanza, no puedes acordar ese precio. Tu saldo nunca queda negativo.
 • Si el cliente marcó "Ya pagué" pero no recibiste el pago, toca "No recibí el pago" en la solicitud dentro de los 7 días. El equipo lo revisa y, si el cliente no pagó, te devuelve la comisión.
+• Si el precio cambia con una contraoferta que los dos aceptan, la comisión se calcula sobre el nuevo total.
 • Si una disputa termina con el trabajo cancelado, la comisión cobrada vuelve a tu saldo.
+• Si cancelas un trabajo después de aceptarlo, se descuenta una penalización de Bs 3,00 (ver Cancelaciones).
 • El pago del cliente por el servicio es todo tuyo: lo recibes directamente en efectivo o por QR.
 
 Historial de movimientos
@@ -169,7 +173,7 @@ const _proRules = '''Para ser parte de HandiMan ¡Ya!:
 
 1. Datos reales: tu nombre, foto, documentos y experiencia deben ser verdaderos y estar vigentes.
 2. Solo servicios para los que estás habilitado: si un servicio exige título, matrícula o nombramiento (por ejemplo, abogados o notarios), ofrécelo solo si lo tienes y lo subiste para su revisión.
-3. Precio claro: acuerda el precio o envía una cotización antes de empezar. No cobres más de lo acordado sin el visto bueno del cliente.
+3. Precio claro: acuerda el precio antes de empezar. Si el trabajo cambia, envía una contraoferta con el nuevo total; no cobres más de lo acordado sin que el cliente la acepte.
 4. Puntualidad: si aceptas, llega a tiempo. Si te retrasas, avisa por el chat.
 5. Respeto: trata con respeto a los clientes y su casa. No se permite discriminar, acosar ni amenazar.
 6. Privacidad: usa la dirección y los datos del cliente solo para ese trabajo.

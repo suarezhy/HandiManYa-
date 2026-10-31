@@ -63,22 +63,22 @@ void main() {
     expect(Wallet.fromMap({'available': 100, 'reserved': 0}).total, 100);
   });
 
-  testWidgets('acordado Bs 120, antes de "Ya pagué": total Bs 100, cobrado ${Fmt.bs(0)}', (tester) async {
+  testWidgets('acordado Bs 120, antes de "Ya pagué": total Bs 100', (tester) async {
     await _pump(tester, const Wallet(available: 100, reserved: 0));
     expect(_text(tester, 'wallet-total'), Fmt.bs(100));
-    expect(_text(tester, 'wallet-collected'), 'Comisiones cobradas: ${Fmt.bs(0)}');
   });
 
-  testWidgets('después de "Ya pagué": total Bs 88 y Bs 12 cobrados', (tester) async {
+  testWidgets('después de "Ya pagué": total Bs 88, sin línea de comisiones cobradas', (tester) async {
     await _pump(tester, const Wallet(available: 88, reserved: 0, commissionsCollected: 12));
     expect(_text(tester, 'wallet-total'), Fmt.bs(88));
-    expect(_text(tester, 'wallet-collected'), 'Comisiones cobradas: ${Fmt.bs(12)}');
+    expect(find.byKey(const Key('wallet-collected')), findsNothing);
+    expect(find.textContaining('Comisiones cobradas'), findsNothing);
   });
 
-  testWidgets('muestra solo saldo total, comisiones cobradas, recargar e historial', (tester) async {
+  testWidgets('muestra solo saldo total, recargar e historial', (tester) async {
     await _pump(tester, const Wallet(available: 88, reserved: 0, commissionPending: 5, extrasAwaitingFunds: 1));
     expect(find.text('Saldo total (Bs)'), findsOneWidget);
-    expect(find.byKey(const Key('wallet-collected')), findsOneWidget);
+    expect(find.byKey(const Key('wallet-collected')), findsNothing);
     expect(find.byKey(const Key('wallet-recharge')), findsOneWidget);
     expect(find.text('Historial de movimientos'), findsOneWidget);
     expect(find.byKey(const Key('wallet-reserved')), findsNothing);

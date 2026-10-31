@@ -123,19 +123,22 @@ void main() {
     await agreeAsPro(backend, id);
     final q = await backend.commissionForAmount(id, 100);
     expect(q.openCommissions, 15, reason: 'el trabajo acordado de Bs 150 todavía no se cobró');
-    // Un monto aparte enorme no cabe: espera la recarga, sin reservar nada.
-    final big = (available * 10).roundToDouble();
+    // Una contraoferta (nuevo total) enorme no cabe: se rechaza, sin reservar nada y sin cambiar el precio.
+    final big = (available * 10).roundToDouble() + 150;
     await backend.updateProgress(id, BookingStatus.onTheWay);
     final pin = await backend.markArrived(id);
     await asCustomer();
     await backend.verifyArrivalPin(id, pin.pin);
     await asPro();
     await backend.updateProgress(id, BookingStatus.inProgress);
-    final extra = await backend.proposePrice(id, big, kind: PriceKind.extra);
+    await expectLater(backend.proposePrice(id, big, kind: PriceKind.total), _code('HMY_INSUFFICIENT_BALANCE'));
+    // Si la propone el cliente, el profesional tampoco puede aceptarla sin saldo.
     await asCustomer();
-    await backend.acceptPriceOffer(extra);
+    final offer = await backend.proposePrice(id, big, kind: PriceKind.total);
     await asPro();
-    expect((await backend.detail(id)).price.awaitingFunds, hasLength(1));
+    await expectLater(backend.acceptPriceOffer(offer), _code('HMY_INSUFFICIENT_BALANCE'));
+    final d = await backend.detail(id);
+    expect(d.price.total, 150, reason: 'el precio no cambia mientras no se acepta');
     expect((await backend.wallet()).available, available);
   });
 
@@ -262,7 +265,13 @@ void main() {
         return id;
       });
       await pump(tester, app, BookingDetailPage(id: id!));
-      expect(find.text('Comisión cobrada: ${Fmt.bs(15)}'), findsOneWidget);
+      // La comisión no está a la vista: va dentro de "Detalle financiero".
+      expect(find.byKey(const Key('payment-commission')), findsNothing);
+      await Scrollable.ensureVisible(tester.element(find.byKey(const Key('payment-finance'))), alignment: 0.3);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Detalle financiero'));
+      await tester.pumpAndSettle();
+      expect(find.text('Monto de la comisión: ${Fmt.bs(15)}'), findsOneWidget);
       final notPaid = find.byKey(const Key('pro-not-paid'));
       await tester.ensureVisible(notPaid);
       await tester.tap(notPaid);

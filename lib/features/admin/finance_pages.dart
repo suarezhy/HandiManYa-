@@ -1685,6 +1685,32 @@ class _OwnerPaymentReviewsPageState extends ConsumerState<OwnerPaymentReviewsPag
     }
   }
 
+  // Devolver la penalización de Bs 3 (emergencia, falla de la plataforma u
+  // otra excepción aprobada; 0067).
+  Future<void> _waive(CancelPenalty p) async {
+    final note = await promptText(
+      context,
+      title: 'Devolver ${Fmt.bs(p.charged)} al profesional',
+      label: 'Por qué se devuelve (por ejemplo, una emergencia)',
+      confirm: 'Continuar',
+    );
+    if (note == null || !mounted) return;
+    final method = await _confirm(
+      context,
+      'Devolver una penalización',
+      details: [('Solicitud', p.bookingCode), ('Penalización', Fmt.bs(p.charged))],
+    );
+    if (method == null || !mounted) return;
+    try {
+      await ref.read(backendProvider).waiveCancelPenalty(p.bookingId, note: note, authMethod: method);
+      ref.invalidate(ownerPaymentReviewsProvider);
+      _refreshFinance(ref);
+      if (mounted) showMessage(context, 'Listo. Quedó en el historial de cambios.');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final value = ref.watch(ownerPaymentReviewsProvider(_status));
@@ -1751,6 +1777,45 @@ class _OwnerPaymentReviewsPageState extends ConsumerState<OwnerPaymentReviewsPag
                     'La comisión se cobra solo cuando el cliente marca "Ya pagué". Estos trabajos no la pagaron; '
                     'si se repiten con el mismo profesional, revisa el caso.',
               ),
+            ],
+            if ((report?.penalties ?? const []).isNotEmpty) ...[
+              const SectionHeader(title: 'Penalizaciones por cancelación (30 días)'),
+              for (final p in report!.penalties)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: HySpacing.xs),
+                  child: AppCard(
+                    key: Key('owner-penalty-${p.bookingId}'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Solicitud #${p.bookingCode} · ${p.professionalName ?? 'Profesional'}',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                        ),
+                        Text(
+                          'Cobrado ${Fmt.bs(p.charged)}'
+                          '${p.shortfall > 0 ? ' · Faltó ${Fmt.bs(p.shortfall)} (el saldo no alcanzó)' : ''}'
+                          '${p.cancelledAt == null ? '' : ' · ${Fmt.dateTime(p.cancelledAt!)}'}',
+                          style: const TextStyle(color: HyColors.textSecondary),
+                        ),
+                        if (p.waived)
+                          const Text(
+                            'Devuelta',
+                            style: TextStyle(color: HyColors.success, fontWeight: FontWeight.w700),
+                          )
+                        else
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton(
+                              key: Key('owner-penalty-waive-${p.bookingId}'),
+                              onPressed: () => _waive(p),
+                              child: Text(p.charged > 0 ? 'Devolver ${Fmt.bs(p.charged)}' : 'Anular lo que faltó'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
             const SizedBox(height: HySpacing.sm),
           ],

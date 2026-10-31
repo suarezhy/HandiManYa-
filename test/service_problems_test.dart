@@ -293,7 +293,7 @@ Future<void> _toSchedule(WidgetTester tester) async {
 Future<DateTime> _pickTomorrowAt9(WidgetTester tester) async {
   final day = DateTime.now().add(const Duration(days: 1));
   await _tapText(tester, 'Elegir día');
-  if (day.month != DateTime.now().month) await _tap(tester, find.byTooltip('Mes siguiente'));
+  if (day.month != DateTime.now().month) await _tap(tester, find.byTooltip('Próximo mes'));
   await _tap(tester, find.text('${day.day}').last);
   await _tapText(tester, 'ACEPTAR');
   await _tapText(tester, 'Elegir hora');

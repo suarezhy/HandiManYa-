@@ -17,8 +17,7 @@ import 'recharge_page.dart';
 import '../../core/widgets/trailing_row.dart';
 import '../../core/widgets/word_safe_text.dart';
 
-/// Billetera prepagada del profesional: saldo total, comisiones cobradas,
-/// recargar y movimientos.
+/// Billetera prepagada del profesional: saldo total, recargar y movimientos.
 class WalletPage extends ConsumerWidget {
   const WalletPage({super.key});
 
@@ -27,9 +26,8 @@ class WalletPage extends ConsumerWidget {
     final wallet = ref.watch(walletProvider);
     final ledger = ref.watch(ledgerProvider);
 
-    // Reglas finales del dueño (30-10-2026): la billetera muestra solo el saldo
-    // total, las comisiones cobradas, "Recargar saldo" y el historial. Nada se
-    // reserva; la comisión se cobra cuando el cliente marca "Ya pagué".
+    // Diseño final del dueño (31-10-2026): solo el saldo total, "Recargar
+    // saldo" y el historial. Cada comisión se ve en su movimiento.
     return Scaffold(
       appBar: AppBar(title: const OneLineText('Mi billetera')),
       body: RefreshIndicator(
@@ -115,34 +113,6 @@ class _BalanceCard extends StatelessWidget {
           key: const Key('wallet-total'),
           style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w800),
         ),
-        const SizedBox(height: HySpacing.sm),
-        _WalletLine(
-          key: const Key('wallet-collected'),
-          icon: Icons.receipt_long_outlined,
-          text: 'Comisiones cobradas: ${Fmt.bs(wallet.commissionsCollected)}',
-        ),
-      ],
-    ),
-  );
-}
-
-class _WalletLine extends StatelessWidget {
-  const _WalletLine({super.key, required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 4),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: HyColors.primary, size: 20),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15)),
-        ),
       ],
     ),
   );
@@ -155,7 +125,8 @@ class _LedgerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final delta = entry.availableDelta;
+    // El cambio del saldo total: un cobro viejo de una reserva también cuenta.
+    final delta = entry.amount;
     final positive = delta > 0;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: HySpacing.sm),
@@ -169,6 +140,12 @@ class _LedgerTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(entry.type.label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            if (entry.bookingCode != null)
+              Text(
+                'Solicitud #${entry.bookingCode}',
+                key: Key('ledger-booking-${entry.id}'),
+                style: const TextStyle(color: HyColors.textSecondary),
+              ),
             if ((entry.note ?? '').isNotEmpty) Text(entry.note!, style: const TextStyle(color: HyColors.textSecondary)),
             Text(Fmt.dateTime(entry.createdAt), style: const TextStyle(color: HyColors.textMuted, fontSize: 13)),
           ],
@@ -177,7 +154,8 @@ class _LedgerTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              delta == 0 ? '—' : '${positive ? '+' : '−'}${Fmt.bs(delta.abs())}',
+              '${positive ? '+' : '−'}${Fmt.bs(delta.abs())}',
+              key: Key('ledger-amount-${entry.id}'),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
@@ -185,7 +163,7 @@ class _LedgerTile extends StatelessWidget {
               ),
             ),
             Text(
-              'Saldo ${Fmt.bs(entry.availableAfter)}',
+              'Saldo ${Fmt.bs(entry.balanceAfter)}',
               style: const TextStyle(color: HyColors.textMuted, fontSize: 13),
             ),
           ],

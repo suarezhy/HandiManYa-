@@ -269,6 +269,18 @@ class _Content extends StatelessWidget {
           const SizedBox(height: HySpacing.sm),
           _PaymentStatus(b: b),
         ],
+        if (b.cancelPenalty != null) ...[
+          const SizedBox(height: HySpacing.sm),
+          InfoBanner(
+            key: const Key('cancel-penalty'),
+            icon: Icons.receipt_long_outlined,
+            tone: StatusTone.warning,
+            text: b.cancelPenaltyWaived
+                ? 'Penalización por cancelación devuelta: ${Fmt.bs(b.cancelPenalty!)} volvieron a tu billetera.'
+                : 'Penalización por cancelación: ${Fmt.bs(b.cancelPenalty!)} descontados de tu billetera.'
+                      '${b.cancelPenaltyShortfall > 0 ? ' Tu saldo no alcanzó para ${Fmt.bs(cancelPenaltyBs)}; el equipo lo revisará.' : ''}',
+          ),
+        ],
 
         if (b.events.isNotEmpty) ...[
           const SectionHeader(title: 'Historial'),
@@ -356,7 +368,11 @@ class _StatusHeader extends ConsumerWidget {
                 ],
                 Expanded(
                   child: Text(
-                    arrived ? 'Llegada verificada' : b.status.labelFor(b.mode),
+                    arrived
+                        ? 'Llegada verificada'
+                        : b.negotiating
+                        ? 'Negociando precio'
+                        : b.status.labelFor(b.mode),
                     style: TextStyle(color: b.status.tone.foreground, fontSize: 22, fontWeight: FontWeight.w800),
                   ),
                 ),
@@ -377,7 +393,9 @@ class _StatusHeader extends ConsumerWidget {
             if (b.status == BookingStatus.cancelled && (b.cancelReason ?? '').isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(
-                b.cancelReason == customerCancelNote ? b.cancelReason! : 'Motivo: ${b.cancelReason}',
+                b.cancelReason == customerCancelNote || b.cancelReason == proCancelNote
+                    ? b.cancelReason!
+                    : 'Motivo: ${b.cancelReason}',
                 style: TextStyle(color: b.status.tone.foreground),
               ),
             ],
@@ -421,70 +439,90 @@ class _PaymentStatus extends StatelessWidget {
   final BookingDetail b;
 
   @override
-  Widget build(BuildContext context) => AppCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Pago directo',
-          style: TextStyle(color: HyColors.textSecondary, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 4),
-        _Ack(done: b.customerPaidAck, text: 'El cliente indicó que pagó'),
-        _Ack(done: b.professionalPaidAck, text: 'El profesional indicó que recibió el pago'),
-        if (!b.viewerIsCustomer && (b.commissionCharged ?? 0) > 0)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              'Comisión cobrada: ${Fmt.bs(b.commissionCharged!)}',
-              key: const Key('payment-commission'),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
+  Widget build(BuildContext context) {
+    final total = b.finalAmount ?? b.price.total;
+    final paid = paymentStatusLabel(customerPaid: b.customerPaidAck, professionalPaid: b.professionalPaidAck);
+    final charged = b.commissionCharged;
+    final commissionState = b.paymentReviewStatus == 'open'
+        ? 'Pago en revisión'
+        : charged == null
+        ? 'Se cobra cuando el cliente marca "Ya pagué"'
+        : charged == 0 && b.paymentReviewStatus == 'refunded'
+        ? 'Devuelta'
+        : 'Cobrada';
+    return AppCard(
+      key: const Key('payment-card'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (total != null) _Line(icon: Icons.payments_outlined, label: 'Precio del trabajo', value: Fmt.bs(total)),
+          _Line(
+            icon: b.paymentMethod?.icon ?? Icons.payments_outlined,
+            label: 'Pago',
+            value: b.paymentMethod?.label ?? 'Sin indicar',
           ),
-        if (b.paymentReviewStatus != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              switch (b.paymentReviewStatus) {
-                'open' => 'Pago en revisión: el equipo lo está revisando.',
-                'refunded' => 'Revisión de pago resuelta: se devolvió la comisión.',
-                _ => 'Revisión de pago resuelta.',
-              },
-              key: const Key('payment-review'),
-              style: const TextStyle(color: HyColors.textSecondary),
-            ),
+          Row(
+            key: const Key('payment-state'),
+            children: [
+              const Icon(Icons.verified_outlined, size: 20, color: HyColors.textMuted),
+              const SizedBox(width: HySpacing.xs),
+              const SizedBox(
+                width: 96,
+                child: Text('Estado del pago', style: TextStyle(color: HyColors.textSecondary, fontSize: 15)),
+              ),
+              Expanded(
+                child: Text(paid, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ],
           ),
-        const SizedBox(height: 4),
-        Text(
-          b.viewerIsCustomer
-              ? 'Le pagas directo al profesional; HandiMan ¡Ya! no recibe este pago. Marca "Ya pagué" solo después '
-                    'de pagar.'
-              : 'La comisión se cobra cuando el cliente marca "Ya pagué". Si no recibiste el pago, avísanos.',
-          style: const TextStyle(color: HyColors.textMuted, fontSize: 14),
-        ),
-      ],
-    ),
-  );
-}
-
-class _Ack extends StatelessWidget {
-  const _Ack({required this.done, required this.text});
-
-  final bool done;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Icon(
-        done ? Icons.check_circle : Icons.radio_button_unchecked,
-        color: done ? HyColors.success : HyColors.textMuted,
-        size: 20,
+          if (b.paymentReviewStatus != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                switch (b.paymentReviewStatus) {
+                  'open' => 'Pago en revisión: el equipo lo está revisando.',
+                  'refunded' => 'Revisión de pago resuelta: se devolvió la comisión.',
+                  _ => 'Revisión de pago resuelta.',
+                },
+                key: const Key('payment-review'),
+                style: const TextStyle(color: HyColors.textSecondary),
+              ),
+            ),
+          // La comisión no se muestra en grande: solo en el detalle, para el profesional.
+          if (!b.viewerIsCustomer && b.commissionRate != null)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: const Key('payment-finance'),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: HySpacing.xs),
+                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                title: const Text('Detalle financiero', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                children: [
+                  if (total != null) Text('Precio final acordado: ${Fmt.bs(total)}'),
+                  Text('Comisión: ${b.commissionRate!.toStringAsFixed(b.commissionRate! % 1 == 0 ? 0 : 1)} %'),
+                  if (b.commissionAmount != null)
+                    Text(
+                      'Monto de la comisión: ${Fmt.bs(charged != null && charged > 0 ? charged : b.commissionAmount!)}',
+                      key: const Key('payment-commission'),
+                    ),
+                  Text('Estado de la comisión: $commissionState'),
+                  Text('Referencia: Solicitud #${b.code}'),
+                ],
+              ),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            b.viewerIsCustomer
+                ? 'Le pagas directo al profesional; HandiMan ¡Ya! no recibe este pago. Marca "Ya pagué" solo después '
+                      'de pagar.'
+                : 'La comisión se cobra cuando el cliente marca "Ya pagué". Si no recibiste el pago, avísanos.',
+            style: const TextStyle(color: HyColors.textMuted, fontSize: 14),
+          ),
+        ],
       ),
-      const SizedBox(width: HySpacing.xs),
-      Expanded(child: Text(text, style: const TextStyle(fontSize: 15))),
-    ],
-  );
+    );
+  }
 }
 
 /// Barra inferior con las acciones posibles según rol y estado.
@@ -533,16 +571,19 @@ class _ActionsState extends ConsumerState<_Actions> {
       }
     }
 
-    // El profesional cuenta por qué cancela (lo lee el cliente).
+    // El profesional ya aceptó: cancelar cuesta Bs 3 (0067). Sin motivo escrito.
     Future<void> cancel() async {
-      final reason = await promptText(
+      if (_busy) return;
+      final ok = await confirmDialog(
         context,
-        title: 'Cancelar solicitud',
-        label: 'Motivo',
-        confirm: 'Cancelar solicitud',
-        hint: 'Cuéntanos por qué',
+        title: '¿Cancelar este trabajo?',
+        message:
+            'Penalización por cancelación: ${Fmt.bs(cancelPenaltyBs)}\n\n'
+            'Si cancelas este trabajo después de aceptarlo, se descontarán ${Fmt.bs(cancelPenaltyBs)} de tu billetera.',
+        confirm: 'Confirmar cancelación',
+        destructive: true,
       );
-      if (reason != null) await _run(() => api.cancel(b.id, reason), success: 'Solicitud cancelada');
+      if (ok) await _run(() => api.cancel(b.id, ''), success: 'Trabajo cancelado');
     }
 
     // El cliente nunca tiene que explicar por qué cancela. Si nadie aceptó
@@ -672,29 +713,48 @@ class _ActionsState extends ConsumerState<_Actions> {
       secondary.add(decline);
     }
 
-    // Durante el trabajo: un monto aparte (o la reparación, si se acordó solo
-    // la visita) que el cliente tiene que aprobar antes de hacerlo.
-    void addProChange() {
+    // Con el precio acordado, cualquiera de los dos propone un NUEVO TOTAL
+    // (0067); el otro acepta, rechaza o contraoferta. Si se acordó solo la
+    // visita, el profesional además cotiza la reparación.
+    void addPriceChange() {
       if (!price.agreed || price.openChange != null) return;
-      final kinds = [
-        if (price.agreedKind == PriceKind.inspection && !price.repairAccepted) PriceKind.repair,
-        PriceKind.extra,
-      ];
+      if (!b.viewerIsCustomer && price.agreedKind == PriceKind.inspection && !price.repairAccepted) {
+        secondary.add(
+          SecondaryButton(
+            key: const Key('price-repair'),
+            label: 'Cotizar reparación',
+            onPressed: () async {
+              final r = await showPriceSheet(
+                context,
+                title: 'Cotizar la reparación',
+                kinds: const [PriceKind.repair],
+                commission: (amount) => api.commissionForAmount(b.id, amount),
+              );
+              if (r != null) {
+                await _run(
+                  () => api.proposePrice(b.id, r.amount, kind: PriceKind.repair, note: r.note),
+                  success: 'Enviado. El cliente tiene que aceptarlo antes de que lo hagas.',
+                );
+              }
+            },
+          ),
+        );
+      }
       secondary.add(
         SecondaryButton(
-          key: const Key('price-extra'),
-          label: kinds.first == PriceKind.repair ? 'Cotizar reparación' : 'Pedir monto aparte',
+          key: const Key('price-counteroffer'),
+          label: 'Contraoferta',
+          icon: Icons.sell_outlined,
           onPressed: () async {
-            final r = await showPriceSheet(
+            final r = await showCounterofferSheet(
               context,
-              title: kinds.first == PriceKind.repair ? 'Cotizar la reparación' : 'Monto aparte',
-              kinds: kinds,
-              commission: (amount) => api.commissionForAmount(b.id, amount),
+              current: price.total!,
+              commissionRate: b.viewerIsCustomer ? null : b.commissionRate,
             );
             if (r != null) {
               await _run(
-                () => api.proposePrice(b.id, r.amount, kind: r.kind, note: r.note),
-                success: 'Enviado. El cliente tiene que aprobarlo antes de que lo hagas.',
+                () => api.proposePrice(b.id, r.amount, kind: PriceKind.total, note: r.note),
+                success: 'Contraoferta enviada. El precio cambia cuando la otra persona la acepte.',
               );
             }
           },
@@ -725,6 +785,7 @@ class _ActionsState extends ConsumerState<_Actions> {
           );
         case BookingStatus.confirmed:
           addChat();
+          addPriceChange();
           secondary.add(
             SecondaryButton(
               key: const Key('customer-cancel'),
@@ -751,6 +812,7 @@ class _ActionsState extends ConsumerState<_Actions> {
           secondary.add(SecondaryButton(label: 'Reportar problema', onPressed: dispute));
         case BookingStatus.onTheWay || BookingStatus.inProgress:
           addChat();
+          addPriceChange();
           secondary.add(SecondaryButton(label: 'Reportar problema', onPressed: dispute));
         case BookingStatus.workFinished:
           primary.add(
@@ -796,12 +858,37 @@ class _ActionsState extends ConsumerState<_Actions> {
       }
     } else {
       switch (s) {
-        case BookingStatus.awaitingResponse when b.isOffer:
+        // Dijo "No puedo" (0067): ya no puede aceptar ni proponer, pero mientras
+        // el pedido siga abierto lo puede volver a tomar.
+        case BookingStatus.awaitingResponse when b.isOffer && b.declinedByMe:
+          primary.add(
+            const InfoBanner(
+              key: Key('pro-declined'),
+              icon: Icons.do_not_disturb_on_outlined,
+              text: 'Dijiste "No puedo" a este pedido. Si cambiaste de idea, vuelve a tomarlo mientras siga abierto.',
+            ),
+          );
+          secondary.add(
+            SecondaryButton(
+              key: const Key('pro-reopen'),
+              label: 'Volver a tomar el pedido',
+              onPressed: () => _run(() => api.reopenOffer(b.id), success: 'Puedes aceptar o proponer tu precio'),
+            ),
+          );
+        case BookingStatus.awaitingResponse when b.isOffer && (b.myInvite == null || b.myInvite == 'pending'):
           addProPrice(
             decline: SecondaryButton(
               key: const Key('pro-decline'),
               label: 'No puedo',
               onPressed: () async {
+                final ok = await confirmDialog(
+                  context,
+                  title: '¿No puedes tomar este pedido?',
+                  message:
+                      'Dejarás de ver este pedido. Si cambias de idea, podrás volver a tomarlo mientras siga abierto.',
+                  confirm: 'No puedo',
+                );
+                if (!ok) return;
                 await _run(() => api.decline(b.id, isOffer: true));
                 if (context.mounted) context.pop();
               },
@@ -836,7 +923,7 @@ class _ActionsState extends ConsumerState<_Actions> {
             );
           }
           addChat();
-          addProChange();
+          addPriceChange();
           secondary.add(SecondaryButton(label: 'Cancelar', onPressed: cancel));
         case BookingStatus.onTheWay when arrival?.verified ?? false:
           primary.add(
@@ -848,7 +935,7 @@ class _ActionsState extends ConsumerState<_Actions> {
             ),
           );
           addChat();
-          addProChange();
+          addPriceChange();
         case BookingStatus.onTheWay:
           final again = arrival != null && arrival.stage != ArrivalStage.none;
           primary.add(
@@ -892,7 +979,7 @@ class _ActionsState extends ConsumerState<_Actions> {
             ),
           );
           addChat();
-          addProChange();
+          addPriceChange();
         case BookingStatus.workFinished || BookingStatus.completed:
           if (!b.professionalPaidAck) {
             primary.add(PrimaryButton(label: 'Recibí el pago', icon: Icons.payments_outlined, onPressed: ackPayment));

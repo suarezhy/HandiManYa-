@@ -38,6 +38,13 @@ enum StatusTone { neutral, info, warning, success, danger, brand }
 /// Lo que guarda el servidor cuando el cliente cancela sin dar un motivo.
 const customerCancelNote = 'Cancelada por el cliente';
 
+/// Lo que guarda el servidor cuando el profesional cancela sin motivo (0067).
+const proCancelNote = 'Cancelada por el profesional';
+
+/// Penalización al profesional que cancela después de aceptar (0067). Al
+/// cliente nunca se le cobra.
+const cancelPenaltyBs = 3.0;
+
 enum BookingStatus {
   draft('draft', 'Borrador', StatusTone.neutral),
   requested('requested', 'Solicitado', StatusTone.info),
@@ -157,6 +164,10 @@ class BookingSummary {
     this.problems = const [],
     this.agreedAmount,
     this.extrasAmount = 0,
+    this.negotiating = false,
+    this.paymentMethod,
+    this.customerPaid = false,
+    this.professionalPaid = false,
   });
 
   final String id;
@@ -170,6 +181,15 @@ class BookingSummary {
   final String description;
   final DateTime? scheduledStart;
   final DateTime createdAt;
+
+  /// Hay una propuesta de precio de un profesional esperando (0067):
+  /// "Negociando precio" en vez de "Buscando profesional".
+  final bool negotiating;
+
+  /// Cómo y si se pagó (lo marcan el cliente y el profesional).
+  final PaymentMethod? paymentMethod;
+  final bool customerPaid;
+  final bool professionalPaid;
 
   /// Precio que aceptaron los dos (0062) y montos aparte aceptados.
   final double? agreedAmount;
@@ -215,8 +235,21 @@ class BookingSummary {
     problems: [for (final p in (m['problems'] as List? ?? const [])) p as String],
     agreedAmount: _dn(m['agreed_amount']),
     extrasAmount: _dn(m['extras_amount']) ?? 0,
+    negotiating: m['negotiating'] as bool? ?? false,
+    paymentMethod: PaymentMethod.parse(m['payment_method'] as String?),
+    customerPaid: m['customer_paid'] as bool? ?? false,
+    professionalPaid: m['professional_paid'] as bool? ?? false,
   );
 }
+
+/// Estado del pago directo en una línea, igual para el cliente y el profesional.
+String paymentStatusLabel({required bool customerPaid, required bool professionalPaid}) =>
+    switch ((customerPaid, professionalPaid)) {
+      (true, true) => 'Confirmado',
+      (true, false) => 'El cliente marcó "Ya pagué"',
+      (false, true) => 'El profesional lo recibió',
+      _ => 'Pendiente',
+    };
 
 class BookingEvent {
   const BookingEvent({required this.status, this.note, required this.at});
@@ -313,6 +346,12 @@ class BookingDetail {
     this.professionalPaidAck = false,
     this.paymentReviewStatus,
     this.commissionCharged,
+    this.commissionRate,
+    this.commissionAmount,
+    this.myInvite,
+    this.cancelPenalty,
+    this.cancelPenaltyShortfall = 0,
+    this.cancelPenaltyWaived = false,
     required this.createdAt,
     this.cancelReason,
     required this.viewerIsCustomer,
@@ -359,6 +398,25 @@ class BookingDetail {
 
   /// Comisión cobrada en "Ya pagué" (solo la ve el profesional; 0 si se devolvió).
   final double? commissionCharged;
+
+  /// Porcentaje y monto de la comisión del total (solo el profesional; 0067).
+  final double? commissionRate;
+  final double? commissionAmount;
+
+  /// El aviso de este profesional en un pedido abierto: pending, declined
+  /// ("No puedo"), accepted, lost o expired; null si no lo avisaron.
+  final String? myInvite;
+
+  /// Penalización por cancelar después de aceptar (solo el profesional; 0067).
+  final double? cancelPenalty;
+  final double cancelPenaltyShortfall;
+  final bool cancelPenaltyWaived;
+
+  bool get declinedByMe => myInvite == 'declined';
+
+  /// Negociando precio: hay una propuesta de un profesional esperando.
+  bool get negotiating =>
+      !price.agreed && status.isOpen && price.offers.any((o) => o.isOpen && !o.byCustomer && o.kind.beforeJob);
   final DateTime createdAt;
   final String? cancelReason;
   final bool viewerIsCustomer;
@@ -412,6 +470,12 @@ class BookingDetail {
       professionalPaidAck: m['professional_paid_ack'] as bool? ?? false,
       paymentReviewStatus: (m['payment'] as Map<String, dynamic>?)?['review_status'] as String?,
       commissionCharged: _dn((m['payment'] as Map<String, dynamic>?)?['commission_charged']),
+      commissionRate: _dn((m['payment'] as Map<String, dynamic>?)?['commission_rate']),
+      commissionAmount: _dn((m['payment'] as Map<String, dynamic>?)?['commission_amount']),
+      myInvite: m['my_invite'] as String?,
+      cancelPenalty: _dn((m['cancel_penalty'] as Map<String, dynamic>?)?['charged']),
+      cancelPenaltyShortfall: _dn((m['cancel_penalty'] as Map<String, dynamic>?)?['shortfall']) ?? 0,
+      cancelPenaltyWaived: (m['cancel_penalty'] as Map<String, dynamic>?)?['waived'] as bool? ?? false,
       createdAt: DateTime.parse(m['created_at'] as String),
       cancelReason: m['cancel_reason'] as String?,
       viewerIsCustomer: m['viewer_role'] == 'customer',
@@ -455,12 +519,17 @@ class BookingDetail {
 }
 
 /// Qué se negocia: el precio del trabajo o de la visita (antes de aceptar), y
-/// la reparación o un cobro extra (durante el trabajo).
+/// durante el trabajo la contraoferta del total o la reparación.
 enum PriceKind {
   service('service', 'Precio del trabajo'),
   inspection('inspection', 'Visita de inspección'),
   repair('repair', 'Reparación'),
-  extra('extra', 'Cobro extra');
+
+  /// Antes de 0067: un monto que se sumaba. Solo queda en el historial.
+  extra('extra', 'Cobro extra'),
+
+  /// Contraoferta con el precio ya acordado: el NUEVO TOTAL (0067), nunca se suma.
+  total('total', 'Nuevo total');
 
   const PriceKind(this.key, this.label);
   final String key;
@@ -557,11 +626,15 @@ class BookingPrice {
   bool get agreed => agreedAmount != null;
   double? get total => agreedAmount == null ? null : agreedAmount! + extrasAmount;
 
-  /// Montos aparte ya aprobados por los dos.
+  /// Montos que se sumaron (reparación, o un cobro extra de antes de 0067).
   List<PriceOffer> get acceptedExtras => [
     for (final o in offers)
-      if (!o.kind.beforeJob && o.status == OfferStatus.accepted) o,
+      if ((o.kind == PriceKind.repair || o.kind == PriceKind.extra) && o.status == OfferStatus.accepted) o,
   ];
+
+  /// La última contraoferta del total que aceptaron los dos.
+  PriceOffer? get acceptedTotal =>
+      offers.reversed.where((o) => o.kind == PriceKind.total && o.status == OfferStatus.accepted).firstOrNull;
 
   /// La propuesta abierta más nueva de una conversación (null = para todos).
   PriceOffer? openIn(String? professionalId, {bool? byCustomer, bool beforeJob = true}) => offers.reversed
@@ -585,10 +658,10 @@ class BookingPrice {
       if (o.isOpen && !o.byCustomer && o.kind.beforeJob) o,
   ];
 
-  /// Cobro extra o reparación esperando respuesta.
+  /// Contraoferta del total o reparación esperando respuesta.
   PriceOffer? get openChange => offers.reversed.where((o) => o.isOpen && !o.kind.beforeJob).firstOrNull;
 
-  /// Montos aparte aprobados que esperan la recarga del profesional.
+  /// Precios nuevos aceptados que esperan la recarga del profesional.
   List<PriceOffer> get awaitingFunds => [
     for (final o in offers)
       if (o.status == OfferStatus.awaitingFunds) o,

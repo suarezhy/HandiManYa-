@@ -146,7 +146,7 @@ class PricePanel extends ConsumerWidget {
   );
 }
 
-/// Precio acordado: fijo, con lo aprobado aparte y lo que espera recarga.
+/// Precio acordado: fijo hasta que los dos acepten una contraoferta (0067).
 class _Agreed extends ConsumerWidget {
   const _Agreed({required this.b, required this.run});
 
@@ -183,7 +183,13 @@ class _Agreed extends ConsumerWidget {
               key: const Key('price-total'),
               style: Theme.of(context).textTheme.headlineSmall,
             ),
-            if (p.acceptedExtras.isNotEmpty) ...[
+            if (p.acceptedTotal != null)
+              _Line(
+                key: const Key('price-initial'),
+                label: p.agreedKind == PriceKind.inspection ? 'Visita acordada al principio' : 'Precio inicial',
+                value: Fmt.bsShort(p.agreedAmount!),
+              )
+            else if (p.acceptedExtras.isNotEmpty) ...[
               _Line(
                 label: p.agreedKind == PriceKind.inspection ? 'Visita' : 'Trabajo',
                 value: Fmt.bsShort(p.agreedAmount!),
@@ -204,10 +210,9 @@ class _Agreed extends ConsumerWidget {
                   icon: Icons.hourglass_bottom_rounded,
                   tone: StatusTone.warning,
                   text: b.viewerIsCustomer
-                      ? '${o.kind.label} de ${Fmt.bsShort(o.amount)} aprobado, pero todavía no cuenta: el profesional '
-                            'tiene que recargar su saldo. El precio acordado sigue igual.'
-                      : '${o.kind.label} de ${Fmt.bsShort(o.amount)} aprobado. Cuenta cuando recargues saldo para '
-                            'su comisión.',
+                      ? '${_what(o)} aceptado, pero todavía no cuenta: el profesional tiene que recargar su saldo. '
+                            'El precio acordado sigue igual.'
+                      : '${_what(o)} aceptado. Cuenta cuando recargues saldo para su comisión.',
                 ),
               ),
             if (p.awaitingFunds.isNotEmpty)
@@ -219,7 +224,7 @@ class _Agreed extends ConsumerWidget {
                   for (final o in p.awaitingFunds)
                     TextButton(
                       key: Key('awaiting-cancel-${o.id}'),
-                      onPressed: () => run(() => api.cancelPriceOffer(o.id), success: 'Monto aparte anulado'),
+                      onPressed: () => run(() => api.cancelPriceOffer(o.id), success: 'Anulado'),
                       child: Text('Anular ${Fmt.bsShort(o.amount)}'),
                     ),
                 ],
@@ -229,7 +234,14 @@ class _Agreed extends ConsumerWidget {
               _OfferTile(
                 key: Key('change-${change.id}'),
                 offer: change,
-                who: changeIsMine ? 'Tu pedido' : (b.viewerIsCustomer ? 'El profesional pide' : 'El cliente propone'),
+                who: change.kind == PriceKind.total
+                    ? (changeIsMine
+                          ? 'Tu contraoferta'
+                          : (b.viewerIsCustomer ? 'Contraoferta del profesional' : 'Contraoferta del cliente'))
+                    : (changeIsMine
+                          ? 'Tu pedido'
+                          : (b.viewerIsCustomer ? 'El profesional pide' : 'El cliente propone')),
+                current: change.kind == PriceKind.total ? p.total : null,
                 actions: changeIsMine
                     ? [
                         const Text('Esperando la respuesta.', style: TextStyle(color: HyColors.textSecondary)),
@@ -240,16 +252,48 @@ class _Agreed extends ConsumerWidget {
                         ),
                       ]
                     : [
+                        // Antes de aceptar, el profesional ve la comisión del total nuevo.
+                        if (!b.viewerIsCustomer && change.kind == PriceKind.total && b.commissionRate != null)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: HySpacing.xs),
+                            child: Text(
+                              'Comisión ${_rate(b.commissionRate!)} %: '
+                              '${Fmt.bs((change.amount * b.commissionRate!).round() / 100)}. Se cobra cuando el '
+                              'cliente marca "Ya pagué".',
+                              key: const Key('change-commission'),
+                              style: const TextStyle(color: HyColors.textSecondary, fontSize: 14),
+                            ),
+                          ),
                         PrimaryButton(
                           key: Key('change-accept-${change.id}'),
-                          label: 'Aprobar ${Fmt.bsShort(change.amount)}',
-                          onPressed: () => run(() => api.acceptPriceOffer(change.id), success: 'Monto aprobado'),
+                          label: 'Aceptar ${Fmt.bsShort(change.amount)}',
+                          onPressed: () => run(
+                            () => api.acceptPriceOffer(change.id),
+                            success: change.kind == PriceKind.total
+                                ? 'Nuevo precio acordado: ${Fmt.bsShort(change.amount)}'
+                                : 'Monto aceptado',
+                          ),
                         ),
                         _Two(
                           left: SecondaryButton(
                             key: Key('change-counter-${change.id}'),
                             label: 'Contraofertar',
                             onPressed: () async {
+                              if (change.kind == PriceKind.total) {
+                                final r = await showCounterofferSheet(
+                                  context,
+                                  current: p.total!,
+                                  initial: change.amount,
+                                  commissionRate: b.viewerIsCustomer ? null : b.commissionRate,
+                                );
+                                if (r != null) {
+                                  await run(
+                                    () => api.proposePrice(b.id, r.amount, kind: PriceKind.total, note: r.note),
+                                    success: 'Contraoferta enviada',
+                                  );
+                                }
+                                return;
+                              }
                               final r = await showPriceSheet(context, title: 'Tu contraoferta', initial: change.amount);
                               if (r != null) {
                                 await run(
@@ -276,12 +320,28 @@ class _Agreed extends ConsumerWidget {
   }
 }
 
+String _rate(double r) => r.toStringAsFixed(r % 1 == 0 ? 0 : 1);
+
+String _what(PriceOffer o) => o.kind == PriceKind.total
+    ? 'Nuevo total de ${Fmt.bsShort(o.amount)}'
+    : '${o.kind.label} de ${Fmt.bsShort(o.amount)}';
+
 class _OfferTile extends StatelessWidget {
-  const _OfferTile({super.key, required this.offer, required this.who, this.rating, required this.actions});
+  const _OfferTile({
+    super.key,
+    required this.offer,
+    required this.who,
+    this.rating,
+    this.current,
+    required this.actions,
+  });
 
   final PriceOffer offer;
   final String who;
   final BookingProfessional? rating;
+
+  /// Contraoferta del total: el precio de ahora, para mostrar la diferencia.
+  final double? current;
   final List<Widget> actions;
 
   @override
@@ -310,6 +370,13 @@ class _OfferTile extends StatelessWidget {
           '${offer.kind.label}: ${Fmt.bsShort(offer.amount)}',
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
+        if (current != null)
+          Text(
+            'Precio actual: ${Fmt.bsShort(current!)} · Diferencia: '
+            '${offer.amount >= current! ? '+' : '−'}${Fmt.bsShort((offer.amount - current!).abs())}',
+            key: Key('change-diff-${offer.id}'),
+            style: const TextStyle(color: HyColors.textSecondary),
+          ),
         if ((offer.note ?? '').isNotEmpty) Text(offer.note!, style: const TextStyle(color: HyColors.textSecondary)),
         const SizedBox(height: HySpacing.xs),
         ...actions,
@@ -387,7 +454,7 @@ class _History extends StatelessWidget {
 
   static String _status(OfferStatus s) => switch (s) {
     OfferStatus.open => 'esperando respuesta',
-    OfferStatus.awaitingFunds => 'aprobado, esperando recarga',
+    OfferStatus.awaitingFunds => 'aceptado, esperando recarga',
     OfferStatus.accepted => 'aceptado',
     OfferStatus.rejected => 'rechazado',
     OfferStatus.superseded => 'reemplazado',
@@ -615,4 +682,108 @@ class CommissionForAmount extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Contraoferta con el precio ya acordado (0067): se escribe el NUEVO TOTAL,
+/// nunca un monto que se suma. Muestra el precio actual, la diferencia y el
+/// total nuevo; al profesional, también la comisión del total nuevo.
+Future<({double amount, String? note})?> showCounterofferSheet(
+  BuildContext context, {
+  required double current,
+  double? initial,
+  double? commissionRate,
+}) {
+  final amount = TextEditingController(
+    text: initial == null ? '' : Fmt.bsShort(initial).replaceAll(RegExp(r'[^\d,]'), ''),
+  );
+  final note = TextEditingController();
+  final form = GlobalKey<FormState>();
+  double? parse(String v) => double.tryParse(v.replaceAll('.', '').replaceAll(',', '.').trim());
+  return showModalBottomSheet<({double amount, String? note})>(
+    context: context,
+    isScrollControlled: true,
+    builder: (c) => StatefulBuilder(
+      builder: (c, setState) {
+        final n = parse(amount.text);
+        final diff = n == null ? null : n - current;
+        return Padding(
+          padding: EdgeInsets.fromLTRB(HySpacing.page, 0, HySpacing.page, sheetBottomInset(c) + HySpacing.lg),
+          child: Form(
+            key: form,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Contraoferta', style: Theme.of(c).textTheme.headlineSmall),
+                const SizedBox(height: HySpacing.xs),
+                _Line(key: const Key('counter-current'), label: 'Precio actual', value: Fmt.bs(current)),
+                const SizedBox(height: HySpacing.xs),
+                TextFormField(
+                  key: const Key('counter-amount'),
+                  controller: amount,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))],
+                  decoration: InputDecoration(
+                    labelText: 'Nuevo precio total en ${kCountry.currencySymbol}',
+                    helperText: 'Escribe el total del trabajo, no lo que se suma.',
+                    prefixText: kCountry.moneyPrefix,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                  validator: (v) {
+                    final n = parse(v ?? '');
+                    if (n == null || n <= 0 || n > 100000) return 'Escribe un monto entre 1 y 100.000';
+                    if (n == current) return 'Es el mismo precio actual';
+                    return null;
+                  },
+                ),
+                if (n != null && n > 0 && diff != 0) ...[
+                  const SizedBox(height: HySpacing.xs),
+                  _Line(
+                    key: const Key('counter-diff'),
+                    label: 'Diferencia',
+                    value: '${diff! > 0 ? '+' : '−'}${Fmt.bs(diff.abs())}',
+                  ),
+                  _Line(key: const Key('counter-total'), label: 'Nuevo total', value: Fmt.bs(n)),
+                  if (commissionRate != null)
+                    Text(
+                      'Comisión ${commissionRate.toStringAsFixed(commissionRate % 1 == 0 ? 0 : 1)} % del nuevo total: '
+                      '${Fmt.bs((n * commissionRate).round() / 100)}. Se cobra cuando el cliente marca "Ya pagué".',
+                      key: const Key('counter-commission'),
+                      style: const TextStyle(color: HyColors.textSecondary, fontSize: 14),
+                    ),
+                ],
+                const SizedBox(height: HySpacing.xs),
+                const Text(
+                  'El precio acordado no cambia hasta que la otra persona acepte.',
+                  style: TextStyle(color: HyColors.textMuted, fontSize: 14),
+                ),
+                const SizedBox(height: HySpacing.sm),
+                TextFormField(
+                  controller: note,
+                  maxLines: 2,
+                  maxLength: 300,
+                  decoration: const InputDecoration(
+                    labelText: 'Motivo (opcional)',
+                    hintText: 'Ej.: hay que cambiar otra pieza',
+                  ),
+                ),
+                PrimaryButton(
+                  key: const Key('counter-send'),
+                  label: 'Enviar contraoferta',
+                  onPressed: () {
+                    if (!form.currentState!.validate()) return;
+                    Navigator.pop(c, (
+                      amount: parse(amount.text)!,
+                      note: note.text.trim().isEmpty ? null : note.text.trim(),
+                    ));
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    ),
+  );
 }

@@ -39,4 +39,7 @@ abstract final class Env {
   );
 
   static bool get hasBackend => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+
+  /// La app apunta al proyecto de desarrollo (no al de producción).
+  static bool get isDevProject => supabaseUrl.contains('yldqopeldibwgbwmdnzy');
 }

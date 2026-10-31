@@ -40,7 +40,8 @@ enum LedgerType {
   commissionRelease('commission_release', 'Reserva liberada'),
   commissionCapture('commission_capture', 'Comisión cobrada'),
   adjustment('adjustment', 'Ajuste'),
-  refund('refund', 'Devolución');
+  refund('refund', 'Devolución'),
+  penalty('penalty', 'Penalización por cancelación');
 
   const LedgerType(this.key, this.label);
   final String key;
@@ -56,6 +57,8 @@ class LedgerEntry {
     required this.availableDelta,
     required this.reservedDelta,
     required this.availableAfter,
+    this.reservedAfter = 0,
+    this.bookingCode,
     this.note,
     required this.createdAt,
   });
@@ -65,15 +68,29 @@ class LedgerEntry {
   final double availableDelta;
   final double reservedDelta;
   final double availableAfter;
+  final double reservedAfter;
+
+  /// Número de la solicitud del movimiento, si tiene.
+  final String? bookingCode;
   final String? note;
   final DateTime createdAt;
 
+  /// Cuánto cambió el saldo total. Un cobro viejo de una reserva (antes de
+  /// 0066) cambia el total aunque el disponible no se mueva.
+  double get amount => availableDelta + reservedDelta;
+
+  /// El saldo total después del movimiento.
+  double get balanceAfter => availableAfter + reservedAfter;
+
+  /// De my_wallet_history (0067): amount y balance_after ya son del saldo total.
   factory LedgerEntry.fromMap(Map<String, dynamic> m) => LedgerEntry(
     id: (m['id'] as num).toInt(),
     type: LedgerType.parse(m['entry_type'] as String),
-    availableDelta: _d(m['available_delta']),
-    reservedDelta: _d(m['reserved_delta']),
-    availableAfter: _d(m['available_after']),
+    availableDelta: _d(m['amount'] ?? m['available_delta']),
+    reservedDelta: m.containsKey('amount') ? 0 : _d(m['reserved_delta']),
+    availableAfter: _d(m['balance_after'] ?? m['available_after']),
+    reservedAfter: m.containsKey('balance_after') ? 0 : _d(m['reserved_after']),
+    bookingCode: m['booking_code'] as String?,
     note: m['note'] as String?,
     createdAt: DateTime.parse(m['created_at'] as String),
   );
@@ -455,6 +472,7 @@ class PaymentReviewReport {
   const PaymentReviewReport({
     required this.items,
     required this.unpaid,
+    this.penalties = const [],
     this.open = 0,
     this.refunded = 0,
     this.rejected = 0,
@@ -462,6 +480,9 @@ class PaymentReviewReport {
 
   final List<PaymentReview> items;
   final List<UnpaidJob> unpaid;
+
+  /// Penalizaciones por cancelación de los últimos 30 días (0067).
+  final List<CancelPenalty> penalties;
   final int open;
   final int refunded;
   final int rejected;
@@ -471,9 +492,45 @@ class PaymentReviewReport {
     return PaymentReviewReport(
       items: [for (final i in (m['items'] as List? ?? const [])) PaymentReview.fromMap(i as Map<String, dynamic>)],
       unpaid: [for (final i in (m['unpaid'] as List? ?? const [])) UnpaidJob.fromMap(i as Map<String, dynamic>)],
+      penalties: [
+        for (final i in (m['penalties'] as List? ?? const [])) CancelPenalty.fromMap(i as Map<String, dynamic>),
+      ],
       open: (sum['open'] as num?)?.toInt() ?? 0,
       refunded: (sum['refunded'] as num?)?.toInt() ?? 0,
       rejected: (sum['rejected'] as num?)?.toInt() ?? 0,
     );
   }
+}
+
+/// Bs 3 que pagó un profesional por cancelar después de aceptar (0067).
+class CancelPenalty {
+  const CancelPenalty({
+    required this.bookingId,
+    required this.bookingCode,
+    required this.charged,
+    this.shortfall = 0,
+    this.waived = false,
+    this.cancelledAt,
+    this.professionalName,
+  });
+
+  final String bookingId;
+  final String bookingCode;
+  final double charged;
+
+  /// Lo que no se pudo cobrar porque el saldo no alcanzó.
+  final double shortfall;
+  final bool waived;
+  final DateTime? cancelledAt;
+  final String? professionalName;
+
+  factory CancelPenalty.fromMap(Map<String, dynamic> m) => CancelPenalty(
+    bookingId: m['booking_id'] as String,
+    bookingCode: m['booking_code'] as String,
+    charged: _d(m['charged']),
+    shortfall: _d(m['shortfall']),
+    waived: m['waived'] as bool? ?? false,
+    cancelledAt: m['cancelled_at'] == null ? null : DateTime.parse(m['cancelled_at'] as String),
+    professionalName: m['professional_name'] as String?,
+  );
 }

@@ -9,7 +9,6 @@ import 'package:go_router/go_router.dart';
 import 'package:handimanya/app.dart';
 import 'package:handimanya/core/services/location_service.dart';
 import 'package:handimanya/core/theme/app_theme.dart';
-import 'package:handimanya/core/utils/app_error.dart';
 import 'package:handimanya/data/demo/demo_backend.dart';
 import 'package:handimanya/data/models/booking.dart';
 import 'package:handimanya/data/models/geo.dart';
@@ -637,18 +636,11 @@ void main() {
         final d = await app.detail(id);
         expect(d.status, BookingStatus.cancelled);
         expect(d.events.where((e) => e.status == BookingStatus.cancelled), hasLength(1));
-        // El profesional sigue dando un motivo.
+        // El profesional ya no escribe un motivo (paga Bs 3; ver counteroffer_cancel_test).
         final other = await _confirmedBooking(app);
-        Object? err;
-        try {
-          await app.cancel(other, '');
-        } catch (e) {
-          err = e;
-        }
-        expect(AppError.from(err!).code, 'HMY_REASON_REQUIRED');
         await app.updateProgress(other, BookingStatus.onTheWay);
         await app.signInAs(DemoBackend.customerPhone);
-        err = null;
+        Object? err;
         try {
           await app.cancel(other, '');
         } catch (e) {
