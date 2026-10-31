@@ -186,4 +186,41 @@ select 'pedido F9A50778: ' || coalesce((select b.status || ' · ' || b.mode || '
        || ' · comisión cobrada Bs ' || coalesce(b.commission_captured::text, '-')
        || ' · en la lista de …02: ' || exists (select 1 from public.my_bookings('professional') m where m.id = b.id)
        from public.bookings b where b.code = 'F9A50778'), 'no existe');
+-- Pedidos que el dueño probó en los Samsung (solo códigos, estados, montos y
+-- horas; sin datos personales): para encontrar por qué algo falló.
+select 'pedido ' || b.code || ': ' || b.status || ' · ' || b.mode
+       || ' · creado ' || to_char(b.created_at at time zone 'America/La_Paz', 'DD-MM HH24:MI:SS')
+       || ' · vence ' || coalesce(to_char(public.hmy_response_deadline(b) at time zone 'America/La_Paz', 'DD-MM HH24:MI:SS'), '-')
+       || ' · profesional ' || case when b.professional_id = :'p_id'::uuid then '…02' when b.professional_id is null then 'ninguno' else 'otra cuenta' end
+       || ' · acordado Bs ' || coalesce(b.agreed_amount::text, '-') || ' · extras Bs ' || b.extras_amount
+       || ' · final Bs ' || coalesce(b.final_amount::text, '-')
+from public.bookings b where b.code in ('69E3FD38', 'F3358CEF', 'CAF50CDF') order by b.created_at;
+select '  aviso ' || b.code || ' a ' || case when o.professional_id = :'p_id'::uuid then '…02' else 'otra cuenta' end
+       || ': ' || o.status || ' · creado ' || to_char(o.created_at at time zone 'America/La_Paz', 'HH24:MI:SS')
+       || ' · respondido ' || coalesce(to_char(o.responded_at at time zone 'America/La_Paz', 'HH24:MI:SS'), '-')
+from public.booking_offers o join public.bookings b on b.id = o.booking_id
+where b.code in ('69E3FD38', 'F3358CEF', 'CAF50CDF') order by b.created_at, o.created_at;
+select '  precio ' || b.code || ' #' || po.id || ': ' || po.author_role || ' · ' || po.kind || ' Bs ' || po.amount
+       || ' · ' || po.status || ' · para ' || case when po.professional_id is null then 'todos' when po.professional_id = :'p_id'::uuid then '…02' else 'otra cuenta' end
+       || ' · ' || to_char(po.created_at at time zone 'America/La_Paz', 'HH24:MI:SS')
+       || ' → ' || coalesce(to_char(po.responded_at at time zone 'America/La_Paz', 'HH24:MI:SS'), '-')
+from public.price_offers po join public.bookings b on b.id = po.booking_id
+where b.code in ('69E3FD38', 'F3358CEF', 'CAF50CDF') order by b.created_at, po.id;
+select '  paso ' || b.code || ': ' || coalesce(e.from_status::text, '-') || ' → ' || e.to_status
+       || ' · ' || to_char(e.created_at at time zone 'America/La_Paz', 'HH24:MI:SS')
+       || ' · por ' || case when e.actor_id = :'p_id'::uuid then '…02' when e.actor_id = b.customer_id then 'cliente'
+                            when e.actor_id is null then 'sistema' else 'otra cuenta' end
+from public.booking_events e join public.bookings b on b.id = e.booking_id
+where b.code in ('69E3FD38', 'F3358CEF', 'CAF50CDF') order by b.created_at, e.id;
+select '  aviso de app a …02 (' || n.kind || '): ' || to_char(n.created_at at time zone 'America/La_Paz', 'DD-MM HH24:MI:SS')
+from public.notifications n join public.bookings b on b.id::text = n.data ->> 'booking_id'
+where b.code = '69E3FD38' and n.user_id = :'p_id'::uuid order by n.created_at;
+select '  cambio del perfil de …02: ' || a.action || ' · ' || to_char(a.created_at at time zone 'America/La_Paz', 'DD-MM HH24:MI:SS')
+from public.admin_audit_log a
+where a.target_id = :'p_id' and a.created_at > now() - interval '3 days' order by a.created_at;
+select '  movimiento de …02: ' || l.entry_type || ' · disponible ' || l.available_delta || ' · reservado ' || l.reserved_delta
+       || ' · queda ' || l.available_after || '/' || l.reserved_after
+       || ' · ' || coalesce((select code from public.bookings where id = l.booking_id), '-')
+       || ' · ' || to_char(l.created_at at time zone 'America/La_Paz', 'DD-MM HH24:MI')
+from public.wallet_ledger l where l.professional_id = :'p_id' order by l.id;
 commit;
