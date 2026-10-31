@@ -77,11 +77,10 @@ select test.login('00000000-0000-0000-0000-000009a96003');
 select test.expect_error($$select public.cancel_booking('00000000-0000-0000-0000-000009a96b06', null)$$, 'HMY_FORBIDDEN');
 select test.logout();
 
--- El profesional sigue dando un motivo.
+-- Desde 0067 el profesional tampoco tiene que escribir un motivo.
 select test.login('00000000-0000-0000-0000-000009a96002');
-select test.expect_error($$select public.cancel_booking('00000000-0000-0000-0000-000009a96b06', '')$$, 'HMY_REASON_REQUIRED');
-select test.eq(public.cancel_booking('00000000-0000-0000-0000-000009a96b06', 'Se me pinchó la llanta')::text, 'cancelled',
-               'el profesional cancela con motivo');
+select test.eq(public.cancel_booking('00000000-0000-0000-0000-000009a96b06', '')::text, 'cancelled',
+               'el profesional cancela sin motivo');
 select test.logout();
 
 \o

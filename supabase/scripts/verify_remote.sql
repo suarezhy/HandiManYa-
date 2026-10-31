@@ -49,7 +49,8 @@ declare
     'accept_price_offer','reject_price_offer','_create_ya_request_unpriced','_create_scheduled_request_unpriced',
     '_create_booking_unpriced','_booking_detail_unpriced',
     'hmy_identity_verified','hmy_within_availability','hmy_rank_metrics','hmy_rank_tier','hmy_recompute_rank','hmy_rank_tier_of','_booking_detail_unranked',
-    '_trip_share_view_fixture','_home_map_professionals_base','home_map_professionals','search_professionals','get_professional_public','trip_share_view','my_bookings','create_qr_recharge','qr_recharge_status','my_qr_recharges','dev_simulate_qr_payment','owner_qr_recharges','owner_review_qr_recharge','owner_reverse_qr_recharge','recharge_bank_accounts','hmy_qr_settle','expire_qr_recharges','hmy_qr_provider','acknowledge_payment','report_payment_not_received','owner_payment_reviews','owner_resolve_payment_review','my_wallet_summary','booking_detail','_commission_charge','_commission_refund','hmy_commission_open'];
+    '_trip_share_view_fixture','_home_map_professionals_base','home_map_professionals','search_professionals','get_professional_public','trip_share_view','my_bookings','create_qr_recharge','qr_recharge_status','my_qr_recharges','dev_simulate_qr_payment','owner_qr_recharges','owner_review_qr_recharge','owner_reverse_qr_recharge','recharge_bank_accounts','hmy_qr_settle','expire_qr_recharges','hmy_qr_provider','acknowledge_payment','report_payment_not_received','owner_payment_reviews','owner_resolve_payment_review','my_wallet_summary','booking_detail','_commission_charge','_commission_refund','hmy_commission_open',
+    'hmy_not_my_request','reopen_ya_offer','decline_ya_offer','hmy_total_extra_commission','hmy_cancel_penalty_amount','_hmy_charge_cancel_penalty','cancel_booking','owner_waive_cancel_penalty','_owner_payment_reviews_0066','my_wallet_history','_booking_detail_0066'];
   v_missing text;
   v_count int;
   v_failed int := 0;
@@ -185,6 +186,12 @@ begin
      and not has_function_privilege('anon', 'public.acknowledge_payment(uuid, public.payment_method)', 'EXECUTE')
      and exists (select 1 from pg_trigger where tgname = 'bookings_commission_refund'),
      'comisión: solo se cobra en "Ya pagué" del cliente y solo el servidor la cobra o devuelve'),
+    (not has_function_privilege('authenticated', 'public._hmy_charge_cancel_penalty(uuid)', 'EXECUTE')
+     and not has_function_privilege('anon', 'public.owner_waive_cancel_penalty(uuid, text, text)', 'EXECUTE')
+     and not has_function_privilege('anon', 'public.my_wallet_history(int)', 'EXECUTE')
+     and exists (select 1 from pg_constraint where conname = 'price_offers_kind_check'
+                 and pg_get_constraintdef(oid) like '%total%'),
+     'contraoferta y penalización: el total nuevo se acepta entre los dos y solo el servidor cobra los Bs 3'),
     (not has_function_privilege('authenticated', 'public.hmy_push_claim(integer)', 'EXECUTE')
      and not has_function_privilege('authenticated', 'public.hmy_push_report(jsonb)', 'EXECUTE')
      and not has_column_privilege('authenticated', 'public.push_devices', 'token', 'SELECT')

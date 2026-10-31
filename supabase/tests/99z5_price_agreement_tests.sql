@@ -85,14 +85,17 @@ select test.eq((select quote_amount from public.bookings where id = (select v::u
                'la comisión usa el precio acordado');
 
 -- ---------------------------------------------------------------------------
--- 2. Cobro extra aprobado por los dos; "Terminé" no escribe el monto.
+-- 2. Contraoferta del total aprobada por los dos (0067: el "monto aparte" ya
+-- no se propone); "Terminé" no escribe el monto.
 -- ---------------------------------------------------------------------------
 select test.login('00000000-0000-0000-0000-000009a9a002');
 select public.update_job_progress((select v::uuid from t62 where k = 'd'), 'on_the_way');
 select test.arrive((select v::uuid from t62 where k = 'd'), '00000000-0000-0000-0000-000009a9a002',
                    '00000000-0000-0000-0000-000009a9a001');
 select public.update_job_progress((select v::uuid from t62 where k = 'd'), 'in_progress');
-insert into t62 select 'x1', public.propose_price((select v::uuid from t62 where k = 'd'), 40, 'extra', 'Otra llave de paso');
+select test.expect_error($$select public.propose_price((select v::uuid from t62 where k = 'd'), 40, 'extra')$$,
+                         'HMY_INVALID_PRICE_KIND');
+insert into t62 select 'x1', public.propose_price((select v::uuid from t62 where k = 'd'), 190, 'total', 'Otra llave de paso');
 select test.expect_error($$select public.propose_price((select v::uuid from t62 where k = 'd'), 300, 'repair')$$,
                          'HMY_INVALID_PRICE_KIND');
 select test.logout();
@@ -101,14 +104,14 @@ select public.accept_price_offer((select v::bigint from t62 where k = 'x1'));
 select test.expect_error($$select public.accept_price_offer((select v::bigint from t62 where k = 'x1'))$$, 'HMY_OFFER_CHANGED');
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a9a002');
-insert into t62 select 'x2', public.propose_price((select v::uuid from t62 where k = 'd'), 500, 'extra');
+insert into t62 select 'x2', public.propose_price((select v::uuid from t62 where k = 'd'), 400, 'total');
 -- Una versión vieja de la app manda un monto: no cuenta.
 select public.update_job_progress((select v::uuid from t62 where k = 'd'), 'work_finished', 999);
 select test.logout();
 select test.eq((select final_amount from public.bookings where id = (select v::uuid from t62 where k = 'd')), 190.00::numeric,
-               'monto final = acordado + extra aceptado (no lo que escribió el profesional)');
+               'monto final = la contraoferta aceptada (no lo que escribió el profesional)');
 select test.eq((select status from public.price_offers where id = (select v::bigint from t62 where k = 'x2')), 'expired',
-               'el extra sin aprobar vence al terminar');
+               'la contraoferta sin aprobar vence al terminar');
 select test.login('00000000-0000-0000-0000-000009a9a001');
 select public.confirm_completion((select v::uuid from t62 where k = 'd'));
 select test.logout();
@@ -152,7 +155,8 @@ select test.eq((select professional_id from public.bookings where id = (select v
                '00000000-0000-0000-0000-000009a9a002'::uuid, 'el trabajo es de quien propuso ese precio');
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009a9a003');
-select test.expect_error($$select public.propose_price((select v::uuid from t62 where k = 'y'), 120)$$, 'HMY_FORBIDDEN');
+-- 0067: el que perdió el pedido lee por qué.
+select test.expect_error($$select public.propose_price((select v::uuid from t62 where k = 'y'), 120)$$, 'HMY_ALREADY_TAKEN');
 select test.logout();
 
 -- ---------------------------------------------------------------------------

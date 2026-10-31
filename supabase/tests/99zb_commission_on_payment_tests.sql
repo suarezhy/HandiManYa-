@@ -125,18 +125,23 @@ select test.expect_error($$select public.accept_price_offer((select v::bigint fr
 select test.logout();
 select test.eq((select status::text from public.bookings where id = pg_temp.zb('d')), 'requested', 'sigue sin acordar');
 
--- Un monto aparte que no cabe espera la recarga.
+-- Un total nuevo que no cabe (0067): el profesional no puede proponerlo ni
+-- aceptarlo.
 select test.login('00000000-0000-0000-0000-000009aa2003');
 select public.update_job_progress(pg_temp.zb('c'), 'on_the_way');
 select test.arrive(pg_temp.zb('c'), '00000000-0000-0000-0000-000009aa2003', '00000000-0000-0000-0000-000009aa2004');
 select public.update_job_progress(pg_temp.zb('c'), 'in_progress');
-insert into tzb select 'x', public.propose_price(pg_temp.zb('c'), 200, 'extra');
+select test.expect_error($$select public.propose_price(pg_temp.zb('c'), 600, 'total')$$, 'HMY_INSUFFICIENT_BALANCE');
 select test.logout();
 select test.login('00000000-0000-0000-0000-000009aa2004');
-select public.accept_price_offer((select v::bigint from tzb where k = 'x'));
+insert into tzb select 'x', public.propose_price(pg_temp.zb('c'), 600, 'total');
 select test.logout();
-select test.eq((select status from public.price_offers where id = (select v::bigint from tzb where k = 'x')), 'awaiting_funds',
-               'Bs 70 + 20 no caben en Bs 80: el extra espera');
+select test.login('00000000-0000-0000-0000-000009aa2003');
+select test.expect_error($$select public.accept_price_offer((select v::bigint from tzb where k = 'x'))$$,
+                         'HMY_INSUFFICIENT_BALANCE');
+select test.logout();
+select test.eq((select status from public.price_offers where id = (select v::bigint from tzb where k = 'x')), 'open',
+               'Bs 70 + 20 no caben en Bs 80: la contraoferta sigue esperando');
 
 -- 5. Un trabajo completado sin "Ya pagué" cuenta 72 horas; después va a la
 -- revisión del propietario y deja de contar.

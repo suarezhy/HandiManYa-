@@ -310,9 +310,9 @@ select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000b1');
 select test.agree((select v from t_ids where k = 'b2'));
 select test.eq((select available || '/' || reserved from public.wallets), '85.00/0.00', 'segundo trabajo: nada reservado ni descontado');
-select test.expect_error(format('select public.cancel_booking(%L, %L)', (select v from t_ids where k = 'b2'), ''), 'HMY_REASON_REQUIRED');
-select public.cancel_booking((select v from t_ids where k = 'b2'), 'Emergencia familiar');
-select test.eq((select available || '/' || reserved from public.wallets), '85.00/0.00', 'cancelar no mueve el saldo');
+-- 0067: el profesional cancela sin motivo, pero después de aceptar paga Bs 3.
+select public.cancel_booking((select v from t_ids where k = 'b2'), '');
+select test.eq((select available || '/' || reserved from public.wallets), '82.00/0.00', 'cancelar después de aceptar: Bs 3');
 select test.logout();
 
 -- 6. Cotización y disputa
@@ -337,13 +337,13 @@ select test.expect_error(format('select public.confirm_completion(%L)', (select 
 select test.logout();
 select test.login('00000000-0000-0000-0000-0000000000b1');
 select test.expect_error(format('select public.update_job_progress(%L, %L)', (select v from t_ids where k = 'b3'), 'work_finished'), 'HMY_INVALID_TRANSITION');
-select test.eq((select available || '/' || reserved from public.wallets), '85.00/0.00', 'la disputa no mueve el saldo');
+select test.eq((select available || '/' || reserved from public.wallets), '82.00/0.00', 'la disputa no mueve el saldo');
 select test.logout();
 select test.login('00000000-0000-0000-0000-00000000000a');
 select test.eq(public.resolve_dispute((select v from t_ids where k = 'b3'), 'cancelled', 'Se reembolsa por trabajo incompleto')::text, 'cancelled', 'el admin resuelve la disputa');
 select test.eq((select count(*)::int from public.admin_audit_log where action = 'dispute.resolve'), 1, 'auditoría de la resolución');
 select test.logout();
-select test.eq((select available || '/' || reserved from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000b1'), '85.00/0.00', 'resolver con cancelación: sin cobro');
+select test.eq((select available || '/' || reserved from public.wallets where professional_id = '00000000-0000-0000-0000-0000000000b1'), '82.00/0.00', 'resolver con cancelación: sin cobro');
 
 -- 7. Reservas programadas sin cruces
 select test.login('00000000-0000-0000-0000-0000000000c1');
